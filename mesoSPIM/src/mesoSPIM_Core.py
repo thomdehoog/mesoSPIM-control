@@ -1178,6 +1178,37 @@ class mesoSPIM_Core(QtCore.QObject):
         self.state['state']='idle'
         self.sig_update_gui_from_state.emit()
 
+    # Tells the GUI how a start_remote_scripting attempt actually went, so the
+    # dialog never shows "running" after a failed bind (e.g. port already in use).
+    sig_remote_scripting_started = QtCore.pyqtSignal(bool, str)
+
+    @QtCore.pyqtSlot(str, int, str)
+    def start_remote_scripting(self, host, port, token):
+        '''Start the remote scripting server (Tools -> Remote Scripting...).
+
+        Called via a queued connection, so this runs on the Core's own thread --
+        the same thread execute_script runs on, which is where the server needs
+        to live. See mesoSPIM_RemoteScripting.py for what the server itself does.
+        '''
+        from .mesoSPIM_RemoteScripting import RemoteScriptingServer
+        self.stop_remote_scripting()  # restart-safe: never leave two servers running at once
+        try:
+            self._remote_scripting_server = RemoteScriptingServer(self, host, int(port), token or None)
+        except Exception as exc:
+            logger.exception('Remote scripting server failed to start')
+            self.sig_remote_scripting_started.emit(False, str(exc))  # False: let the dialog report the failure
+            return
+        logger.info(f'Remote scripting server on {host}:{port} (token {"set" if token else "off"})')
+        self.sig_remote_scripting_started.emit(True, f'{host}:{port}')
+
+    @QtCore.pyqtSlot()
+    def stop_remote_scripting(self):
+        '''Stop the remote scripting server, if one is running (safe to call anytime).'''
+        srv = getattr(self, '_remote_scripting_server', None)
+        if srv is not None:
+            srv.stop()
+            self._remote_scripting_server = None
+
     def lightsheet_alignment_mode(self):
         """Continuous live mode that alternates left/right shutters for dual-lightsheet co-alignment.
 
