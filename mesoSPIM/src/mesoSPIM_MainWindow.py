@@ -1222,7 +1222,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         form.setContentsMargins(10, 10, 10, 10)
         form.setSpacing(8)
 
-        warn = QtWidgets.QLabel('Controls the microscope (stage, lasers, acquisitions). Token required.')
+        warn = QtWidgets.QLabel('Allow remote control')
         warn.setWordWrap(True)
         form.addRow(warn)
 
@@ -1240,15 +1240,12 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         token_row.addWidget(self.RemoteControlTokenLineEdit)
         token_row.addWidget(self.RemoteControlGenerateButton)
 
-        self.RemoteControlModeNoteLabel = QtWidgets.QLabel(tab)
-        self.RemoteControlModeNoteLabel.setWordWrap(True)
         self.RemoteControlStatusLabel = QtWidgets.QLabel(tab)
 
-        form.addRow('Mode:', self.RemoteControlModeComboBox)
+        form.addRow('Protocol:', self.RemoteControlModeComboBox)
         form.addRow('Host:', self.RemoteControlHostLineEdit)
         form.addRow('Port:', self.RemoteControlPortLineEdit)
         form.addRow('Token:', token_row)
-        form.addRow(self.RemoteControlModeNoteLabel)
         form.addRow('Status:', self.RemoteControlStatusLabel)
 
         self.RemoteControlStartButton = QtWidgets.QPushButton('Start', tab)
@@ -1284,12 +1281,9 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         if mode == 'MCP':
             if self.RemoteControlPortLineEdit.text() == '42000':
                 self.RemoteControlPortLineEdit.setText('42100')
-            self.RemoteControlModeNoteLabel.setText(
-                'MCP runs as a separate adapter process with a private localhost TCP backend.')
         else:
             if self.RemoteControlPortLineEdit.text() == '42100':
                 self.RemoteControlPortLineEdit.setText('42000')
-            self.RemoteControlModeNoteLabel.setText('TCP exposes the framed JSON command server directly.')
 
     def refresh_remote_control_tab(self):
         if not hasattr(self, 'RemoteControlStatusLabel'):
