@@ -39,6 +39,13 @@ _ACQUISITION_FIELDS = (
     "etl_l_offset", "etl_l_amplitude", "etl_r_offset", "etl_r_amplitude",
     "processing",
 )
+_ETL_READBACK_KEYS = (
+    "ETL_cfg_file", "laser", "zoom",
+    "etl_l_delay_%", "etl_l_ramp_rising_%", "etl_l_ramp_falling_%",
+    "etl_l_amplitude", "etl_l_offset",
+    "etl_r_delay_%", "etl_r_ramp_rising_%", "etl_r_ramp_falling_%",
+    "etl_r_amplitude", "etl_r_offset",
+)
 
 
 def parse_call(payload):
@@ -216,6 +223,38 @@ def _set_laser_timing(core, a):
             "laser_r_delay_%", "laser_r_pulse_%", "laser_r_max_amplitude")
     core.state_request_handler(_settings_from_args(a, keys))
     return {}
+
+
+def _etl_request(core, settings, wait=True):
+    if wait:
+        core.sig_state_request_and_wait_until_done.emit(settings)
+    else:
+        core.sig_state_request.emit(settings)
+    return _state_snapshot(core, _ETL_READBACK_KEYS)
+
+
+def _reload_etl_config(core, a):
+    cfg_file = a.get("path", _state_get(core, "ETL_cfg_file"))
+    if not cfg_file:
+        raise ValueError("path is required when ETL_cfg_file is not set")
+    return _etl_request(core, {"ETL_cfg_file": str(cfg_file)},
+                        wait=bool(a.get("wait", True)))
+
+
+def _update_etl_from_laser(core, a):
+    laser = a.get("laser", _state_get(core, "laser"))
+    if not laser:
+        raise ValueError("laser is required when state['laser'] is not set")
+    return _etl_request(core, {"set_etls_according_to_laser": str(laser)},
+                        wait=bool(a.get("wait", True)))
+
+
+def _update_etl_from_zoom(core, a):
+    zoom = a.get("zoom", _state_get(core, "zoom"))
+    if not zoom:
+        raise ValueError("zoom is required when state['zoom'] is not set")
+    return _etl_request(core, {"set_etls_according_to_zoom": str(zoom)},
+                        wait=bool(a.get("wait", True)))
 
 
 def _hello(core, a):
@@ -493,6 +532,9 @@ COMMANDS = {
     "set_intensity": _set_intensity, "set_shutterconfig": _set_shutterconfig,
     "set_camera": _set_camera, "set_etl": _set_etl, "set_galvo": _set_galvo,
     "set_laser_timing": _set_laser_timing,
+    "reload_etl_config": _reload_etl_config,
+    "update_etl_from_laser": _update_etl_from_laser,
+    "update_etl_from_zoom": _update_etl_from_zoom,
     "open_shutters": _open_shutters, "close_shutters": _close_shutters,
     "snap": _snap, "set_mode": _set_mode, "start_live": _start_live,
     "start_visual_mode": _start_visual_mode,
@@ -519,6 +561,9 @@ _HINTS = {
     "set_etl": "change ETL timing/amplitude/offset settings. args: one or more etl_* keys",
     "set_galvo": "change galvo waveform settings. args: one or more galvo_* keys",
     "set_laser_timing": "change laser waveform timing/amplitude settings.",
+    "reload_etl_config": "reload ETL values from a CSV. args: {path?: str, wait?: bool}",
+    "update_etl_from_laser": "load ETL values for a laser. args: {laser?: str, wait?: bool}",
+    "update_etl_from_zoom": "load ETL values for a zoom. args: {zoom?: str, wait?: bool}",
     "set_mode": "run a named mesoSPIM mode. args: {mode: live|snap|run_acquisition_list|...}",
     "acquire_start": "start one acquisition. args: {acquisition: {...}}",
     "set_acquisition_list": "replace the acquisition list. args: {acquisitions: [{...}], selected_row?: int}",
