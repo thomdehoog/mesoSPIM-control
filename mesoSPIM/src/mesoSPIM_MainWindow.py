@@ -1218,29 +1218,41 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
         tab = QtWidgets.QWidget(self.TabWidget)
         tab.setObjectName('RemoteControlTabWidget')
-        form = QtWidgets.QFormLayout(tab)
-        form.setContentsMargins(10, 10, 10, 10)
-        form.setSpacing(8)
+        layout = QtWidgets.QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
         warn = QtWidgets.QLabel('Allow remote control')
+        warn_font = warn.font()
+        warn_font.setPointSize(14)
+        warn.setFont(warn_font)
         warn.setWordWrap(True)
-        form.addRow(warn)
+        layout.addWidget(warn)
 
-        self.RemoteControlModeComboBox = QtWidgets.QComboBox(tab)
+        setup_group = QtWidgets.QGroupBox('Setup remote control', tab)
+        setup_group.setObjectName('RemoteControlSetupGroupBox')
+        group_font = setup_group.font()
+        group_font.setPointSize(12)
+        setup_group.setFont(group_font)
+        form = QtWidgets.QFormLayout(setup_group)
+        form.setContentsMargins(10, 30, 10, 10)
+        form.setSpacing(8)
+
+        self.RemoteControlModeComboBox = QtWidgets.QComboBox(setup_group)
         self.RemoteControlModeComboBox.addItems(['TCP', 'MCP'])
         self.RemoteControlModeComboBox.setCurrentText(
             self._remote_mode if self._remote_mode in ('TCP', 'MCP') else 'TCP')
-        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._rs_host, tab)
+        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._rs_host, setup_group)
         default_port = 42000 if self.RemoteControlModeComboBox.currentText() == 'TCP' else 42100
-        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(str(self._rs_port or default_port), tab)
-        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._rs_token, tab)
-        self.RemoteControlGenerateButton = QtWidgets.QPushButton('Generate', tab)
+        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(str(self._rs_port or default_port), setup_group)
+        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._rs_token, setup_group)
+        self.RemoteControlGenerateButton = QtWidgets.QPushButton('Generate', setup_group)
 
         token_row = QtWidgets.QHBoxLayout()
         token_row.addWidget(self.RemoteControlTokenLineEdit)
         token_row.addWidget(self.RemoteControlGenerateButton)
 
-        self.RemoteControlStatusLabel = QtWidgets.QLabel(tab)
+        self.RemoteControlStatusLabel = QtWidgets.QLabel(setup_group)
 
         form.addRow('Protocol:', self.RemoteControlModeComboBox)
         form.addRow('Host:', self.RemoteControlHostLineEdit)
@@ -1248,12 +1260,14 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         form.addRow('Token:', token_row)
         form.addRow('Status:', self.RemoteControlStatusLabel)
 
-        self.RemoteControlStartButton = QtWidgets.QPushButton('Start', tab)
-        self.RemoteControlStopButton = QtWidgets.QPushButton('Stop', tab)
+        self.RemoteControlStartButton = QtWidgets.QPushButton('Start', setup_group)
+        self.RemoteControlStopButton = QtWidgets.QPushButton('Stop', setup_group)
         btns = QtWidgets.QHBoxLayout()
         btns.addWidget(self.RemoteControlStartButton)
         btns.addWidget(self.RemoteControlStopButton)
         form.addRow(btns)
+        layout.addWidget(setup_group)
+        layout.addStretch(1)
 
         self.RemoteControlGenerateButton.clicked.connect(self.generate_remote_control_token)
         self.RemoteControlStartButton.clicked.connect(self.start_remote_control)
