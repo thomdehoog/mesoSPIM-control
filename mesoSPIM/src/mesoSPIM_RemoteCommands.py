@@ -21,8 +21,8 @@ _STATE_REQUEST_KEYS = (
     "galvo_l_frequency", "galvo_l_amplitude", "galvo_l_offset",
     "galvo_l_duty_cycle", "galvo_l_phase",
     "galvo_r_frequency", "galvo_r_offset", "galvo_r_duty_cycle", "galvo_r_phase",
-    "laser_l_delay_%", "laser_l_pulse_%", "laser_l_max_amplitude",
-    "laser_r_delay_%", "laser_r_pulse_%", "laser_r_max_amplitude",
+    "laser_l_delay_%", "laser_l_pulse_%",
+    "laser_r_delay_%", "laser_r_pulse_%",
     "camera_delay_%", "camera_pulse_%",
     "camera_display_live_subsampling", "camera_display_acquisition_subsampling",
     "camera_sensor_mode", "camera_binning", "galvo_amp_scale_w_zoom",
@@ -219,8 +219,8 @@ def _set_galvo(core, a):
 
 
 def _set_laser_timing(core, a):
-    keys = ("laser_l_delay_%", "laser_l_pulse_%", "laser_l_max_amplitude",
-            "laser_r_delay_%", "laser_r_pulse_%", "laser_r_max_amplitude")
+    keys = ("laser_l_delay_%", "laser_l_pulse_%",
+            "laser_r_delay_%", "laser_r_pulse_%")
     core.state_request_handler(_settings_from_args(a, keys))
     return {}
 
