@@ -106,10 +106,19 @@ GUI MCP mode coverage:
 - `tools/call get_state`: pass
 - `tools/call get_config`: pass, including camera dimensions `5056x2960`
 - `tools/call get_position`: pass
+- `tools/call ping`: pass
+- `tools/call get_progress`: pass
 - `tools/call move_absolute` to the current position: pass
+- `tools/call move_relative` with zero delta: pass
+- `tools/call zero` for all axes: pass
+- `tools/call set_state` with the current intensity: pass
+- `tools/call stop`: pass
 - `tools/call acquire_start` demo snap: pass
 - `tools/call stat_files` for the acquired file: pass
+- `tools/call stat_files` for a missing file: pass
 - `tools/call acquire_finish`: pass
+- `tools/call procedure`: pass as controlled error, because server-side
+  procedures are not implemented
 - wrong bearer token: pass, returned `401`
 - disallowed Origin: pass, returned `403`
 - direct TCP on `127.0.0.1:42000`: pass, connection refused
@@ -121,4 +130,6 @@ The MCP backend still uses the same TCP command processor, but it is private
 plumbing: the public TCP port is closed, the backend port is ephemeral, and the
 backend token is separate from the MCP bearer token.
 
-`tools/call zero` was not run because it changes the operator coordinate origin.
+All 15 allowlisted remote-control commands were exercised. The `procedure`
+command currently has no server-side implementation, so the expected result is
+a controlled MCP tool error.
