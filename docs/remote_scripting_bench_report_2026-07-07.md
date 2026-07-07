@@ -16,9 +16,9 @@ framed TCP command server.
 - Base: `origin/release/candidate-py312` at `560dcf0`
 - Original PR commit: `611a3bc Add optional remote scripting server (Tools -> Remote Scripting...)`
 - mesoSPIM mode: `python mesoSPIM_Control.py -D`
-- GUI process during final validation: `python.exe` PID `35692`
-- TCP server: `127.0.0.1:42000`
-- MCP adapter smoke endpoint: `http://127.0.0.1:42100/mcp`
+- GUI process during final validation: `python.exe` PID `30428`
+- TCP mode endpoint: `127.0.0.1:42000`
+- MCP mode endpoint: `http://127.0.0.1:42100/mcp`
 - Token auth: enabled
 
 ## Architecture
@@ -48,16 +48,23 @@ $env:MESOSPIM_ALLOW_ACQUIRE='1'
 python -m pytest tests -m integration -v -s
 ```
 
-MCP adapter smoke checks were run by starting the adapter manually against the
-live TCP server:
+MCP mode was then started from `Tools > Remote Control...`. The GUI started the
+adapter on `42100` and an internal TCP backend on an ephemeral localhost port.
 
 ```powershell
-python mesoSPIM\mesoSPIM_MCP_Adapter.py `
-  --host 127.0.0.1 --port 42100 --token <token> `
-  --mesospim-host 127.0.0.1 --mesospim-port 42000 --mesospim-token <token>
+Get-NetTCPConnection -State Listen |
+  Where-Object { $_.LocalAddress -eq '127.0.0.1' -and
+                 ($_.LocalPort -eq 42000 -or $_.LocalPort -eq 42100 -or
+                  $_.OwningProcess -eq 30428) }
 ```
 
-Then JSON-RPC POST requests were sent to `http://127.0.0.1:42100/mcp`.
+The observed layout was:
+
+```text
+127.0.0.1:42100  MCP adapter
+127.0.0.1:57454  private TCP backend
+127.0.0.1:42000  no listener
+```
 
 ## Results
 
@@ -91,23 +98,27 @@ The passing tests covered:
 - zero-net-motion `move_absolute`
 - demo acquisition file write
 
-MCP adapter smoke coverage:
+GUI MCP mode coverage:
 
 - `initialize`: pass
 - `tools/list`: pass, returned 15 tools from the shared allowlist
+- `tools/call hello`: pass
 - `tools/call get_state`: pass
-- `tools/call get_config`: pass
-- `tools/call does_not_exist`: pass as controlled MCP tool error
+- `tools/call get_config`: pass, including camera dimensions `5056x2960`
+- `tools/call get_position`: pass
+- `tools/call move_absolute` to the current position: pass
+- `tools/call acquire_start` demo snap: pass
+- `tools/call stat_files` for the acquired file: pass
+- `tools/call acquire_finish`: pass
 - wrong bearer token: pass, returned `401`
-- separate MCP bearer token and TCP backend token: pass
-- backend TCP token used as MCP bearer token: pass, returned `401`
+- disallowed Origin: pass, returned `403`
+- direct TCP on `127.0.0.1:42000`: pass, connection refused
+- private TCP backend with the public MCP token: pass, returned `AUTH-FAILED`
 
 ## Notes
 
-During final validation the GUI was left in TCP mode. That is not a problem for
-adapter validation: the adapter is intentionally a separate process that talks
-to a TCP server. Selecting MCP in the GUI starts the same kind of adapter
-process automatically, but uses a hidden ephemeral localhost TCP port and a
-separate backend token so MCP remains the only advertised control surface.
+The MCP backend still uses the same TCP command processor, but it is private
+plumbing: the public TCP port is closed, the backend port is ephemeral, and the
+backend token is separate from the MCP bearer token.
 
 `tools/call zero` was not run because it changes the operator coordinate origin.
