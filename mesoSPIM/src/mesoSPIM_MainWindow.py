@@ -79,10 +79,10 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
     sig_save_etl_config = QtCore.pyqtSignal()
     sig_poke_demo_thread = QtCore.pyqtSignal()
-    # Remote scripting server. Emitted to the Core
+    # Remote-control server. Emitted to the Core
     # (queued) so the server's socket lives on the Core's own thread.
-    sig_start_remote_scripting = QtCore.pyqtSignal(str, int, str)
-    sig_stop_remote_scripting = QtCore.pyqtSignal()
+    sig_start_remote_control = QtCore.pyqtSignal(str, int, str)
+    sig_stop_remote_control = QtCore.pyqtSignal()
     sig_launch_optimizer = QtCore.pyqtSignal(dict)
     sig_launch_contrast_window = QtCore.pyqtSignal()
     sig_launch_processor_chain_window = QtCore.pyqtSignal()
@@ -202,9 +202,9 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.sig_launch_optimizer.connect(self.launch_optimizer)
         self.sig_launch_contrast_window.connect(self.launch_contrast_window)
         self.sig_launch_processor_chain_window.connect(self.launch_processor_chain_window)
-        self.sig_start_remote_scripting.connect(self.core.start_remote_scripting, type=QtCore.Qt.QueuedConnection)
-        self.sig_stop_remote_scripting.connect(self.core.stop_remote_scripting, type=QtCore.Qt.QueuedConnection)
-        self.core.sig_remote_scripting_started.connect(self.on_remote_scripting_started)
+        self.sig_start_remote_control.connect(self.core.start_remote_control, type=QtCore.Qt.QueuedConnection)
+        self.sig_stop_remote_control.connect(self.core.stop_remote_control, type=QtCore.Qt.QueuedConnection)
+        self.core.sig_remote_control_started.connect(self.on_remote_control_started)
 
         ''' Start the thread '''
         self.core_thread.start(QtCore.QThread.HighestPriority)
@@ -282,10 +282,10 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     def close_app(self):
         #self.log_display_handler.flushOnClose = False #discontinued
         logger.info('Closing the application')
-        if getattr(self, '_remote_scripting_running', False):
-            self._stop_mcp_adapter()
-            self.sig_stop_remote_scripting.emit()
-            self._remote_scripting_running = False
+        if getattr(self, '_remote_control_running', False):
+            self._stop_mcp_server()
+            self.sig_stop_remote_control.emit()
+            self._remote_control_running = False
         self.camera_window.close()
         self.acquisition_manager_window.close()
         if self.optimizer:
@@ -1152,69 +1152,58 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     def display_warning(self, string):
         warning = QtWidgets.QMessageBox.warning(None,'mesoSPIM Warning', string, QtWidgets.QMessageBox.Ok)
 
-    def _start_mcp_adapter(self, host, port, token, tcp_token, tcp_port):
-        adapter_path = os.path.join(self.package_directory, 'mesoSPIM_MCP_Adapter.py')
-        proc = QtCore.QProcess(self)
-        args = [
-            adapter_path,
-            '--host', host,
-            '--port', str(port),
-            '--token', token,
-            '--mesospim-host', '127.0.0.1',
-            '--mesospim-port', str(tcp_port),
-            '--mesospim-token', tcp_token,
-        ]
-        proc.start(sys.executable, args)
-        if not proc.waitForStarted(3000):
-            return False, proc.errorString()
-        QtCore.QThread.msleep(300)
-        if proc.state() == QtCore.QProcess.NotRunning:
-            stderr = bytes(proc.readAllStandardError()).decode('utf-8', 'replace').strip()
-            return False, stderr or 'adapter exited during startup'
-        self._mcp_adapter_process = proc
-        return True, f'{host}:{port}'
+    def _start_mcp_server(self, host, port, token, tcp_token, tcp_port):
+        from .mesoSPIM_RemoteControl_Servers import start_mcp_server_process
 
-    def _stop_mcp_adapter(self):
-        proc = getattr(self, '_mcp_adapter_process', None)
+        ok, message, proc = start_mcp_server_process(
+            self, self.package_directory, host, port, token, tcp_token, tcp_port)
+        if not ok:
+            return False, message
+        self._mcp_server_process = proc
+        return True, message
+
+    def _stop_mcp_server(self):
+        from .mesoSPIM_RemoteControl_Servers import stop_mcp_server_process
+
+        proc = getattr(self, '_mcp_server_process', None)
         if proc is not None:
-            proc.terminate()
-            if not proc.waitForFinished(2000):
-                proc.kill()
-            self._mcp_adapter_process = None
+            stop_mcp_server_process(proc)
+            self._mcp_server_process = None
 
-    def on_remote_scripting_started(self, ok, message):
+    def on_remote_control_started(self, ok, message):
         '''Result of a start attempt from the Core (queued): update state + dialog.
 
         On failure (e.g. the port is in use) the server did NOT start, so the
         dialog must not show "running". Warn the operator with the reason.
         '''
-        pending_mcp = getattr(self, '_pending_mcp_adapter', None)
-        self._pending_mcp_adapter = None
+        pending_mcp = getattr(self, '_pending_mcp_server', None)
+        self._pending_mcp_server = None
         if ok and pending_mcp is not None:
             try:
                 tcp_port = int(str(message).rsplit(':', 1)[1])
             except (IndexError, ValueError):
                 ok, message = False, f'Could not read internal TCP port from: {message}'
             else:
-                ok, message = self._start_mcp_adapter(*pending_mcp, tcp_port)
+                ok, message = self._start_mcp_server(*pending_mcp, tcp_port)
             if not ok:
-                self.sig_stop_remote_scripting.emit()
+                self.sig_stop_remote_control.emit()
                 self._remote_mode = 'Off'
-        self._remote_scripting_running = ok
+        self._remote_control_running = ok
         if not ok:
             QtWidgets.QMessageBox.warning(
                 self, 'Remote Control', f'Could not start the server: {message}')
-        if self._rs_refresh is not None:
-            self._rs_refresh()
+        if self._remote_control_refresh is not None:
+            self._remote_control_refresh()
 
     def setup_remote_control_tab(self):
         '''Add TCP/MCP remote-control settings to the main right-side tab widget.'''
-        self._remote_scripting_running = False
+        self._remote_control_running = False
         self._remote_mode = getattr(self, '_remote_mode', 'TCP')
-        self._rs_host = getattr(self, '_rs_host', '127.0.0.1')
-        self._rs_port = getattr(self, '_rs_port', 42000)
-        self._rs_token = getattr(self, '_rs_token', '') or secrets.token_urlsafe(16)
-        self._rs_refresh = self.refresh_remote_control_tab
+        self._remote_control_host = getattr(self, '_remote_control_host', '127.0.0.1')
+        self._remote_control_port = getattr(self, '_remote_control_port', 42000)
+        self._remote_control_token = (
+            getattr(self, '_remote_control_token', '') or secrets.token_urlsafe(16))
+        self._remote_control_refresh = self.refresh_remote_control_tab
 
         tab = QtWidgets.QWidget(self.TabWidget)
         tab.setObjectName('RemoteControlTabWidget')
@@ -1235,10 +1224,11 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.RemoteControlModeComboBox.addItems(['TCP', 'MCP'])
         self.RemoteControlModeComboBox.setCurrentText(
             self._remote_mode if self._remote_mode in ('TCP', 'MCP') else 'TCP')
-        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._rs_host, setup_group)
+        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._remote_control_host, setup_group)
         default_port = 42000 if self.RemoteControlModeComboBox.currentText() == 'TCP' else 42100
-        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(str(self._rs_port or default_port), setup_group)
-        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._rs_token, setup_group)
+        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(
+            str(self._remote_control_port or default_port), setup_group)
+        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._remote_control_token, setup_group)
         self.RemoteControlGenerateButton = QtWidgets.QPushButton('Generate', setup_group)
         for widget in (
                 self.RemoteControlModeComboBox,
@@ -1311,11 +1301,12 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     def refresh_remote_control_tab(self):
         if not hasattr(self, 'RemoteControlStatusLabel'):
             return
-        running = self._remote_scripting_running
+        running = self._remote_control_running
         mode = getattr(self, '_remote_mode', self.RemoteControlModeComboBox.currentText())
         if running:
             self.RemoteControlStatusLabel.setText(
-                f"{mode} running on {getattr(self, '_rs_host', '')}:{getattr(self, '_rs_port', '')}")
+                f"{mode} running on {getattr(self, '_remote_control_host', '')}:"
+                f"{getattr(self, '_remote_control_port', '')}")
         else:
             self.RemoteControlStatusLabel.setText('stopped')
         self.RemoteControlStartButton.setEnabled(not running)
@@ -1341,20 +1332,22 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, 'Remote Control', 'Token is required.')
             return
         mode = self.RemoteControlModeComboBox.currentText()
-        self._rs_host, self._rs_port, self._rs_token = host, port, token
+        self._remote_control_host = host
+        self._remote_control_port = port
+        self._remote_control_token = token
         self._remote_mode = mode
         if mode == 'MCP':
             internal_token = secrets.token_urlsafe(32)
-            self._pending_mcp_adapter = (host, port, token, internal_token)
-            self.sig_start_remote_scripting.emit('127.0.0.1', 0, internal_token)
+            self._pending_mcp_server = (host, port, token, internal_token)
+            self.sig_start_remote_control.emit('127.0.0.1', 0, internal_token)
         else:
-            self._pending_mcp_adapter = None
-            self.sig_start_remote_scripting.emit(host, port, token)
+            self._pending_mcp_server = None
+            self.sig_start_remote_control.emit(host, port, token)
 
     def stop_remote_control(self):
-        self._stop_mcp_adapter()
-        self.sig_stop_remote_scripting.emit()
-        self._remote_scripting_running = False
+        self._stop_mcp_server()
+        self.sig_stop_remote_control.emit()
+        self._remote_control_running = False
         self.refresh_remote_control_tab()
 
     def choose_snap_folder(self):
