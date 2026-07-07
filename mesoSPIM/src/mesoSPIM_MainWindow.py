@@ -1,6 +1,7 @@
 # mesoSPIM MainWindow
 import os
 import re
+import secrets
 import sys
 import tifffile
 import logging
@@ -78,7 +79,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
     sig_save_etl_config = QtCore.pyqtSignal()
     sig_poke_demo_thread = QtCore.pyqtSignal()
-    # Remote scripting server (Tools -> Remote Scripting...). Emitted to the Core
+    # Remote scripting server. Emitted to the Core
     # (queued) so the server's socket lives on the Core's own thread.
     sig_start_remote_scripting = QtCore.pyqtSignal(str, int, str)
     sig_stop_remote_scripting = QtCore.pyqtSignal()
@@ -431,24 +432,6 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.actionOpen_Acquisition_Manager.triggered.connect(self.acquisition_manager_window.show)
         self.actionOpen_Tile_Overview.triggered.connect(self.tile_view_window.show)
         self.actionCascade_windows.triggered.connect(self.cascade_all_windows)
-        # Add a "Tools -> Remote Control..." entry programmatically (no .ui change).
-        # `self.menuBar` is the QMenuBar *widget* from the .ui (it shadows
-        # QMainWindow.menuBar()), so add to it as an attribute. Reuse an existing
-        # Tools menu if one is ever added, rather than creating a duplicate.
-        self._remote_scripting_running = False
-        self._rs_refresh = None
-        self.menuTools = None
-        for _action in self.menuBar.actions():
-            if _action.menu() is not None and _action.text().replace('&', '') == 'Tools':
-                self.menuTools = _action.menu()
-                break
-        if self.menuTools is None:
-            self.menuTools = self.menuBar.addMenu('Tools')
-        self.actionRemoteScripting = QtWidgets.QAction('Remote Control...', self)
-        self.actionRemoteScripting.setStatusTip('Start/stop TCP or MCP remote control')
-        self.actionRemoteScripting.triggered.connect(self.open_remote_scripting_dialog)
-        self.menuTools.addAction(self.actionRemoteScripting)
-
         # Add Processor Chain menu item to View menu
         self.actionProcessor_Chain = QtWidgets.QAction("Processor Chain", self)
         self.actionProcessor_Chain.setShortcut(QtGui.QKeySequence("Ctrl+Shift+P"))
@@ -617,6 +600,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.connect_combobox_to_state_parameter(self.BinningComboBox, self.cfg.binning_dict.keys(),'camera_binning')
 
         self.checkBoxScaleWZoom.stateChanged.connect(self.scale_galvo_amp_w_zoom)
+
+        self.setup_remote_control_tab()
 
         ''' Timelapse tab '''
         self.AsFastAsPossibleCheckBox.toggled.connect(self.toggle_timelapse_interval)
@@ -1222,107 +1207,138 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         if self._rs_refresh is not None:
             self._rs_refresh()
 
-    def open_remote_scripting_dialog(self):
-        '''Start/stop TCP remote control or the bundled MCP adapter.
+    def setup_remote_control_tab(self):
+        '''Add TCP/MCP remote-control settings to the main right-side tab widget.'''
+        self._remote_scripting_running = False
+        self._remote_mode = getattr(self, '_remote_mode', 'TCP')
+        self._rs_host = getattr(self, '_rs_host', '127.0.0.1')
+        self._rs_port = getattr(self, '_rs_port', 42000)
+        self._rs_token = getattr(self, '_rs_token', '') or secrets.token_urlsafe(16)
+        self._rs_refresh = self.refresh_remote_control_tab
 
-        MCP is a separate process. It translates MCP JSON-RPC to the same TCP
-        command server; mesoSPIM-control itself only executes TCP commands.
-        '''
-        import secrets
-        dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle('Remote Control')
-        form = QtWidgets.QFormLayout(dlg)
+        tab = QtWidgets.QWidget(self.TabWidget)
+        tab.setObjectName('RemoteControlTabWidget')
+        form = QtWidgets.QFormLayout(tab)
+        form.setContentsMargins(10, 10, 10, 10)
+        form.setSpacing(8)
+
         warn = QtWidgets.QLabel('Controls the microscope (stage, lasers, acquisitions). Token required.')
         warn.setWordWrap(True)
         form.addRow(warn)
-        mode_combo = QtWidgets.QComboBox()
-        mode_combo.addItems(['TCP', 'MCP'])
-        mode_combo.setCurrentText(getattr(self, '_remote_mode', 'TCP') if getattr(self, '_remote_mode', 'TCP') in ('TCP', 'MCP') else 'TCP')
-        host_edit = QtWidgets.QLineEdit(getattr(self, '_rs_host', '127.0.0.1'))
-        port_edit = QtWidgets.QLineEdit(str(getattr(self, '_rs_port', 42000 if mode_combo.currentText() == 'TCP' else 42100)))
-        token_edit = QtWidgets.QLineEdit(getattr(self, '_rs_token', '') or secrets.token_urlsafe(16))
-        gen_btn = QtWidgets.QPushButton('Generate')
 
-        def generate_token():
-            token_edit.setText(secrets.token_urlsafe(16))
+        self.RemoteControlModeComboBox = QtWidgets.QComboBox(tab)
+        self.RemoteControlModeComboBox.addItems(['TCP', 'MCP'])
+        self.RemoteControlModeComboBox.setCurrentText(
+            self._remote_mode if self._remote_mode in ('TCP', 'MCP') else 'TCP')
+        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._rs_host, tab)
+        default_port = 42000 if self.RemoteControlModeComboBox.currentText() == 'TCP' else 42100
+        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(str(self._rs_port or default_port), tab)
+        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._rs_token, tab)
+        self.RemoteControlGenerateButton = QtWidgets.QPushButton('Generate', tab)
 
-        gen_btn.clicked.connect(generate_token)
         token_row = QtWidgets.QHBoxLayout()
-        token_row.addWidget(token_edit)
-        token_row.addWidget(gen_btn)
-        status = QtWidgets.QLabel()
-        mode_note = QtWidgets.QLabel()
-        mode_note.setWordWrap(True)
-        form.addRow('Mode:', mode_combo)
-        form.addRow('Host:', host_edit)
-        form.addRow('Port:', port_edit)
+        token_row.addWidget(self.RemoteControlTokenLineEdit)
+        token_row.addWidget(self.RemoteControlGenerateButton)
+
+        self.RemoteControlModeNoteLabel = QtWidgets.QLabel(tab)
+        self.RemoteControlModeNoteLabel.setWordWrap(True)
+        self.RemoteControlStatusLabel = QtWidgets.QLabel(tab)
+
+        form.addRow('Mode:', self.RemoteControlModeComboBox)
+        form.addRow('Host:', self.RemoteControlHostLineEdit)
+        form.addRow('Port:', self.RemoteControlPortLineEdit)
         form.addRow('Token:', token_row)
-        form.addRow(mode_note)
-        form.addRow('Status:', status)
-        start_btn = QtWidgets.QPushButton('Start')
-        stop_btn = QtWidgets.QPushButton('Stop')
+        form.addRow(self.RemoteControlModeNoteLabel)
+        form.addRow('Status:', self.RemoteControlStatusLabel)
+
+        self.RemoteControlStartButton = QtWidgets.QPushButton('Start', tab)
+        self.RemoteControlStopButton = QtWidgets.QPushButton('Stop', tab)
         btns = QtWidgets.QHBoxLayout()
-        btns.addWidget(start_btn)
-        btns.addWidget(stop_btn)
+        btns.addWidget(self.RemoteControlStartButton)
+        btns.addWidget(self.RemoteControlStopButton)
         form.addRow(btns)
 
-        def update_mode_note():
-            mode = mode_combo.currentText()
-            if mode == 'MCP':
-                if port_edit.text() == '42000':
-                    port_edit.setText('42100')
-                mode_note.setText('MCP runs as a separate adapter process with a private localhost TCP backend.')
-            else:
-                if port_edit.text() == '42100':
-                    port_edit.setText('42000')
-                mode_note.setText('TCP exposes the framed JSON command server directly.')
+        self.RemoteControlGenerateButton.clicked.connect(self.generate_remote_control_token)
+        self.RemoteControlStartButton.clicked.connect(self.start_remote_control)
+        self.RemoteControlStopButton.clicked.connect(self.stop_remote_control)
+        self.RemoteControlModeComboBox.currentTextChanged.connect(self.on_remote_control_mode_changed)
 
-        def refresh():
-            running = self._remote_scripting_running
-            mode = getattr(self, '_remote_mode', mode_combo.currentText())
-            status.setText(f"{mode} running on {getattr(self, '_rs_host', '')}:{getattr(self, '_rs_port', '')}"
-                           if running else 'stopped')
-            start_btn.setEnabled(not running)
-            stop_btn.setEnabled(running)
-            for w in (mode_combo, host_edit, port_edit, token_edit, gen_btn):
-                w.setEnabled(not running)
+        index = self.TabWidget.indexOf(self.TimelapseTabWidget)
+        if index >= 0:
+            self.TabWidget.insertTab(index + 1, tab, 'Remote Control')
+        else:
+            self.TabWidget.addTab(tab, 'Remote Control')
 
-        def do_start():
-            try:
-                port = int(port_edit.text())
-            except ValueError:
-                QtWidgets.QMessageBox.warning(dlg, 'Remote Control', 'Port must be a number.')
-                return
-            host = host_edit.text().strip() or '127.0.0.1'
-            token = token_edit.text().strip()
-            if not token:
-                QtWidgets.QMessageBox.warning(dlg, 'Remote Control', 'Token is required.')
-                return
-            mode = mode_combo.currentText()
-            self._rs_host, self._rs_port, self._rs_token = host, port, token
-            self._remote_mode = mode
-            if mode == 'MCP':
-                internal_token = secrets.token_urlsafe(32)
-                self._pending_mcp_adapter = (host, port, token, internal_token)
-                self.sig_start_remote_scripting.emit('127.0.0.1', 0, internal_token)
-            else:
-                self._pending_mcp_adapter = None
-                self.sig_start_remote_scripting.emit(host, port, token)
+        self.update_remote_control_mode_note()
+        self.refresh_remote_control_tab()
 
-        def do_stop():
-            self._stop_mcp_adapter()
-            self.sig_stop_remote_scripting.emit()
-            self._remote_scripting_running = False
-            refresh()
+    def generate_remote_control_token(self):
+        self.RemoteControlTokenLineEdit.setText(secrets.token_urlsafe(16))
 
-        start_btn.clicked.connect(do_start)
-        stop_btn.clicked.connect(do_stop)
-        mode_combo.currentTextChanged.connect(lambda _mode: (update_mode_note(), refresh()))
-        self._rs_refresh = refresh
-        update_mode_note()
-        refresh()
-        dlg.exec_()
-        self._rs_refresh = None
+    def on_remote_control_mode_changed(self, _mode):
+        self.update_remote_control_mode_note()
+        self.refresh_remote_control_tab()
+
+    def update_remote_control_mode_note(self):
+        mode = self.RemoteControlModeComboBox.currentText()
+        if mode == 'MCP':
+            if self.RemoteControlPortLineEdit.text() == '42000':
+                self.RemoteControlPortLineEdit.setText('42100')
+            self.RemoteControlModeNoteLabel.setText(
+                'MCP runs as a separate adapter process with a private localhost TCP backend.')
+        else:
+            if self.RemoteControlPortLineEdit.text() == '42100':
+                self.RemoteControlPortLineEdit.setText('42000')
+            self.RemoteControlModeNoteLabel.setText('TCP exposes the framed JSON command server directly.')
+
+    def refresh_remote_control_tab(self):
+        if not hasattr(self, 'RemoteControlStatusLabel'):
+            return
+        running = self._remote_scripting_running
+        mode = getattr(self, '_remote_mode', self.RemoteControlModeComboBox.currentText())
+        if running:
+            self.RemoteControlStatusLabel.setText(
+                f"{mode} running on {getattr(self, '_rs_host', '')}:{getattr(self, '_rs_port', '')}")
+        else:
+            self.RemoteControlStatusLabel.setText('stopped')
+        self.RemoteControlStartButton.setEnabled(not running)
+        self.RemoteControlStopButton.setEnabled(running)
+        for widget in (
+                self.RemoteControlModeComboBox,
+                self.RemoteControlHostLineEdit,
+                self.RemoteControlPortLineEdit,
+                self.RemoteControlTokenLineEdit,
+                self.RemoteControlGenerateButton,
+        ):
+            widget.setEnabled(not running)
+
+    def start_remote_control(self):
+        try:
+            port = int(self.RemoteControlPortLineEdit.text())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self, 'Remote Control', 'Port must be a number.')
+            return
+        host = self.RemoteControlHostLineEdit.text().strip() or '127.0.0.1'
+        token = self.RemoteControlTokenLineEdit.text().strip()
+        if not token:
+            QtWidgets.QMessageBox.warning(self, 'Remote Control', 'Token is required.')
+            return
+        mode = self.RemoteControlModeComboBox.currentText()
+        self._rs_host, self._rs_port, self._rs_token = host, port, token
+        self._remote_mode = mode
+        if mode == 'MCP':
+            internal_token = secrets.token_urlsafe(32)
+            self._pending_mcp_adapter = (host, port, token, internal_token)
+            self.sig_start_remote_scripting.emit('127.0.0.1', 0, internal_token)
+        else:
+            self._pending_mcp_adapter = None
+            self.sig_start_remote_scripting.emit(host, port, token)
+
+    def stop_remote_control(self):
+        self._stop_mcp_adapter()
+        self.sig_stop_remote_scripting.emit()
+        self._remote_scripting_running = False
+        self.refresh_remote_control_tab()
 
     def choose_snap_folder(self):
         path = QtWidgets.QFileDialog.getExistingDirectory(self, 'Open csv File', self.state['snap_folder'])
