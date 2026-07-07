@@ -66,6 +66,33 @@ def frame(payload):
 # the allowlist: a name not in it never runs. Verified against v1.20.0.
 
 
+def _item_get(obj, key, default=None):
+    """Read from dict-like objects or mesoSPIM_StateSingleton without assuming .get()."""
+    if obj is None:
+        return default
+    get = getattr(obj, "get", None)
+    if callable(get):
+        return get(key, default)
+    try:
+        return obj[key]
+    except (KeyError, TypeError, AttributeError):
+        return default
+
+
+def _state_get(core, key, default=None):
+    return _item_get(getattr(core, "state", None), key, default)
+
+
+def _state_position(core):
+    pos = _state_get(core, "position", {}) or {}
+    return {ax: _item_get(pos, ax, _item_get(pos, ax + "_pos")) for ax in _AXES}
+
+
+def _cfg_dict(cfg, name):
+    value = getattr(cfg, name, None)
+    return value if isinstance(value, dict) else {}
+
+
 def _move_absolute(core, a):
     core.move_absolute({k + "_abs": float(v) for k, v in a["targets"].items()}, wait_until_done=True)
     return {}
@@ -94,51 +121,54 @@ def _set_state(core, a):
 def _hello(core, a):
     cfg = getattr(core, "cfg", None)
     return {"app": "mesoSPIM-control", "version": getattr(cfg, "version", None),
-            "protocol": 1, "state": (core.state or {}).get("state")}
+            "protocol": 1, "state": _state_get(core, "state")}
 
 
 def _ping(core, a):
-    return {"pong": True, "state": (core.state or {}).get("state")}
+    return {"pong": True, "state": _state_get(core, "state")}
 
 
 def _get_position(core, a):
-    pos = (core.state or {}).get("position", {}) or {}
-    return {ax: pos.get(ax, pos.get(ax + "_pos")) for ax in _AXES}
+    return _state_position(core)
 
 
 def _get_state(core, a):
-    st = core.state or {}
-    pos = st.get("position", {}) or {}
     keys = ("laser", "intensity", "filter", "zoom", "shutterconfig",
             "etl_l_amplitude", "etl_l_offset", "etl_r_amplitude", "etl_r_offset")
-    out = {"state": st.get("state"),
-           "position": {ax: pos.get(ax, pos.get(ax + "_pos")) for ax in _AXES}}
-    out.update({k: st.get(k) for k in keys})
+    out = {"state": _state_get(core, "state"), "position": _state_position(core)}
+    out.update({k: _state_get(core, k) for k in keys})
     return out
 
 
 def _get_config(core, a):
     cfg = getattr(core, "cfg", None)
-    get = lambda n: (getattr(cfg, n, None) or {})  # noqa: E731
-    ld = get("laserdict")
+    ld = _cfg_dict(cfg, "laserdict")
     lasers = [{"name": n, "wavelength_nm": int("".join(c for c in str(n) if c.isdigit()) or 0) or None}
               for n in ld]
-    zd = get("zoomdict")
-    zooms = [{"name": z, "pixel_size_um": zd.get(z) if isinstance(zd, dict)
-              and isinstance(zd.get(z), (int, float)) else None} for z in zd]
+    zd = _cfg_dict(cfg, "zoomdict")
+    pixelsizes = _cfg_dict(cfg, "pixelsize")
+    zooms = []
+    for z in zd:
+        pixel_size = pixelsizes.get(z)
+        if pixel_size is None and isinstance(zd.get(z), (int, float)):
+            pixel_size = zd.get(z)
+        zooms.append({"name": z, "pixel_size_um": pixel_size})
+    camera_parameters = _cfg_dict(cfg, "camera_parameters")
+    pixels_x = camera_parameters.get("x_pixels", getattr(cfg, "camera_x_pixels", 2048))
+    pixels_y = camera_parameters.get("y_pixels", getattr(cfg, "camera_y_pixels", 2048))
     return {"app": "mesoSPIM-control", "version": getattr(cfg, "version", None),
-            "lasers": lasers, "filters": list(get("filterdict")), "zooms": zooms,
+            "lasers": lasers, "filters": list(_cfg_dict(cfg, "filterdict")), "zooms": zooms,
             "shutter_configs": list(getattr(cfg, "shutteroptions", ["Left", "Right", "Both"])),
             "axes": list(_AXES),
-            "camera": {"pixels_x": int(getattr(cfg, "camera_x_pixels", 2048) or 2048),
-                       "pixels_y": int(getattr(cfg, "camera_y_pixels", 2048) or 2048)}}
+            "camera": {"pixels_x": int(pixels_x or 2048), "pixels_y": int(pixels_y or 2048)}}
 
 
 def _get_progress(core, a):
-    st = core.state or {}
-    return {"state": st.get("state"), "current_plane": st.get("current_framenumber"),
-            "total_planes": st.get("snap_count"), "current_acquisition": st.get("current_acquisition"),
-            "total_acquisitions": st.get("total_acquisitions")}
+    return {"state": _state_get(core, "state"),
+            "current_plane": _state_get(core, "current_framenumber"),
+            "total_planes": _state_get(core, "snap_count"),
+            "current_acquisition": _state_get(core, "current_acquisition"),
+            "total_acquisitions": _state_get(core, "total_acquisitions")}
 
 
 def _acquire_start(core, a):
@@ -185,7 +215,7 @@ def _acquire_finish(core, a):
         del core._zmart_prev_acq_list
     except AttributeError:
         pass
-    return {"state": (core.state or {}).get("state")}
+    return {"state": _state_get(core, "state")}
 
 
 def _procedure(core, a):

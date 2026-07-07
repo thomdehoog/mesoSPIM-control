@@ -113,3 +113,68 @@ Update `mesoSPIM_RemoteScripting.py` to read state through
 state objects used by offline tests. Also update `get_config` to read camera
 dimensions from `cfg.camera_parameters` and zoom pixel sizes from
 `cfg.pixelsize`.
+
+## Follow-Up Validation After Fix
+
+The server was updated to use compatibility helpers for state/config access and
+the app was restarted from the same branch.
+
+Static/local checks:
+
+- `python -m py_compile mesoSPIM\src\mesoSPIM_RemoteScripting.py`: pass
+- direct regression against real `mesoSPIM_StateSingleton`: pass
+
+Framed TCP live integration suite:
+
+```powershell
+$env:MESOSPIM_HOST='127.0.0.1'
+$env:MESOSPIM_PORT='42000'
+$env:MESOSPIM_TOKEN='<token>'
+python -m pytest zmart_drivers\mesospim\tests -m integration -v
+```
+
+Result:
+
+```text
+4 passed, 1 skipped, 124 deselected
+```
+
+The skipped test was the opt-in acquisition test.
+
+Framed TCP live integration suite with demo acquisition enabled:
+
+```powershell
+$env:MESOSPIM_ALLOW_ACQUIRE='1'
+python -m pytest zmart_drivers\mesospim\tests -m integration -v
+```
+
+Result:
+
+```text
+5 passed, 124 deselected
+```
+
+Broader MCP JSON-RPC smoke coverage:
+
+- `initialize`: pass
+- `tools/list`: pass
+- `tools/call hello`: pass
+- `tools/call ping`: pass
+- `tools/call get_state`: pass
+- `tools/call get_position`: pass
+- `tools/call get_config`: pass
+- `tools/call get_progress`: pass
+- `tools/call stat_files`: pass
+- `tools/call move_absolute` to current position: pass
+- `tools/call move_relative` with zero delta: pass
+- `tools/call set_state` with current intensity: pass
+- `tools/call stop`: pass
+- `tools/call acquire_start` demo snap: pass
+- `tools/call stat_files` for the acquired file: pass
+- `tools/call acquire_finish`: pass
+- missing bearer token rejected with `401`: pass
+- disallowed Origin rejected with `403`: pass
+- `tools/call procedure` returns a controlled MCP error: pass
+
+`tools/call zero` was not run because it changes the operator coordinate
+origin.
