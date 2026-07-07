@@ -1222,13 +1222,6 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        warn = QtWidgets.QLabel('Allow remote control')
-        warn_font = warn.font()
-        warn_font.setPointSize(14)
-        warn.setFont(warn_font)
-        warn.setWordWrap(True)
-        layout.addWidget(warn)
-
         setup_group = QtWidgets.QGroupBox('Setup remote control', tab)
         setup_group.setObjectName('RemoteControlSetupGroupBox')
         group_font = setup_group.font()
@@ -1247,21 +1240,37 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(str(self._rs_port or default_port), setup_group)
         self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._rs_token, setup_group)
         self.RemoteControlGenerateButton = QtWidgets.QPushButton('Generate', setup_group)
+        for widget in (
+                self.RemoteControlModeComboBox,
+                self.RemoteControlHostLineEdit,
+                self.RemoteControlPortLineEdit,
+                self.RemoteControlTokenLineEdit,
+                self.RemoteControlGenerateButton,
+        ):
+            widget.setFont(group_font)
 
         token_row = QtWidgets.QHBoxLayout()
         token_row.addWidget(self.RemoteControlTokenLineEdit)
         token_row.addWidget(self.RemoteControlGenerateButton)
 
         self.RemoteControlStatusLabel = QtWidgets.QLabel(setup_group)
+        self.RemoteControlStatusLabel.setFont(group_font)
 
-        form.addRow('Protocol:', self.RemoteControlModeComboBox)
-        form.addRow('Host:', self.RemoteControlHostLineEdit)
-        form.addRow('Port:', self.RemoteControlPortLineEdit)
-        form.addRow('Token:', token_row)
-        form.addRow('Status:', self.RemoteControlStatusLabel)
+        def form_label(text):
+            label = QtWidgets.QLabel(text, setup_group)
+            label.setFont(group_font)
+            return label
+
+        form.addRow(form_label('Protocol'), self.RemoteControlModeComboBox)
+        form.addRow(form_label('Host'), self.RemoteControlHostLineEdit)
+        form.addRow(form_label('Port'), self.RemoteControlPortLineEdit)
+        form.addRow(form_label('Token'), token_row)
+        form.addRow(form_label('Status'), self.RemoteControlStatusLabel)
 
         self.RemoteControlStartButton = QtWidgets.QPushButton('Start', setup_group)
         self.RemoteControlStopButton = QtWidgets.QPushButton('Stop', setup_group)
+        self.RemoteControlStartButton.setFont(group_font)
+        self.RemoteControlStopButton.setFont(group_font)
         btns = QtWidgets.QHBoxLayout()
         btns.addWidget(self.RemoteControlStartButton)
         btns.addWidget(self.RemoteControlStopButton)
