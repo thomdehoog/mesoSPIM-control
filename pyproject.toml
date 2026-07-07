@@ -37,3 +37,4 @@ dependencies = [
 
 [project.scripts]
 mesospim-control = "mesoSPIM.mesoSPIM_Control:run"
+mesospim-mcp-adapter = "mesoSPIM.mesoSPIM_MCP_Adapter:main"

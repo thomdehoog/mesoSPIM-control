@@ -1,180 +1,113 @@
-# Remote Scripting Bench Report - 2026-07-07
+# Remote Control Bench Report - 2026-07-07
 
 ## Scope
 
-Live validation of the optional Remote Scripting server against a real
+Live validation of the refactored Remote Control PR against a real
 `mesoSPIM_Core` in demo mode.
+
+The refactor keeps mesoSPIM-control itself TCP-only. MCP is shipped as a
+separate adapter process that forwards MCP JSON-RPC tool calls to the same
+framed TCP command server.
 
 ## Test Setup
 
 - Worktree: `C:\ProgramData\MinicondaZMB\home\t.de\mesospim-control-py312-bench`
 - Branch: `bench-remote-scripting-py312`
 - Base: `origin/release/candidate-py312` at `560dcf0`
-- PR commit under test: `611a3bc Add optional remote scripting server (Tools -> Remote Scripting...)`
+- Original PR commit: `611a3bc Add optional remote scripting server (Tools -> Remote Scripting...)`
 - mesoSPIM mode: `python mesoSPIM_Control.py -D`
-- Server: `127.0.0.1:42000`
-- Server process: `python.exe` PID `7580`
+- GUI process during final validation: `python.exe` PID `35692`
+- TCP server: `127.0.0.1:42000`
+- MCP adapter smoke endpoint: `http://127.0.0.1:42100/mcp`
 - Token auth: enabled
+
+## Architecture
+
+- `mesoSPIM/src/mesoSPIM_RemoteCommands.py` owns the shared command allowlist,
+  JSON validation, and Core execution.
+- `mesoSPIM/src/mesoSPIM_RemoteScripting.py` owns only the framed TCP transport
+  and token gate.
+- `mesoSPIM/mesoSPIM_MCP_Adapter.py` owns MCP/HTTP. It does not import or call
+  `mesoSPIM_Core`; every `tools/call` opens a TCP connection, authenticates,
+  sends the same JSON command, and wraps the TCP reply as MCP content.
+- The GUI exposes one Remote Control mode at a time: direct TCP, or MCP plus a
+  private localhost TCP backend.
+- In MCP mode the TCP backend is bound to `127.0.0.1:0`, so the OS chooses an
+  ephemeral port. The backend also receives a separate generated token that is
+  not the MCP bearer token.
 
 ## Commands
 
-Framed TCP integration suite:
+Framed TCP integration suite with demo acquisition enabled:
 
 ```powershell
 $env:MESOSPIM_HOST='127.0.0.1'
 $env:MESOSPIM_PORT='42000'
 $env:MESOSPIM_TOKEN='<token>'
-python -m pytest zmart_drivers\mesospim\tests -m integration -v
+$env:MESOSPIM_ALLOW_ACQUIRE='1'
+python -m pytest tests -m integration -v -s
 ```
 
-MCP HTTP smoke checks:
+MCP adapter smoke checks were run by starting the adapter manually against the
+live TCP server:
 
 ```powershell
-curl.exe -s http://127.0.0.1:42000/mcp `
-  -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" `
-  --data-binary "@mesospim_mcp_initialize.json"
-
-curl.exe -s http://127.0.0.1:42000/mcp `
-  -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" `
-  --data-binary "@mesospim_mcp_tools_list.json"
-
-curl.exe -s http://127.0.0.1:42000/mcp `
-  -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" `
-  --data-binary "@mesospim_mcp_get_state.json"
+python mesoSPIM\mesoSPIM_MCP_Adapter.py `
+  --host 127.0.0.1 --port 42100 --token <token> `
+  --mesospim-host 127.0.0.1 --mesospim-port 42000 --mesospim-token <token>
 ```
 
-Safety checks:
-
-```powershell
-curl.exe -s -o NUL -w "%{http_code}\n" http://127.0.0.1:42000/mcp `
-  -H "Content-Type: application/json" `
-  --data-binary "@mesospim_mcp_tools_list.json"
-
-curl.exe -s -o NUL -w "%{http_code}\n" http://127.0.0.1:42000/mcp `
-  -H "Authorization: Bearer <token>" `
-  -H "Origin: http://evil.example" `
-  -H "Content-Type: application/json" `
-  --data-binary "@mesospim_mcp_tools_list.json"
-```
+Then JSON-RPC POST requests were sent to `http://127.0.0.1:42100/mcp`.
 
 ## Results
 
-The live server started successfully and listened on `127.0.0.1:42000`.
-
-The framed TCP integration suite reached the server, but every live check that
-depends on the handshake was skipped because `hello` failed inside the server:
-
-```text
-hello failed: error: 'mesoSPIM_StateSingleton' object has no attribute 'get'
-```
-
-MCP HTTP envelope checks:
-
-- `initialize`: pass
-- `tools/list`: pass, returned the `COMMANDS` allowlist
-- `tools/call get_state`: fail with the same state access error
-- missing bearer token: pass, returned `401`
-- disallowed Origin `http://evil.example`: pass, returned `403`
-
-`tools/call get_config` returned successfully, but exposed additional binding
-drift:
-
-- camera size fell back to `2048x2048` instead of using
-  `cfg.camera_parameters["x_pixels"]` and `cfg.camera_parameters["y_pixels"]`
-- zoom `pixel_size_um` came from `cfg.zoomdict` servo positions instead of
-  `cfg.pixelsize`
-
-## Root Cause
-
-The PR server handlers assume `core.state` behaves like a plain dictionary and
-call `.get(...)`. In the live py312 app, `core.state` is a
-`mesoSPIM_StateSingleton`. It supports:
-
-```python
-core.state["state"]
-core.state["position"]
-core.state.get_parameter_dict([...])
-core.state.get_parameter_list([...])
-```
-
-It does not implement:
-
-```python
-core.state.get(...)
-```
-
-## Fix Direction
-
-Update `mesoSPIM_RemoteScripting.py` to read state through
-`mesoSPIM_StateSingleton`'s actual access API while still tolerating dict-like
-state objects used by offline tests. Also update `get_config` to read camera
-dimensions from `cfg.camera_parameters` and zoom pixel sizes from
-`cfg.pixelsize`.
-
-## Follow-Up Validation After Fix
-
-The server was updated to use compatibility helpers for state/config access and
-the app was restarted from the same branch.
-
 Static/local checks:
 
-- `python -m py_compile mesoSPIM\src\mesoSPIM_RemoteScripting.py`: pass
+- `python -m py_compile mesoSPIM\src\mesoSPIM_RemoteCommands.py mesoSPIM\src\mesoSPIM_RemoteScripting.py mesoSPIM\mesoSPIM_MCP_Adapter.py mesoSPIM\src\mesoSPIM_MainWindow.py mesoSPIM\src\mesoSPIM_Core.py`: pass
 - direct regression against real `mesoSPIM_StateSingleton`: pass
+- source inspection confirmed HTTP, JSON-RPC, Origin, and Bearer request
+  handling live in the external adapter, not in `mesoSPIM_Core`
 
-Framed TCP live integration suite:
+Manual TCP smoke:
 
-```powershell
-$env:MESOSPIM_HOST='127.0.0.1'
-$env:MESOSPIM_PORT='42000'
-$env:MESOSPIM_TOKEN='<token>'
-python -m pytest zmart_drivers\mesospim\tests -m integration -v
-```
+- authentication: pass
+- `hello`: pass
+- `get_state`: pass
+- `get_position`: pass
+- `get_config`: pass, including live lasers, filters, zoom pixel sizes, and
+  camera dimensions `5056x2960`
 
-Result:
-
-```text
-4 passed, 1 skipped, 124 deselected
-```
-
-The skipped test was the opt-in acquisition test.
-
-Framed TCP live integration suite with demo acquisition enabled:
-
-```powershell
-$env:MESOSPIM_ALLOW_ACQUIRE='1'
-python -m pytest zmart_drivers\mesospim\tests -m integration -v
-```
-
-Result:
+ZMART live TCP integration suite:
 
 ```text
 5 passed, 124 deselected
 ```
 
-Broader MCP JSON-RPC smoke coverage:
+The passing tests covered:
+
+- handshake and protocol identity
+- live config binding
+- live state and position binding
+- zero-net-motion `move_absolute`
+- demo acquisition file write
+
+MCP adapter smoke coverage:
 
 - `initialize`: pass
-- `tools/list`: pass
-- `tools/call hello`: pass
-- `tools/call ping`: pass
+- `tools/list`: pass, returned 15 tools from the shared allowlist
 - `tools/call get_state`: pass
-- `tools/call get_position`: pass
 - `tools/call get_config`: pass
-- `tools/call get_progress`: pass
-- `tools/call stat_files`: pass
-- `tools/call move_absolute` to current position: pass
-- `tools/call move_relative` with zero delta: pass
-- `tools/call set_state` with current intensity: pass
-- `tools/call stop`: pass
-- `tools/call acquire_start` demo snap: pass
-- `tools/call stat_files` for the acquired file: pass
-- `tools/call acquire_finish`: pass
-- missing bearer token rejected with `401`: pass
-- disallowed Origin rejected with `403`: pass
-- `tools/call procedure` returns a controlled MCP error: pass
+- `tools/call does_not_exist`: pass as controlled MCP tool error
+- wrong bearer token: pass, returned `401`
+- separate MCP bearer token and TCP backend token: pass
+- backend TCP token used as MCP bearer token: pass, returned `401`
 
-`tools/call zero` was not run because it changes the operator coordinate
-origin.
+## Notes
+
+During final validation the GUI was left in TCP mode. That is not a problem for
+adapter validation: the adapter is intentionally a separate process that talks
+to a TCP server. Selecting MCP in the GUI starts the same kind of adapter
+process automatically, but uses a hidden ephemeral localhost TCP port and a
+separate backend token so MCP remains the only advertised control surface.
+
+`tools/call zero` was not run because it changes the operator coordinate origin.

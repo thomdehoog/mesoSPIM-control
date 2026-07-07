@@ -1,6 +1,7 @@
 # mesoSPIM MainWindow
 import os
 import re
+import sys
 import tifffile
 import logging
 import time
@@ -281,6 +282,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         #self.log_display_handler.flushOnClose = False #discontinued
         logger.info('Closing the application')
         if getattr(self, '_remote_scripting_running', False):
+            self._stop_mcp_adapter()
             self.sig_stop_remote_scripting.emit()
             self._remote_scripting_running = False
         self.camera_window.close()
@@ -429,7 +431,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.actionOpen_Acquisition_Manager.triggered.connect(self.acquisition_manager_window.show)
         self.actionOpen_Tile_Overview.triggered.connect(self.tile_view_window.show)
         self.actionCascade_windows.triggered.connect(self.cascade_all_windows)
-        # Add a "Tools -> Remote Scripting..." entry programmatically (no .ui change).
+        # Add a "Tools -> Remote Control..." entry programmatically (no .ui change).
         # `self.menuBar` is the QMenuBar *widget* from the .ui (it shadows
         # QMainWindow.menuBar()), so add to it as an attribute. Reuse an existing
         # Tools menu if one is ever added, rather than creating a duplicate.
@@ -442,8 +444,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
                 break
         if self.menuTools is None:
             self.menuTools = self.menuBar.addMenu('Tools')
-        self.actionRemoteScripting = QtWidgets.QAction('Remote Scripting...', self)
-        self.actionRemoteScripting.setStatusTip('Start/stop the external named-call control server')
+        self.actionRemoteScripting = QtWidgets.QAction('Remote Control...', self)
+        self.actionRemoteScripting.setStatusTip('Start/stop TCP or MCP remote control')
         self.actionRemoteScripting.triggered.connect(self.open_remote_scripting_dialog)
         self.menuTools.addAction(self.actionRemoteScripting)
 
@@ -1165,48 +1167,83 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     def display_warning(self, string):
         warning = QtWidgets.QMessageBox.warning(None,'mesoSPIM Warning', string, QtWidgets.QMessageBox.Ok)
 
+    def _start_mcp_adapter(self, host, port, token, tcp_token, tcp_port):
+        adapter_path = os.path.join(self.package_directory, 'mesoSPIM_MCP_Adapter.py')
+        proc = QtCore.QProcess(self)
+        args = [
+            adapter_path,
+            '--host', host,
+            '--port', str(port),
+            '--token', token,
+            '--mesospim-host', '127.0.0.1',
+            '--mesospim-port', str(tcp_port),
+            '--mesospim-token', tcp_token,
+        ]
+        proc.start(sys.executable, args)
+        if not proc.waitForStarted(3000):
+            return False, proc.errorString()
+        QtCore.QThread.msleep(300)
+        if proc.state() == QtCore.QProcess.NotRunning:
+            stderr = bytes(proc.readAllStandardError()).decode('utf-8', 'replace').strip()
+            return False, stderr or 'adapter exited during startup'
+        self._mcp_adapter_process = proc
+        return True, f'{host}:{port}'
+
+    def _stop_mcp_adapter(self):
+        proc = getattr(self, '_mcp_adapter_process', None)
+        if proc is not None:
+            proc.terminate()
+            if not proc.waitForFinished(2000):
+                proc.kill()
+            self._mcp_adapter_process = None
+
     def on_remote_scripting_started(self, ok, message):
         '''Result of a start attempt from the Core (queued): update state + dialog.
 
         On failure (e.g. the port is in use) the server did NOT start, so the
         dialog must not show "running". Warn the operator with the reason.
         '''
+        pending_mcp = getattr(self, '_pending_mcp_adapter', None)
+        self._pending_mcp_adapter = None
+        if ok and pending_mcp is not None:
+            try:
+                tcp_port = int(str(message).rsplit(':', 1)[1])
+            except (IndexError, ValueError):
+                ok, message = False, f'Could not read internal TCP port from: {message}'
+            else:
+                ok, message = self._start_mcp_adapter(*pending_mcp, tcp_port)
+            if not ok:
+                self.sig_stop_remote_scripting.emit()
+                self._remote_mode = 'Off'
         self._remote_scripting_running = ok
         if not ok:
             QtWidgets.QMessageBox.warning(
-                self, 'Remote Scripting', f'Could not start the server: {message}')
+                self, 'Remote Control', f'Could not start the server: {message}')
         if self._rs_refresh is not None:
             self._rs_refresh()
 
     def open_remote_scripting_dialog(self):
-        '''Start/stop the remote scripting server (external named-call control API).
+        '''Start/stop TCP remote control or the bundled MCP adapter.
 
-        Off by default. A client sends a named call; the server runs the matching
-        Core method from a fixed allowlist (no client code runs). A call still
-        controls the microscope, so: host 127.0.0.1 = same machine
-        only; set a token before exposing it on the network; plain TCP, so the
-        token gates casual LAN access but is not sniffer-proof (tunnel for
-        untrusted nets).
+        MCP is a separate process. It translates MCP JSON-RPC to the same TCP
+        command server; mesoSPIM-control itself only executes TCP commands.
         '''
         import secrets
         dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle('Remote Scripting')
+        dlg.setWindowTitle('Remote Control')
         form = QtWidgets.QFormLayout(dlg)
-        warn = QtWidgets.QLabel('Controls the microscope (stage, lasers, acquisitions). Use a token to expose on a network.')
+        warn = QtWidgets.QLabel('Controls the microscope (stage, lasers, acquisitions). Token required.')
         warn.setWordWrap(True)
         form.addRow(warn)
+        mode_combo = QtWidgets.QComboBox()
+        mode_combo.addItems(['TCP', 'MCP'])
+        mode_combo.setCurrentText(getattr(self, '_remote_mode', 'TCP') if getattr(self, '_remote_mode', 'TCP') in ('TCP', 'MCP') else 'TCP')
         host_edit = QtWidgets.QLineEdit(getattr(self, '_rs_host', '127.0.0.1'))
-        port_edit = QtWidgets.QLineEdit(str(getattr(self, '_rs_port', 42000)))
-        # Secure by default: pre-fill a fresh random token so starting the server
-        # is never accidentally open. The operator can clear it to run open on
-        # localhost (a network bind with no token is still confirmed in do_start).
+        port_edit = QtWidgets.QLineEdit(str(getattr(self, '_rs_port', 42000 if mode_combo.currentText() == 'TCP' else 42100)))
         token_edit = QtWidgets.QLineEdit(getattr(self, '_rs_token', '') or secrets.token_urlsafe(16))
-        token_edit.setPlaceholderText('blank = open (localhost only)')
         gen_btn = QtWidgets.QPushButton('Generate')
 
         def generate_token():
-            # Replaces the token field with a fresh random one, for an operator who
-            # cleared it (or just wants a new one) without typing it by hand.
             token_edit.setText(secrets.token_urlsafe(16))
 
         gen_btn.clicked.connect(generate_token)
@@ -1214,9 +1251,13 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         token_row.addWidget(token_edit)
         token_row.addWidget(gen_btn)
         status = QtWidgets.QLabel()
+        mode_note = QtWidgets.QLabel()
+        mode_note.setWordWrap(True)
+        form.addRow('Mode:', mode_combo)
         form.addRow('Host:', host_edit)
         form.addRow('Port:', port_edit)
         form.addRow('Token:', token_row)
+        form.addRow(mode_note)
         form.addRow('Status:', status)
         start_btn = QtWidgets.QPushButton('Start')
         stop_btn = QtWidgets.QPushButton('Stop')
@@ -1225,50 +1266,60 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         btns.addWidget(stop_btn)
         form.addRow(btns)
 
+        def update_mode_note():
+            mode = mode_combo.currentText()
+            if mode == 'MCP':
+                if port_edit.text() == '42000':
+                    port_edit.setText('42100')
+                mode_note.setText('MCP runs as a separate adapter process with a private localhost TCP backend.')
+            else:
+                if port_edit.text() == '42100':
+                    port_edit.setText('42000')
+                mode_note.setText('TCP exposes the framed JSON command server directly.')
+
         def refresh():
-            # Redraws the Status line and enables/disables the fields to match
-            # whatever self._remote_scripting_running currently is.
             running = self._remote_scripting_running
-            status.setText(f"running on {getattr(self, '_rs_host', '')}:{getattr(self, '_rs_port', '')}"
+            mode = getattr(self, '_remote_mode', mode_combo.currentText())
+            status.setText(f"{mode} running on {getattr(self, '_rs_host', '')}:{getattr(self, '_rs_port', '')}"
                            if running else 'stopped')
             start_btn.setEnabled(not running)
             stop_btn.setEnabled(running)
-            for w in (host_edit, port_edit, token_edit, gen_btn):
+            for w in (mode_combo, host_edit, port_edit, token_edit, gen_btn):
                 w.setEnabled(not running)
 
         def do_start():
-            # Reads the form, confirms an unprotected network bind with the
-            # operator, then asks the Core to actually start the server.
             try:
                 port = int(port_edit.text())
             except ValueError:
-                QtWidgets.QMessageBox.warning(dlg, 'Remote Scripting', 'Port must be a number.')
+                QtWidgets.QMessageBox.warning(dlg, 'Remote Control', 'Port must be a number.')
                 return
             host = host_edit.text().strip() or '127.0.0.1'
             token = token_edit.text().strip()
-            if host not in ('127.0.0.1', 'localhost') and not token:
-                if QtWidgets.QMessageBox.question(
-                        dlg, 'No token',
-                        'Exposing microscope control on the network with no token lets any '
-                        'machine on the LAN drive this instrument. Start anyway?',
-                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
-                    return
+            if not token:
+                QtWidgets.QMessageBox.warning(dlg, 'Remote Control', 'Token is required.')
+                return
+            mode = mode_combo.currentText()
             self._rs_host, self._rs_port, self._rs_token = host, port, token
-            # Do NOT assume success here: the Core binds the socket on its own
-            # thread and may fail (port in use). on_remote_scripting_started sets
-            # the running state and refreshes the dialog from the real outcome.
-            self.sig_start_remote_scripting.emit(host, port, token)
+            self._remote_mode = mode
+            if mode == 'MCP':
+                internal_token = secrets.token_urlsafe(32)
+                self._pending_mcp_adapter = (host, port, token, internal_token)
+                self.sig_start_remote_scripting.emit('127.0.0.1', 0, internal_token)
+            else:
+                self._pending_mcp_adapter = None
+                self.sig_start_remote_scripting.emit(host, port, token)
 
         def do_stop():
+            self._stop_mcp_adapter()
             self.sig_stop_remote_scripting.emit()
             self._remote_scripting_running = False
             refresh()
 
         start_btn.clicked.connect(do_start)
         stop_btn.clicked.connect(do_stop)
-        # Let the started-signal handler refresh this dialog while it is open
-        # (a modal exec_ still pumps queued cross-thread signals).
+        mode_combo.currentTextChanged.connect(lambda _mode: (update_mode_note(), refresh()))
         self._rs_refresh = refresh
+        update_mode_note()
         refresh()
         dlg.exec_()
         self._rs_refresh = None

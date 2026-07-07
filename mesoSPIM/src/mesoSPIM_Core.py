@@ -1184,7 +1184,7 @@ class mesoSPIM_Core(QtCore.QObject):
 
     @QtCore.pyqtSlot(str, int, str)
     def start_remote_scripting(self, host, port, token):
-        '''Start the remote scripting server (Tools -> Remote Scripting...).
+        '''Start the TCP remote scripting server.
 
         Called via a queued connection, so this runs on the Core's own thread --
         the same thread execute_script runs on, which is where the server needs
@@ -1198,8 +1198,9 @@ class mesoSPIM_Core(QtCore.QObject):
             logger.exception('Remote scripting server failed to start')
             self.sig_remote_scripting_started.emit(False, str(exc))  # False: let the dialog report the failure
             return
-        logger.info(f'Remote scripting server on {host}:{port} (token {"set" if token else "off"})')
-        self.sig_remote_scripting_started.emit(True, f'{host}:{port}')
+        actual_port = self._remote_scripting_server.port
+        logger.info(f'Remote scripting TCP server on {host}:{actual_port} (token {"set" if token else "off"})')
+        self.sig_remote_scripting_started.emit(True, f'{host}:{actual_port}')
 
     @QtCore.pyqtSlot()
     def stop_remote_scripting(self):
