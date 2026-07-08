@@ -6,7 +6,10 @@ mesoSPIM Core action.
 """
 
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 _AXES = ("x", "y", "z", "f", "theta")
 _POSITION_KEYS = {"x": "x_pos", "y": "y_pos", "z": "z_pos", "f": "f_pos", "theta": "theta_pos"}
@@ -572,8 +575,99 @@ _HINTS = {
 }
 
 
+def _num(v):
+    """True if v is a real number (JSON booleans are ints in Python -- exclude them)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _cfg_options(core):
+    """The options the live cfg allows, so we accept exactly what this scope has."""
+    cfg = getattr(core, "cfg", None)
+    return {"filter": list(_cfg_dict(cfg, "filterdict")),
+            "zoom": list(_cfg_dict(cfg, "zoomdict")),
+            "laser": list(_cfg_dict(cfg, "laserdict")),
+            "shutterconfig": list(getattr(cfg, "shutteroptions", []) or [])}
+
+
+def _validate(core, call, args, limits):
+    """Reject a call whose ARGS are the wrong shape, not an allowed option, or out of
+    range -- with a clear message -- BEFORE the handler runs, so a bad value never
+    reaches the instrument. Allowed options come from the live ``cfg``; axis ranges
+    come from ``limits`` (per-axis ``{axis: (lo, hi)}``, empty = no soft limit -- the
+    Core is the hardware backstop).
+    """
+    def bad(msg):
+        raise ValueError(f"{call}: {msg}")
+
+    if call in ("move_absolute", "move_relative"):
+        key = "targets" if call == "move_absolute" else "deltas"
+        moves = args.get(key)
+        if not isinstance(moves, dict) or not moves:
+            bad(f"'{key}' must be a non-empty object of axis -> number")
+        for axis, value in moves.items():
+            if axis not in _AXES:
+                bad(f"unknown axis {axis!r}; allowed: {list(_AXES)}")
+            if not _num(value):
+                bad(f"axis {axis!r} value must be a number, got {value!r}")
+            lo_hi = limits.get(axis)
+            if call == "move_absolute" and lo_hi and not (lo_hi[0] <= value <= lo_hi[1]):
+                bad(f"{axis}={value} is outside the allowed range {tuple(lo_hi)}")
+    elif call in ("zero", "unzero"):
+        axes = args.get("axes")
+        if axes is not None and (not isinstance(axes, list) or any(a not in _AXES for a in axes)):
+            bad(f"'axes' must be a list of {list(_AXES)}")
+    elif call in ("set_filter", "set_zoom", "set_laser", "set_shutterconfig"):
+        field = call[len("set_"):]
+        if field not in args:
+            bad(f"'{field}' is required")
+        allowed = _cfg_options(core).get(field)
+        if allowed and args[field] not in allowed:
+            bad(f"{field}={args[field]!r} is not one of {allowed}")
+    elif call == "set_intensity":
+        v = args.get("intensity")
+        if not (_num(v) and 0 <= v <= 100):
+            bad("intensity must be a number in [0, 100]")
+    elif call == "set_state":
+        settings = args.get("settings")
+        if not isinstance(settings, dict) or not settings:
+            bad("'settings' must be a non-empty object")
+        options = _cfg_options(core)
+        for k, v in settings.items():
+            if options.get(k) and v not in options[k]:  # only keys with cfg-known options
+                bad(f"{k}={v!r} is not one of {options[k]}")
+            if k == "intensity" and not (_num(v) and 0 <= v <= 100):
+                bad("intensity must be a number in [0, 100]")
+    elif call == "acquire_start" and not isinstance(args.get("acquisition"), dict):
+        bad("'acquisition' must be an object")
+    # reads / stop / hello / ping / mode changes / stat_files / procedure: no arg contract
+
+
+def _limits_from_env():
+    """Optional per-axis soft travel limits so ``move_absolute`` refuses out-of-range
+    targets. Read from ``MESOSPIM_RS_LIMITS`` -- a JSON object ``{"x": [lo, hi], ...}``
+    or a path to a file holding one. Unset or invalid -> no soft limit (the Core's own
+    hardware limit is the backstop).
+    """
+    raw = os.environ.get("MESOSPIM_RS_LIMITS", "").strip()
+    if not raw:
+        return {}
+    try:
+        if os.path.isfile(raw):
+            with open(raw, encoding="utf-8") as f:
+                raw = f.read()
+        return {axis: (float(lo), float(hi)) for axis, (lo, hi) in json.loads(raw).items()}
+    except Exception:
+        logger.warning("MESOSPIM_RS_LIMITS ignored (want JSON of axis -> [lo, hi])")
+        return {}
+
+
+_LIMITS = _limits_from_env()
+
+
 def run(core, call, args=None):
     handler = COMMANDS.get(call)
     if handler is None:
         raise KeyError(f"unknown command {call!r}; not in the allowlist")
-    return handler(core, args or {})
+    args = args or {}
+    _validate(core, call, args, _LIMITS)
+    return handler(core, args)
