@@ -84,30 +84,41 @@ def frame_length(head):
     return length
 
 
-def read_frame(sock):
-    """Read one length-framed TCP reply, blocking until it is complete.
+class FrameReader:
+    """Reads length-framed replies from a socket it owns, blocking until each is complete.
 
-    The blocking counterpart of FrameDecoder: this owns the socket and may wait on it, which
-    is what a client and the MCP bridge need. They stay separate implementations because
-    their contracts are -- the Qt server can never block, and this can never buffer across
-    calls -- but they share frame_length, so the header rules cannot drift apart.
+    It keeps any bytes that belong to the NEXT frame, so a client whose replies arrive
+    coalesced does not silently lose one. This is the blocking counterpart of FrameDecoder,
+    which can never block because it runs on Qt's event loop; both call frame_length, so the
+    header rules cannot drift apart.
     """
-    buf = b""
-    while b"\n" not in buf:
-        chunk = sock.recv(4096)
+
+    def __init__(self, sock):
+        self._sock = sock
+        self._buf = b""
+
+    def read(self):
+        while b"\n" not in self._buf:
+            if len(self._buf) > MAX_FRAME_HEADER_BYTES:
+                raise FramingError("frame header is too long")
+            self._buf += self._recv()
+        head, _, rest = self._buf.partition(b"\n")
+        length = frame_length(head)
+        while len(rest) < length:
+            rest += self._recv()
+        self._buf = rest[length:]
+        return rest[:length].decode(ENCODING, "replace")
+
+    def _recv(self):
+        chunk = self._sock.recv(4096)
         if not chunk:
             raise ConnectionError("TCP server closed the connection")
-        buf += chunk
-        if b"\n" not in buf and len(buf) > MAX_FRAME_HEADER_BYTES:
-            raise FramingError("frame header is too long")
-    head, _, rest = buf.partition(b"\n")
-    length = frame_length(head)
-    while len(rest) < length:
-        chunk = sock.recv(4096)
-        if not chunk:
-            raise ConnectionError("TCP server closed the connection")
-        rest += chunk
-    return rest[:length].decode(ENCODING, "replace")
+        return chunk
+
+
+def read_frame(sock):
+    """One frame from a socket carrying nothing after it: one-shot callers and tests."""
+    return FrameReader(sock).read()
 
 
 def handle_tcp_message(core, payload):
@@ -360,9 +371,10 @@ class RemoteControl:
     def __init__(self, host="127.0.0.1", port=42000, token=None, timeout=10.0):
         self._sock = socket.create_connection((host, port), timeout=timeout)
         self._sock.settimeout(timeout)
+        self._reader = FrameReader(self._sock)
         if token:
             self._sock.sendall(frame(token))
-            reply = read_frame(self._sock).strip()
+            reply = self._reader.read().strip()
             if reply != "OK":
                 self.close()
                 raise RuntimeError(f"TCP authentication failed: {reply}")
@@ -370,7 +382,7 @@ class RemoteControl:
     def call(self, name, **arguments):
         """Send ``{name: arguments}`` and return the decoded result."""
         self._sock.sendall(frame(json.dumps({name: arguments})))
-        reply = read_frame(self._sock)
+        reply = self._reader.read()
         if not reply.startswith(OK_MARKER):
             raise RuntimeError(reply.strip())
         return json.loads(reply[len(OK_MARKER):])
@@ -635,8 +647,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.mesospim_token = args.mesospim_token if args.mesospim_token is not None else args.token
     if args.self_check:
-        ok = self_check(args.mesospim_host, args.mesospim_port, args.mesospim_token,
-                        mcp_port=args.port if args.check_mcp else None, mcp_token=args.token)
+        try:
+            ok = self_check(args.mesospim_host, args.mesospim_port, args.mesospim_token,
+                            mcp_port=args.port if args.check_mcp else None, mcp_token=args.token)
+        except OSError as exc:  # the server is not up: report it, do not stack-trace at the operator
+            print(f"VIABILITY: FAIL  (cannot reach {args.mesospim_host}:{args.mesospim_port} -- {exc})")
+            ok = False
         raise SystemExit(0 if ok else 1)
     server = ThreadingHTTPServer((args.host, args.port), make_mcp_handler(args))
     print(f"mesoSPIM MCP server listening on http://{args.host}:{args.port}/mcp", flush=True)
