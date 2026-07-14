@@ -84,6 +84,9 @@ class mesoSPIM_Core(QtCore.QObject):
     ''' ETL-related signals '''
     sig_save_etl_config = QtCore.pyqtSignal()
 
+    ''' Remote-control signals '''
+    sig_remote_control_started = QtCore.pyqtSignal(bool, str) # (ok, 'host:port' or the failure reason)
+
     def __init__(self, config, parent):
         super().__init__()
 
@@ -1187,17 +1190,15 @@ class mesoSPIM_Core(QtCore.QObject):
         self.state['state']='idle'
         self.sig_update_gui_from_state.emit()
 
-    # Tells the GUI how a remote-control start attempt actually went, so the
-    # dialog never shows "running" after a failed bind (e.g. port already in use).
-    sig_remote_control_started = QtCore.pyqtSignal(bool, str)
-
     @QtCore.pyqtSlot(str, int, str)
     def start_remote_control(self, host, port, token):
         '''Start the TCP remote-control server.
 
-        Called via a queued connection, so this runs on the Core's own thread --
-        the same thread execute_script runs on, which is where the server needs
-        to live.
+        Called via a queued connection, so this runs on the Core's own thread -- the same
+        thread execute_script runs on, which is where the server needs to live. The server
+        runs its own fail-closed self-test before it binds, so a failure here means the
+        instrument was never exposed; sig_remote_control_started carries the reason to the
+        tab, which must not show "running" after a failed bind (e.g. the port is in use).
         '''
         from .mesoSPIM_RemoteControl_Servers import RemoteControlTCPServer
         self.stop_remote_control()  # restart-safe: never leave two servers running at once
@@ -1205,15 +1206,20 @@ class mesoSPIM_Core(QtCore.QObject):
             self._remote_control_server = RemoteControlTCPServer(self, host, int(port), token or None)
         except Exception as exc:
             logger.exception('Remote-control server failed to start')
-            self.sig_remote_control_started.emit(False, str(exc))  # False: let the dialog report the failure
+            self.sig_remote_control_started.emit(False, str(exc))
             return
-        actual_port = self._remote_control_server.port
+        actual_port = self._remote_control_server.port # port 0 asked Qt to allocate a real one
         logger.info(f'Remote-control TCP server on {host}:{actual_port} (token {"set" if token else "off"})')
         self.sig_remote_control_started.emit(True, f'{host}:{actual_port}')
 
     @QtCore.pyqtSlot()
     def stop_remote_control(self):
-        '''Stop the remote-control server, if one is running (safe to call anytime).'''
+        '''Stop the remote-control server, if one is running (safe to call anytime).
+
+        The server drops its clients and disconnects its completion signals, but the session
+        it was reading stays on the Core: a Stop/Start must not erase the busy gate, the
+        operation counter, the snapshot, or a saved acquisition list.
+        '''
         if self._remote_control_server is not None:
             self._remote_control_server.stop()
             self._remote_control_server = None
