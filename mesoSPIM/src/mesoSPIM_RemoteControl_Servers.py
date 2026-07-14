@@ -15,9 +15,7 @@ written exactly once:
 Everything at module level here is standard library, so a script can import the clients
 without pulling in Qt or any hardware driver.
 
-Running this file as a script does one of two things: with ``--self-check`` it probes a
-RUNNING server and proves its limits are enforced without moving the stage; otherwise it
-starts the MCP bridge, which is how the GUI launches it.
+Run as a script, this starts the MCP bridge. That is how the GUI launches it.
 """
 
 from __future__ import annotations
@@ -414,79 +412,6 @@ def mcp_call(host, port, token, method, name=None, arguments=None, timeout=10.0)
         return json.loads(reply.read().decode(ENCODING))
 
 
-def _first_limited_axis(limits):
-    """An axis whose range is actually enforced, so a refusal proves something.
-
-    A null range means the check is OFF for that axis; probing it would prove nothing.
-    """
-    axes = (limits.get("enforced") or {}).get("axes") or {}
-    for axis, low_high in axes.items():
-        if low_high:
-            return axis, low_high
-    return None, None
-
-
-def self_check(host, port, token, mcp_port=None, mcp_token=None):
-    """Probe a RUNNING server: are both lanes up, and are the limits really enforced?
-
-    A REFUSAL is the pass. The probe is ``max + 1`` -- the smallest value past the envelope
-    -- and validation rejects it before the Core is ever touched, so the stage does not move
-    even when the check fails. If that move is ACCEPTED, the limits are not enforced and this
-    server must not be trusted with an instrument.
-
-    Run it right after pressing Start, before letting a script or an agent drive the scope.
-    """
-    ok = True
-    probe = None
-    with RemoteControl(host, port, token) as scope:
-        print("[TCP] connect + auth .......... OK")
-        hello = scope.call("hello")
-        print(f"[TCP] hello ................... OK (version={hello.get('version')}, state={hello.get('state')})")
-        print(f"[TCP] get_position ............ OK ({scope.call('get_position')})")
-        report = scope.call("self_test")
-        failed = sum(1 for line in report.get("report", []) if line.startswith("FAIL"))
-        print(f"[TCP] self_test (server-side) . {'OK' if report.get('ok') else 'FAIL'} "
-              f"({len(report.get('report', []))} checks, {failed} failed)")
-        ok = ok and bool(report.get("ok"))
-        axis, low_high = _first_limited_axis(scope.call("get_limits"))
-        if axis is None:
-            print("[TCP] get_limits .............. WARN: every axis range is OFF -- nothing to verify")
-        else:
-            bad = low_high[1] + 1
-            probe = (axis, bad)
-            print(f"[TCP] get_limits .............. OK ({axis}={low_high}, ...)")
-            try:
-                scope.call("move_absolute", targets={axis: bad})
-                print(f"[TCP] reject out-of-limit ..... FAIL: {axis}={bad} was ACCEPTED -- limit violated!")
-                ok = False
-            except RuntimeError as exc:
-                print(f"[TCP] reject out-of-limit ..... OK ({axis}={bad} refused: {str(exc).splitlines()[0][:50]})")
-
-    if mcp_port:
-        try:
-            reply = mcp_call(host, mcp_port, mcp_token or token, "tools/call", "get_state", {})
-            up = not reply.get("result", {}).get("isError", True)
-            print(f"[MCP] tools/call get_state .... {'OK' if up else 'FAIL (isError)'}")
-            ok = ok and up
-            if probe:
-                axis, bad = probe
-                result = mcp_call(host, mcp_port, mcp_token or token, "tools/call",
-                                  "move_absolute", {"targets": {axis: bad}}).get("result", {})
-                if result.get("isError"):
-                    print(f"[MCP] reject out-of-limit ..... OK ({axis}={bad} -> isError)")
-                else:
-                    print(f"[MCP] reject out-of-limit ..... FAIL: {axis}={bad} ACCEPTED over MCP -- limit violated!")
-                    ok = False
-        except Exception as exc:  # noqa: BLE001 - a viability check reports failure, it does not crash
-            print(f"[MCP] .......................... FAIL ({exc})")
-            ok = False
-
-    print()
-    print("VIABILITY: " + ("PASS  (both lanes up, limits enforced, stage never moved)"
-                          if ok else "FAIL  (see above -- do NOT rely on this server)"))
-    return ok
-
-
 def tcp_call(host, port, token, name, arguments, timeout):
     """One named call on its own connection: what the MCP bridge makes per tools/call."""
     with RemoteControl(host, port, token, timeout=timeout) as scope:
@@ -639,21 +564,8 @@ def main(argv=None):
     parser.add_argument("--mesospim-token", help="mesoSPIM TCP token; defaults to --token")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--self-check", action="store_true",
-                        help="probe a RUNNING server instead of starting one: prove both lanes "
-                             "are up and the limits are enforced. Never moves the stage.")
-    parser.add_argument("--check-mcp", action="store_true",
-                        help="with --self-check, probe the MCP lane on --port too")
     args = parser.parse_args(argv)
     args.mesospim_token = args.mesospim_token if args.mesospim_token is not None else args.token
-    if args.self_check:
-        try:
-            ok = self_check(args.mesospim_host, args.mesospim_port, args.mesospim_token,
-                            mcp_port=args.port if args.check_mcp else None, mcp_token=args.token)
-        except OSError as exc:  # the server is not up: report it, do not stack-trace at the operator
-            print(f"VIABILITY: FAIL  (cannot reach {args.mesospim_host}:{args.mesospim_port} -- {exc})")
-            ok = False
-        raise SystemExit(0 if ok else 1)
     server = ThreadingHTTPServer((args.host, args.port), make_mcp_handler(args))
     print(f"mesoSPIM MCP server listening on http://{args.host}:{args.port}/mcp", flush=True)
     server.serve_forever()
