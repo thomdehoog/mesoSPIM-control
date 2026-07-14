@@ -96,7 +96,16 @@ class mesoSPIM_Core(QtCore.QObject):
         self.state['state'] = 'init'
 
         self.frame_queue = deque([])
-        self.frame_queue_display = deque([], maxlen=1)    
+        self.frame_queue_display = deque([], maxlen=1)
+
+        ''' Remote control. The session is built here, eagerly, and never replaced: the camera
+        thread's snapshot callback and the Core thread's command dispatch both reach for it, so
+        lazy creation would let both build one and lose the in-flight operation with the loser.
+        Core owns it rather than the server, so a server Stop/Start -- one GUI click -- cannot
+        wipe the busy gate while the instrument is still running. See _session() in
+        mesoSPIM_RemoteControl_ValidateAndRunCommands.py. '''
+        self._remote_session = {"operation": None, "counter": 0, "snapshot": None}
+        self._remote_control_server = None
 
         ''' The signal-slot switchboard '''
         # Note the name duplication (shadowing)!!
@@ -1205,9 +1214,8 @@ class mesoSPIM_Core(QtCore.QObject):
     @QtCore.pyqtSlot()
     def stop_remote_control(self):
         '''Stop the remote-control server, if one is running (safe to call anytime).'''
-        srv = getattr(self, '_remote_control_server', None)
-        if srv is not None:
-            srv.stop()
+        if self._remote_control_server is not None:
+            self._remote_control_server.stop()
             self._remote_control_server = None
 
     def lightsheet_alignment_mode(self):

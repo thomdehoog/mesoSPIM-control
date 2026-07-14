@@ -77,28 +77,64 @@ _ACTIVE_OPERATION_STATES = frozenset({"processing", "stopping"})
 _SNAPSHOT_CHUNK_BYTES = 256 * 1024
 _MAX_SNAPSHOT_CHUNK_BYTES = 512 * 1024
 _NOTHING_SAVED = object()  # tells "acquire_start saved no list" apart from "it saved None"
+_IDLE_OPERATION = {"status": "idle"}
+_PUBLIC_OPERATION_KEYS = ("id", "command", "status", "stop_requested", "warnings", "error")
 
 
 class BusyError(RuntimeError):
     """Raised when a mutating call arrives while another operation is active."""
 
 
+def _session(core):
+    """The Core-owned remote session. CREATES ONLY at the dispatch boundary.
+
+    The session holds the one active operation, the operation counter, the pending snapshot
+    and -- while acquire_start owns one -- the operator's saved acquisition list. Core owns
+    it rather than the server because a server Stop/Start is one GUI click: were it the
+    server's, restarting mid-acquisition would wipe the busy gate and a client could then
+    drive move_absolute into hardware that is still running. Core-owned keeps it fail-closed.
+
+    The real Core builds this eagerly in __init__, so it is never None. Direct-dispatch fakes
+    never construct a TCP server, so they get one here instead -- on the Core thread, before
+    any handler runs. Never call this from a read path: see _read_session.
+
+    Completion milestones an operation can wait for: "finished", "snap_image", "time_lapse",
+    "preview_returned_idle", and None for a call that completes synchronously.
+    """
+    session = getattr(core, "_remote_session", None)
+    if session is None:
+        session = {"operation": None, "counter": 0, "snapshot": None}
+        core._remote_session = session
+    return session
+
+
+def _read_session(core):
+    """Read-only view of the session; None when absent. Safe on the camera thread.
+
+    capture_snap_image runs there, on a direct signal connection, while the Core thread
+    dispatches commands. If a read could create the session, both threads could build one and
+    the in-flight operation would be lost with the loser.
+    """
+    return getattr(core, "_remote_session", None)
+
+
+def _public_operation(operation):
+    """The client-visible view of an operation: the public keys it happens to carry, and
+    never the internal _completion milestone."""
+    if not isinstance(operation, dict):
+        return dict(_IDLE_OPERATION)
+    return {key: operation[key] for key in _PUBLIC_OPERATION_KEYS if key in operation}
+
+
 def operation_snapshot(core):
     """Return the public status of the most recent remote operation."""
-    operation = getattr(core, "_mesospim_remote_operation", None)
-    if not isinstance(operation, dict):
-        return {"status": "idle"}
-    return {
-        key: operation[key]
-        for key in (
-            "id", "command", "status", "stop_requested", "warnings", "error",
-        )
-        if key in operation
-    }
+    session = _read_session(core)
+    return _public_operation(session["operation"] if session else None)
 
 
 def _active_operation(core):
-    operation = getattr(core, "_mesospim_remote_operation", None)
+    session = _read_session(core)
+    operation = session["operation"] if session else None
     if isinstance(operation, dict) and operation.get("status") in _ACTIVE_OPERATION_STATES:
         return operation
     return None
@@ -110,20 +146,21 @@ def _begin_operation(core, command, completion=None):
         raise BusyError(
             "system busy: currently processing "
             f"{active['command']} (operation {active['id']})")
-    counter = int(getattr(core, "_mesospim_remote_operation_counter", 0)) + 1
-    core._mesospim_remote_operation_counter = counter
+    session = _session(core)
+    session["counter"] += 1
     operation = {
-        "id": f"op-{counter:06d}",
+        "id": f"op-{session['counter']:06d}",
         "command": command,
         "status": "processing",
         "_completion": completion,
     }
-    core._mesospim_remote_operation = operation
+    session["operation"] = operation
     return operation
 
 
 def _finish_operation(core, status="completed", error=None):
-    operation = getattr(core, "_mesospim_remote_operation", None)
+    session = _read_session(core)
+    operation = session["operation"] if session else None
     if not isinstance(operation, dict):
         return False
     operation["status"] = status
@@ -149,13 +186,18 @@ def fail_operation(core, completion, error):
 
 
 def capture_snap_image(core):
-    """Capture a completed remote snap as bounded, chunk-readable raw pixels.
+    """Store a completed remote snap as bounded, chunk-readable raw pixels.
 
-    This is called only from the camera-frame signal while a remote ``snap`` operation
-    is waiting for its image. Live and acquisition frames never enter this store.
+    Called from the camera-frame signal ON THE CAMERA THREAD (the server is a plain object,
+    so the connection is direct) while a remote ``snap`` waits for its image. Live and
+    acquisition frames never enter this store. It writes into a session that must already
+    exist and never creates one.
     """
     operation = _active_operation(core)
     if operation is None or operation.get("_completion") != "snap_image":
+        return False
+    session = _read_session(core)
+    if session is None:
         return False
     try:
         queue = getattr(core, "frame_queue_display", None)
@@ -172,7 +214,7 @@ def capture_snap_image(core):
         data = tobytes(order="C")
         if not isinstance(data, bytes) or not data:
             raise ValueError("snapshot image contains no pixel bytes")
-        core._mesospim_remote_snapshot = {
+        session["snapshot"] = {
             "operation_id": operation["id"],
             "format": "raw",
             "dtype": str(getattr(dtype, "str", dtype)),
@@ -212,11 +254,8 @@ def _accepted(result, command, core, operation=None):
     output = dict(result) if isinstance(result, dict) else {"result": result}
     output["accepted"] = True
     output["accepted_command"] = command
-    output["operation"] = operation_snapshot(core) if operation is None else {
-        key: operation[key]
-        for key in ("id", "command", "status", "stop_requested", "warnings", "error")
-        if key in operation
-    }
+    output["operation"] = (
+        operation_snapshot(core) if operation is None else _public_operation(operation))
     return output
 
 
@@ -535,9 +574,18 @@ def _get_config(core, a):
             "camera": {"pixels_x": pixels_x, "pixels_y": pixels_y}}
 
 
-def _snapshot_metadata(core):
-    snapshot = getattr(core, "_mesospim_remote_snapshot", None)
+def _stored_snapshot(core):
+    """The snapshot the camera thread stored, or None if there is not a usable one."""
+    session = _read_session(core)
+    snapshot = session["snapshot"] if session else None
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("_data"), bytes):
+        return None
+    return snapshot
+
+
+def _snapshot_metadata(core):
+    snapshot = _stored_snapshot(core)
+    if snapshot is None:
         return None
     return {key: value for key, value in snapshot.items() if not key.startswith("_")}
 
@@ -604,8 +652,8 @@ def _get_progress(core, a):
 
 
 def _get_snap_image(core, a):
-    snapshot = getattr(core, "_mesospim_remote_snapshot", None)
-    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("_data"), bytes):
+    snapshot = _stored_snapshot(core)
+    if snapshot is None:
         raise RuntimeError("no remote snapshot is available; call snap and poll completion first")
     requested_id = a.get("operation_id")
     if requested_id is not None and requested_id != snapshot["operation_id"]:
@@ -651,14 +699,15 @@ def _acquire_start(core, a):
         "planes": int(acq.get("planes", 1) or 1),
         "pixels": pixels,
     }
+    session = _session(core)
     previous = core.state["acq_list"]
-    core._mesospim_prev_acq_list = previous
+    session["prev_acq_list"] = previous
     core.state["acq_list"] = acq_list
     try:
         _defer(core.start, row=0)
     except Exception:
         core.state["acq_list"] = previous
-        del core._mesospim_prev_acq_list
+        session.pop("prev_acq_list", None)
         raise
     return response
 
@@ -738,10 +787,9 @@ def _acquire_finish(core, a):
     broad `except` turned that into `state["acq_list"] = None`, destroying the list the
     operator had loaded in the GUI.
     """
-    previous = getattr(core, "_mesospim_prev_acq_list", _NOTHING_SAVED)
+    previous = _session(core).pop("prev_acq_list", _NOTHING_SAVED)
     if previous is not _NOTHING_SAVED:
         core.state["acq_list"] = previous
-        del core._mesospim_prev_acq_list
     return {"state": _state_get(core, "state")}
 
 
@@ -773,9 +821,12 @@ def _stop_activity(core, a):
 
 
 def _snap(core, a):
-    # Remote snapshots are transferred through get_snap_image. Never emit the
-    # MainWindow's local save/prefix dialog (Camera emits it only for write_flag=True).
-    core._mesospim_remote_snapshot = None
+    """Take one remote snapshot, cleared of any previous one first.
+
+    The pixels come back through get_snap_image, never through the MainWindow save/prefix
+    dialog: Camera raises that only for write_flag=True.
+    """
+    _session(core)["snapshot"] = None
     _defer(core.snap, write_flag=False,
            laser_blanking=bool(a.get("laser_blanking", True)))
     return {"scheduled": True, "image_stream": "get_snap_image"}

@@ -225,18 +225,25 @@ def test_snapshot_capture_chunks_reconstruct_exact_pixels_and_get_info_reports_i
             return pixels
 
     class _SnapshotCore:
+        """A Core mid-snap: the real one builds this session eagerly in __init__, and
+        capture_snap_image writes into it from the camera thread rather than creating it."""
+
         cfg = _Cfg()
 
         def __init__(self):
             self.state = _FakeState(
                 state="idle", folder="save", snap_folder="snaps", ETL_cfg_file="etl.csv")
             self.frame_queue_display = [_Image()]
+            self._remote_session = {
+                "operation": {
+                    "id": "op-snap", "command": "snap", "status": "processing",
+                    "_completion": "snap_image", "warnings": ["remote warning"],
+                },
+                "counter": 1,
+                "snapshot": None,
+            }
 
     core = _SnapshotCore()
-    core._mesospim_remote_operation = {
-        "id": "op-snap", "command": "snap", "status": "processing",
-        "_completion": "snap_image", "warnings": ["remote warning"],
-    }
     assert vrc.capture_snap_image(core) is True
     assert vrc.operation_snapshot(core)["status"] == "completed"
 
