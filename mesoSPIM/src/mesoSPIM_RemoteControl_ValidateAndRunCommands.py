@@ -76,6 +76,7 @@ FINISHED_SIGNAL_COMMANDS = frozenset({
 _ACTIVE_OPERATION_STATES = frozenset({"processing", "stopping"})
 _SNAPSHOT_CHUNK_BYTES = 256 * 1024
 _MAX_SNAPSHOT_CHUNK_BYTES = 512 * 1024
+_NOTHING_SAVED = object()  # tells "acquire_start saved no list" apart from "it saved None"
 
 
 class BusyError(RuntimeError):
@@ -342,10 +343,12 @@ def _cfg_dict(cfg, name):
 
 
 def _camera_pixels(cfg):
+    """The configured sensor size. No guessing: a config without one is a broken config."""
     params = _cfg_dict(cfg, "camera_parameters")
-    x = params.get("x_pixels", getattr(cfg, "camera_x_pixels", 2048))
-    y = params.get("y_pixels", getattr(cfg, "camera_y_pixels", 2048))
-    return int(x or 2048), int(y or 2048)
+    try:
+        return int(params["x_pixels"]), int(params["y_pixels"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"camera_parameters is missing or invalid: {exc}") from exc
 
 
 def _move_absolute(core, a):
@@ -627,25 +630,37 @@ def _get_snap_image(core, a):
 
 
 def _acquire_start(core, a):
-    try:
-        from .utils.acquisitions import Acquisition, AcquisitionList
-    except ImportError:
-        from utils.acquisitions import Acquisition, AcquisitionList
+    """Run one ad-hoc acquisition, stashing the operator's list so acquire_finish can restore it.
+
+    Everything that can fail is computed BEFORE the operator's state is touched or hardware
+    is scheduled. That ordering is the whole point: _camera_pixels raises on a config with
+    no sensor size, and in the old order it raised AFTER acq_list had been replaced and
+    core.start queued -- so the client got an error while the instrument imaged, and run()
+    marked the operation "failed", which is not an active status, leaving the busy gate open
+    for a second acquisition on top of the first. If the deferred start cannot even be
+    queued, the list goes back: an error must never be returned once state has changed.
+    """
     acq = dict(a["acquisition"])
-    obj = Acquisition()
-    obj.update({k: v for k, v in acq.items() if v is not None})
-    st = core.state
+    pixels = list(_camera_pixels(getattr(core, "cfg", None)))
+    acq_list = _make_acquisition_list([acq])
+    filename = acq.get("filename") or ""
+    response = {
+        "started": True,
+        "scheduled": True,
+        "files": [os.path.join(acq.get("folder") or "", filename)] if filename else [],
+        "planes": int(acq.get("planes", 1) or 1),
+        "pixels": pixels,
+    }
+    previous = core.state["acq_list"]
+    core._mesospim_prev_acq_list = previous
+    core.state["acq_list"] = acq_list
     try:
-        core._mesospim_prev_acq_list = (True, st["acq_list"])
-    except (KeyError, TypeError):
-        core._mesospim_prev_acq_list = (False, None)
-    st["acq_list"] = AcquisitionList([obj])
-    _defer(core.start, row=0)
-    fname = acq.get("filename") or ""
-    return {"started": True, "scheduled": True,
-            "files": [os.path.join(acq.get("folder") or "", fname)] if fname else [],
-            "planes": int(acq.get("planes", 1) or 1),
-            "pixels": list(_camera_pixels(getattr(core, "cfg", None)))}
+        _defer(core.start, row=0)
+    except Exception:
+        core.state["acq_list"] = previous
+        del core._mesospim_prev_acq_list
+        raise
+    return response
 
 
 def _make_acquisition_list(acquisitions):
@@ -715,19 +730,18 @@ def _check_motion_limits(core, a):
 
 
 def _acquire_finish(core, a):
-    st = core.state
-    had, prev = getattr(core, "_mesospim_prev_acq_list", (False, None))
-    if had:
-        st["acq_list"] = prev
-    else:
-        try:
-            del st["acq_list"]
-        except Exception:
-            st["acq_list"] = prev
-    try:
+    """Restore the operator's acquisition list, if acquire_start saved one.
+
+    A client may call this standalone, and it must then change nothing. The old code tried
+    `del state["acq_list"]`, which production cannot do -- mesoSPIM_StateSingleton has
+    __setitem__ but no __delitem__, so the subscript slot raises AttributeError -- and the
+    broad `except` turned that into `state["acq_list"] = None`, destroying the list the
+    operator had loaded in the GUI.
+    """
+    previous = getattr(core, "_mesospim_prev_acq_list", _NOTHING_SAVED)
+    if previous is not _NOTHING_SAVED:
+        core.state["acq_list"] = previous
         del core._mesospim_prev_acq_list
-    except AttributeError:
-        pass
     return {"state": _state_get(core, "state")}
 
 

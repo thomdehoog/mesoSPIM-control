@@ -31,6 +31,42 @@ class _Cfg:
                         "z_min": -25000, "z_max": 25000, "f_min": 0, "f_max": 98000}
 
 
+class _FakeState:
+    """The access surface of the production mesoSPIM_StateSingleton, and nothing more.
+
+    Production state (mesoSPIM_State.py:103-172) is a QObject with __getitem__ (raising
+    KeyError), __setitem__, __len__, set_parameters, get_parameter_dict, get_parameter_list
+    and block_signals. It has no .get(), no __contains__ and no __delitem__. A dict fake
+    would green-light remote-control code that dies on the instrument, so the tests below
+    use this. It is spelled out here rather than imported because this file ships inside
+    mesoSPIM and cannot reach the standalone tests/ suite.
+    """
+
+    def __init__(self, **values):
+        self._state_dict = dict(values)
+
+    def __getitem__(self, key):
+        return self._state_dict[key]  # KeyError on a miss, like production
+
+    def __setitem__(self, key, value):
+        self._state_dict[key] = value
+
+    def __len__(self):
+        return len(self._state_dict)
+
+    def set_parameters(self, values):
+        self._state_dict.update(values)
+
+    def get_parameter_dict(self, keys):
+        return {key: self._state_dict[key] for key in keys}
+
+    def get_parameter_list(self, keys):
+        return [self._state_dict[key] for key in keys]
+
+    def block_signals(self, _boolean):
+        pass
+
+
 class _Core:
     cfg = _Cfg()
 
@@ -190,11 +226,11 @@ def test_snapshot_capture_chunks_reconstruct_exact_pixels_and_get_info_reports_i
 
     class _SnapshotCore:
         cfg = _Cfg()
-        state = {
-            "state": "idle", "folder": "save", "snap_folder": "snaps",
-            "ETL_cfg_file": "etl.csv",
-        }
-        frame_queue_display = [_Image()]
+
+        def __init__(self):
+            self.state = _FakeState(
+                state="idle", folder="save", snap_folder="snaps", ETL_cfg_file="etl.csv")
+            self.frame_queue_display = [_Image()]
 
     core = _SnapshotCore()
     core._mesospim_remote_operation = {
