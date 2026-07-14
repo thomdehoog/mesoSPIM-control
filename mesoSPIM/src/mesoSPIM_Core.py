@@ -1178,6 +1178,38 @@ class mesoSPIM_Core(QtCore.QObject):
         self.state['state']='idle'
         self.sig_update_gui_from_state.emit()
 
+    # Tells the GUI how a remote-control start attempt actually went, so the
+    # dialog never shows "running" after a failed bind (e.g. port already in use).
+    sig_remote_control_started = QtCore.pyqtSignal(bool, str)
+
+    @QtCore.pyqtSlot(str, int, str)
+    def start_remote_control(self, host, port, token):
+        '''Start the TCP remote-control server.
+
+        Called via a queued connection, so this runs on the Core's own thread --
+        the same thread execute_script runs on, which is where the server needs
+        to live.
+        '''
+        from .mesoSPIM_RemoteControl_Servers import RemoteControlTCPServer
+        self.stop_remote_control()  # restart-safe: never leave two servers running at once
+        try:
+            self._remote_control_server = RemoteControlTCPServer(self, host, int(port), token or None)
+        except Exception as exc:
+            logger.exception('Remote-control server failed to start')
+            self.sig_remote_control_started.emit(False, str(exc))  # False: let the dialog report the failure
+            return
+        actual_port = self._remote_control_server.port
+        logger.info(f'Remote-control TCP server on {host}:{actual_port} (token {"set" if token else "off"})')
+        self.sig_remote_control_started.emit(True, f'{host}:{actual_port}')
+
+    @QtCore.pyqtSlot()
+    def stop_remote_control(self):
+        '''Stop the remote-control server, if one is running (safe to call anytime).'''
+        srv = getattr(self, '_remote_control_server', None)
+        if srv is not None:
+            srv.stop()
+            self._remote_control_server = None
+
     def lightsheet_alignment_mode(self):
         """Continuous live mode that alternates left/right shutters for dual-lightsheet co-alignment.
 

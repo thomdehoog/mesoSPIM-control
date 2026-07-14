@@ -1,6 +1,7 @@
 # mesoSPIM MainWindow
 import os
 import re
+import secrets
 import tifffile
 import logging
 import time
@@ -77,6 +78,10 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
     sig_save_etl_config = QtCore.pyqtSignal()
     sig_poke_demo_thread = QtCore.pyqtSignal()
+    # Remote-control server. Emitted to the Core
+    # (queued) so the server's socket lives on the Core's own thread.
+    sig_start_remote_control = QtCore.pyqtSignal(str, int, str)
+    sig_stop_remote_control = QtCore.pyqtSignal()
     sig_launch_optimizer = QtCore.pyqtSignal(dict)
     sig_launch_contrast_window = QtCore.pyqtSignal()
     sig_launch_processor_chain_window = QtCore.pyqtSignal()
@@ -197,6 +202,9 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.sig_launch_optimizer.connect(self.launch_optimizer)
         self.sig_launch_contrast_window.connect(self.launch_contrast_window)
         self.sig_launch_processor_chain_window.connect(self.launch_processor_chain_window)
+        self.sig_start_remote_control.connect(self.core.start_remote_control, type=QtCore.Qt.QueuedConnection)
+        self.sig_stop_remote_control.connect(self.core.stop_remote_control, type=QtCore.Qt.QueuedConnection)
+        self.core.sig_remote_control_started.connect(self.on_remote_control_started)
 
         ''' Start the thread '''
         self.core_thread.start(QtCore.QThread.HighestPriority)
@@ -274,6 +282,10 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     def close_app(self):
         #self.log_display_handler.flushOnClose = False #discontinued
         logger.info('Closing the application')
+        if getattr(self, '_remote_control_running', False):
+            self._stop_mcp_server()
+            self.sig_stop_remote_control.emit()
+            self._remote_control_running = False
         self.camera_window.close()
         self.acquisition_manager_window.close()
         if self.optimizer:
@@ -607,6 +619,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.connect_combobox_to_state_parameter(self.BinningComboBox, self.cfg.binning_dict.keys(),'camera_binning')
 
         self.checkBoxScaleWZoom.stateChanged.connect(self.scale_galvo_amp_w_zoom)
+
+        self.setup_remote_control_tab()
 
         ''' Timelapse tab '''
         self.AsFastAsPossibleCheckBox.toggled.connect(self.toggle_timelapse_interval)
@@ -1263,6 +1277,193 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
     def display_warning(self, string):
         warning = QtWidgets.QMessageBox.warning(None,'mesoSPIM Warning', string, QtWidgets.QMessageBox.Ok)
+
+    def _start_mcp_server(self, host, port, token, tcp_token, tcp_port):
+        from .mesoSPIM_RemoteControl_Servers import start_mcp_server_process
+
+        ok, message, proc = start_mcp_server_process(
+            self, self.package_directory, host, port, token, tcp_token, tcp_port)
+        if not ok:
+            return False, message
+        self._mcp_server_process = proc
+        return True, message
+
+    def _stop_mcp_server(self):
+        from .mesoSPIM_RemoteControl_Servers import stop_mcp_server_process
+
+        proc = getattr(self, '_mcp_server_process', None)
+        if proc is not None:
+            stop_mcp_server_process(proc)
+            self._mcp_server_process = None
+
+    def on_remote_control_started(self, ok, message):
+        '''Result of a start attempt from the Core (queued): update state + dialog.
+
+        On failure (e.g. the port is in use) the server did NOT start, so the
+        dialog must not show "running". Warn the operator with the reason.
+        '''
+        pending_mcp = getattr(self, '_pending_mcp_server', None)
+        self._pending_mcp_server = None
+        if ok and pending_mcp is not None:
+            try:
+                tcp_port = int(str(message).rsplit(':', 1)[1])
+            except (IndexError, ValueError):
+                ok, message = False, f'Could not read internal TCP port from: {message}'
+            else:
+                ok, message = self._start_mcp_server(*pending_mcp, tcp_port)
+            if not ok:
+                self.sig_stop_remote_control.emit()
+                self._remote_mode = 'Off'
+        self._remote_control_running = ok
+        if not ok:
+            QtWidgets.QMessageBox.warning(
+                self, 'Remote Control', f'Could not start the server: {message}')
+        if self._remote_control_refresh is not None:
+            self._remote_control_refresh()
+
+    def setup_remote_control_tab(self):
+        '''Add TCP/MCP remote-control settings to the main right-side tab widget.'''
+        self._remote_control_running = False
+        self._remote_mode = getattr(self, '_remote_mode', 'TCP')
+        self._remote_control_host = getattr(self, '_remote_control_host', '127.0.0.1')
+        self._remote_control_port = getattr(self, '_remote_control_port', 42000)
+        self._remote_control_token = (
+            getattr(self, '_remote_control_token', '') or 'smart_mesospim')
+        self._remote_control_refresh = self.refresh_remote_control_tab
+
+        tab = QtWidgets.QWidget(self.TabWidget)
+        tab.setObjectName('RemoteControlTabWidget')
+        layout = QtWidgets.QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        setup_group = QtWidgets.QGroupBox('Setup remote control', tab)
+        setup_group.setObjectName('RemoteControlSetupGroupBox')
+        group_font = setup_group.font()
+        group_font.setPointSize(12)
+        setup_group.setFont(group_font)
+        form = QtWidgets.QFormLayout(setup_group)
+        form.setContentsMargins(10, 30, 10, 10)
+        form.setSpacing(8)
+
+        self.RemoteControlModeComboBox = QtWidgets.QComboBox(setup_group)
+        self.RemoteControlModeComboBox.addItems(['TCP', 'MCP'])
+        self.RemoteControlModeComboBox.setCurrentText(
+            self._remote_mode if self._remote_mode in ('TCP', 'MCP') else 'TCP')
+        self.RemoteControlHostLineEdit = QtWidgets.QLineEdit(self._remote_control_host, setup_group)
+        default_port = 42000 if self.RemoteControlModeComboBox.currentText() == 'TCP' else 42100
+        self.RemoteControlPortLineEdit = QtWidgets.QLineEdit(
+            str(self._remote_control_port or default_port), setup_group)
+        self.RemoteControlTokenLineEdit = QtWidgets.QLineEdit(self._remote_control_token, setup_group)
+        for widget in (
+                self.RemoteControlModeComboBox,
+                self.RemoteControlHostLineEdit,
+                self.RemoteControlPortLineEdit,
+                self.RemoteControlTokenLineEdit,
+        ):
+            widget.setFont(group_font)
+
+        self.RemoteControlStatusLabel = QtWidgets.QLabel(setup_group)
+        self.RemoteControlStatusLabel.setFont(group_font)
+
+        def form_label(text):
+            label = QtWidgets.QLabel(text, setup_group)
+            label.setFont(group_font)
+            return label
+
+        form.addRow(form_label('Protocol'), self.RemoteControlModeComboBox)
+        form.addRow(form_label('Host'), self.RemoteControlHostLineEdit)
+        form.addRow(form_label('Port'), self.RemoteControlPortLineEdit)
+        form.addRow(form_label('Password'), self.RemoteControlTokenLineEdit)
+        form.addRow(form_label('Status'), self.RemoteControlStatusLabel)
+
+        self.RemoteControlStartButton = QtWidgets.QPushButton('Start', setup_group)
+        self.RemoteControlStopButton = QtWidgets.QPushButton('Stop', setup_group)
+        self.RemoteControlStartButton.setFont(group_font)
+        self.RemoteControlStopButton.setFont(group_font)
+        btns = QtWidgets.QHBoxLayout()
+        btns.addWidget(self.RemoteControlStartButton)
+        btns.addWidget(self.RemoteControlStopButton)
+        form.addRow(btns)
+        layout.addWidget(setup_group)
+        layout.addStretch(1)
+
+        self.RemoteControlStartButton.clicked.connect(self.start_remote_control)
+        self.RemoteControlStopButton.clicked.connect(self.stop_remote_control)
+        self.RemoteControlModeComboBox.currentTextChanged.connect(self.on_remote_control_mode_changed)
+
+        index = self.TabWidget.indexOf(self.TimelapseTabWidget)
+        if index >= 0:
+            self.TabWidget.insertTab(index + 1, tab, 'Remote Control')
+        else:
+            self.TabWidget.addTab(tab, 'Remote Control')
+
+        self.update_remote_control_mode_note()
+        self.refresh_remote_control_tab()
+
+    def on_remote_control_mode_changed(self, _mode):
+        self.update_remote_control_mode_note()
+        self.refresh_remote_control_tab()
+
+    def update_remote_control_mode_note(self):
+        mode = self.RemoteControlModeComboBox.currentText()
+        if mode == 'MCP':
+            if self.RemoteControlPortLineEdit.text() == '42000':
+                self.RemoteControlPortLineEdit.setText('42100')
+        else:
+            if self.RemoteControlPortLineEdit.text() == '42100':
+                self.RemoteControlPortLineEdit.setText('42000')
+
+    def refresh_remote_control_tab(self):
+        if not hasattr(self, 'RemoteControlStatusLabel'):
+            return
+        running = self._remote_control_running
+        mode = getattr(self, '_remote_mode', self.RemoteControlModeComboBox.currentText())
+        if running:
+            self.RemoteControlStatusLabel.setText(
+                f"{mode} running on {getattr(self, '_remote_control_host', '')}:"
+                f"{getattr(self, '_remote_control_port', '')}")
+        else:
+            self.RemoteControlStatusLabel.setText('stopped')
+        self.RemoteControlStartButton.setEnabled(not running)
+        self.RemoteControlStopButton.setEnabled(running)
+        for widget in (
+                self.RemoteControlModeComboBox,
+                self.RemoteControlHostLineEdit,
+                self.RemoteControlPortLineEdit,
+                self.RemoteControlTokenLineEdit,
+        ):
+            widget.setEnabled(not running)
+
+    def start_remote_control(self):
+        try:
+            port = int(self.RemoteControlPortLineEdit.text())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self, 'Remote Control', 'Port must be a number.')
+            return
+        host = self.RemoteControlHostLineEdit.text().strip() or '127.0.0.1'
+        token = self.RemoteControlTokenLineEdit.text().strip()
+        if not token:
+            QtWidgets.QMessageBox.warning(self, 'Remote Control', 'Password is required.')
+            return
+        mode = self.RemoteControlModeComboBox.currentText()
+        self._remote_control_host = host
+        self._remote_control_port = port
+        self._remote_control_token = token
+        self._remote_mode = mode
+        if mode == 'MCP':
+            internal_token = secrets.token_urlsafe(32)
+            self._pending_mcp_server = (host, port, token, internal_token)
+            self.sig_start_remote_control.emit('127.0.0.1', 0, internal_token)
+        else:
+            self._pending_mcp_server = None
+            self.sig_start_remote_control.emit(host, port, token)
+
+    def stop_remote_control(self):
+        self._stop_mcp_server()
+        self.sig_stop_remote_control.emit()
+        self._remote_control_running = False
+        self.refresh_remote_control_tab()
 
     def choose_snap_folder(self):
         path = QtWidgets.QFileDialog.getExistingDirectory(self, 'Open csv File', self.state['snap_folder'])
