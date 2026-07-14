@@ -1080,6 +1080,9 @@ def _validate(core, call, args, limits):
     envelope of the config the operator loaded at startup (``cfg.stage_parameters``),
     optionally tightened per axis by ``MESOSPIM_RS_LIMITS``. No limit for an axis =
     the Core's own hardware bound is the backstop.
+
+    Commands with no arm below have no argument contract on purpose -- the reads, the stops,
+    ``hello``, ``ping`` and ``stat_files`` take nothing that could reach the hardware.
     """
     def bad(msg):
         raise ValueError(f"{call}: {msg}")
@@ -1135,10 +1138,14 @@ def _validate(core, call, args, limits):
                 bad(f"{label}.{field} must be a string, got {acquisition[field]!r}")
 
     def check_row(value, count, key="row"):
+        """Reject a row that is not a real index into the acquisition list.
+
+        An empty list plus row 0 is the existing clear-list contract, so it is allowed.
+        Anything else must be a genuine index: the Core call it feeds is deferred, so a bad
+        row would fail later, off the request, where the client can no longer be told.
+        """
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             bad(f"'{key}' must be a non-negative integer")
-        # An empty list plus row 0 is the existing clear-list contract. Otherwise
-        # require a real list index so deferred Core calls cannot fail later.
         if (count == 0 and value != 0) or (count > 0 and value >= count):
             bad(f"'{key}'={value} is outside the acquisition-list range 0..{max(0, count - 1)}")
 
@@ -1237,7 +1244,6 @@ def _validate(core, call, args, limits):
         if (not isinstance(max_bytes, int) or isinstance(max_bytes, bool)
                 or not 1 <= max_bytes <= _MAX_SNAPSHOT_CHUNK_BYTES):
             bad(f"'max_bytes' must be an integer in 1..{_MAX_SNAPSHOT_CHUNK_BYTES}")
-    # reads / stop / hello / ping / stat_files: no arg contract
 
 
 def _limits_from_env():
@@ -1390,7 +1396,6 @@ def self_test(cfg):
     note(not accepts("set_intensity", {"intensity": 250}), "over-range intensity=250 refused")
     note(not accepts("move_absolute", {"targets": {"nope": 0}}), "unknown axis refused")
     note(not accepts("__import__", {}), "unknown command refused")
-    # the clincher: only the in-range moves reached the mock hardware; nothing rejected leaked.
     note(len(sim.moves) == expected_moves,
          f"only the {expected_moves} in-range move(s) reached the mock hardware ({len(sim.moves)} recorded)")
     return ok, report
