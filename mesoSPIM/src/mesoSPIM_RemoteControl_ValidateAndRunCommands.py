@@ -1,8 +1,22 @@
 """Remote-control command vocabulary and execution.
 
-Network transports hand this module a decoded command name plus arguments. This
-module validates the name against a fixed allowlist and executes the matching
-mesoSPIM Core action.
+Transports hand this module a decoded command name plus arguments. The name is checked
+against a fixed allowlist, the arguments are validated against the operator's loaded config,
+and the matching mesoSPIM Core action runs behind a one-operation busy gate.
+
+To add a command:
+    1. write ``_your_command(core, args)`` returning a JSON-serializable dict;
+    2. add one entry to COMMANDS;
+    3. add one entry to _HINTS -- this IS the machine-facing contract, because inputSchema is
+       only {"type": "object"}; an LLM has nothing else to go on;
+    4. add one entry to VALID_CASES in tests/support/contracts.py.
+Add an arm to _validate only if the command takes arguments that could reach the hardware.
+
+Two rules that are not negotiable:
+    - Never return an error after state has changed or hardware work has been queued. Compute
+      everything fallible first (see _acquire_start).
+    - Never call .get() on core.state. Production state is a QObject with __getitem__ only;
+      use _state_get, which is the Mapping shim, not test scaffolding.
 """
 
 import base64
@@ -230,8 +244,13 @@ def capture_snap_image(core):
 
 
 def _completion_kind(core, call, args):
-    # Recording/unit-test Cores have no completion signals, so their calls remain
-    # synchronous.  The real Core advertises these signals and is gated until they fire.
+    """Which milestone this call must wait for before its operation can complete.
+
+    One of "snap_image", "preview_returned_idle", "finished", "time_lapse", or None when the
+    call completes as soon as the handler returns. The hasattr guards are what decide it: a
+    Core that does not advertise the signal cannot fire it, so its calls stay synchronous --
+    which is exactly how the offline fakes and SimCore run without an event loop.
+    """
     is_snap = call == "snap" or (call == "set_mode" and args.get("mode") == "snap")
     if is_snap and hasattr(getattr(core, "camera_worker", None), "sig_camera_frame"):
         return "snap_image"
@@ -396,11 +415,15 @@ def _move_absolute(core, a):
 
 
 def _move_relative(core, a):
+    """Move by relative offsets, through the serial worker rather than through Core.
+
+    Core.move_relative(wait_until_done=True) emits a signal instead of performing a
+    synchronous call. Called from the Core-hosted remote server, that can return before the
+    position has changed -- and wedge the next request. MainWindow already calls the serial
+    worker directly for this reason; this takes the same proven path. A Core without one
+    (the offline fakes) falls back to the signal.
+    """
     move = {k + "_rel": float(v) for k, v in a["deltas"].items()}
-    # Core.move_relative(wait_until_done=True) emits a signal rather than performing a
-    # synchronous call. From the Core-hosted remote server that can return before the
-    # position changes (and can wedge the next request). MainWindow already calls the
-    # serial worker directly for this reason; use the same proven path here.
     serial_move = getattr(getattr(core, "serial_worker", None), "move_relative", None)
     if callable(serial_move):
         serial_move(move, wait_until_done=True)
@@ -464,41 +487,59 @@ def _set_shutterconfig(core, a):
     return {}
 
 
-def _set_camera(core, a):
-    keys = ("camera_exposure_time", "camera_line_interval", "camera_delay_%",
-            "camera_pulse_%", "camera_display_live_subsampling",
-            "camera_display_acquisition_subsampling", "camera_sensor_mode", "camera_binning")
+_SETTING_GROUPS = {
+    "set_camera": ("camera_exposure_time", "camera_line_interval", "camera_delay_%",
+                   "camera_pulse_%", "camera_display_live_subsampling",
+                   "camera_display_acquisition_subsampling", "camera_sensor_mode",
+                   "camera_binning"),
+    "set_etl": ("etl_l_delay_%", "etl_l_ramp_rising_%", "etl_l_ramp_falling_%",
+                "etl_l_amplitude", "etl_l_offset", "etl_r_delay_%", "etl_r_ramp_rising_%",
+                "etl_r_ramp_falling_%", "etl_r_amplitude", "etl_r_offset"),
+    "set_galvo": ("galvo_l_frequency", "galvo_l_amplitude", "galvo_l_offset",
+                  "galvo_l_duty_cycle", "galvo_l_phase", "galvo_r_frequency",
+                  "galvo_r_offset", "galvo_r_duty_cycle", "galvo_r_phase",
+                  "galvo_amp_scale_w_zoom"),
+    "set_laser_timing": ("laser_l_delay_%", "laser_l_pulse_%",
+                         "laser_r_delay_%", "laser_r_pulse_%"),
+}
+
+
+def _set_group(core, a, keys):
+    """Send whichever of a command's own settings the caller supplied.
+
+    The four grouped setters differ only by their key tuple, and _validate already treats
+    them identically. Each keeps its own named handler so a traceback and a COMMANDS lookup
+    still name the command the client actually sent.
+    """
     core.state_request_handler(_settings_from_args(a, keys))
     return {}
+
+
+def _set_camera(core, a):
+    return _set_group(core, a, _SETTING_GROUPS["set_camera"])
 
 
 def _set_etl(core, a):
-    keys = ("etl_l_delay_%", "etl_l_ramp_rising_%", "etl_l_ramp_falling_%",
-            "etl_l_amplitude", "etl_l_offset", "etl_r_delay_%",
-            "etl_r_ramp_rising_%", "etl_r_ramp_falling_%",
-            "etl_r_amplitude", "etl_r_offset")
-    core.state_request_handler(_settings_from_args(a, keys))
-    return {}
+    return _set_group(core, a, _SETTING_GROUPS["set_etl"])
 
 
 def _set_galvo(core, a):
-    keys = ("galvo_l_frequency", "galvo_l_amplitude", "galvo_l_offset",
-            "galvo_l_duty_cycle", "galvo_l_phase", "galvo_r_frequency",
-            "galvo_r_offset", "galvo_r_duty_cycle", "galvo_r_phase",
-            "galvo_amp_scale_w_zoom")
-    core.state_request_handler(_settings_from_args(a, keys))
-    return {}
+    return _set_group(core, a, _SETTING_GROUPS["set_galvo"])
 
 
 def _set_laser_timing(core, a):
-    keys = ("laser_l_delay_%", "laser_l_pulse_%",
-            "laser_r_delay_%", "laser_r_pulse_%")
-    core.state_request_handler(_settings_from_args(a, keys))
-    return {}
+    return _set_group(core, a, _SETTING_GROUPS["set_laser_timing"])
 
 
-def _etl_request(core, settings, wait=True):
-    if wait:
+def _etl_request(core, a, settings):
+    """Apply one ETL settings request and read the result back.
+
+    The three ETL commands share this, including their common ``wait`` default: waiting routes
+    through the blocking state request, so the readback reports what the waveformer actually
+    took rather than what we asked it for. Each command keeps its own argument name, its own
+    state fallback and its own error message, because those are what differ.
+    """
+    if bool(a.get("wait", True)):
         core.sig_state_request_and_wait_until_done.emit(settings)
     else:
         core.sig_state_request.emit(settings)
@@ -509,24 +550,21 @@ def _reload_etl_config(core, a):
     cfg_file = a.get("path", _state_get(core, "ETL_cfg_file"))
     if not cfg_file:
         raise ValueError("path is required when ETL_cfg_file is not set")
-    return _etl_request(core, {"ETL_cfg_file": str(cfg_file)},
-                        wait=bool(a.get("wait", True)))
+    return _etl_request(core, a, {"ETL_cfg_file": str(cfg_file)})
 
 
 def _update_etl_from_laser(core, a):
     laser = a.get("laser", _state_get(core, "laser"))
     if not laser:
         raise ValueError("laser is required when state['laser'] is not set")
-    return _etl_request(core, {"set_etls_according_to_laser": str(laser)},
-                        wait=bool(a.get("wait", True)))
+    return _etl_request(core, a, {"set_etls_according_to_laser": str(laser)})
 
 
 def _update_etl_from_zoom(core, a):
     zoom = a.get("zoom", _state_get(core, "zoom"))
     if not zoom:
         raise ValueError("zoom is required when state['zoom'] is not set")
-    return _etl_request(core, {"set_etls_according_to_zoom": str(zoom)},
-                        wait=bool(a.get("wait", True)))
+    return _etl_request(core, a, {"set_etls_according_to_zoom": str(zoom)})
 
 
 def _hello(core, a):
@@ -574,22 +612,6 @@ def _get_config(core, a):
             "camera": {"pixels_x": pixels_x, "pixels_y": pixels_y}}
 
 
-def _stored_snapshot(core):
-    """The snapshot the camera thread stored, or None if there is not a usable one."""
-    session = _read_session(core)
-    snapshot = session["snapshot"] if session else None
-    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("_data"), bytes):
-        return None
-    return snapshot
-
-
-def _snapshot_metadata(core):
-    snapshot = _stored_snapshot(core)
-    if snapshot is None:
-        return None
-    return {key: value for key, value in snapshot.items() if not key.startswith("_")}
-
-
 def _get_info(core, a):
     """Return an intentionally extensible, authenticated microscope-info document."""
     cfg = getattr(core, "cfg", None)
@@ -611,13 +633,17 @@ def _get_info(core, a):
 
 
 def _get_limits(core, a):
+    """Report the loaded config's limits, and exactly which of them are enforced.
+
+    "enforced" is what _validate actually applies, so a script or an LLM can read the rules
+    rather than discover them by being refused. A null range means the check is OFF for that
+    key -- only its type is checked -- and the caller can see that.
+    """
     cfg = getattr(core, "cfg", None)
     axes = _effective_limits(core)
     return {"stage": _jsonable(getattr(cfg, "stage_parameters", {})),
             "camera": _jsonable(getattr(cfg, "camera_parameters", {})),
             "startup": _jsonable(getattr(cfg, "startup", {})),
-            # exactly what _validate enforces, so a script/LLM can read the rules and
-            # see where a check is OFF (range null = only the type is checked):
             "enforced": {
                 "axes": {ax: (list(axes[ax]) if ax in axes else None) for ax in _AXES},
                 "parameters": _param_constraints(core)}}
@@ -635,9 +661,12 @@ def _get_capabilities(core, a):
 
 
 def _self_test(core, a):
-    # Re-run the startup self-test on demand (over TCP or MCP): prove -- against a mock
-    # Core carrying THIS server's real cfg -- that the loaded limits are still enforced.
-    # Never touches the real hardware; useful for an LLM/script to confirm before driving.
+    """Re-run the startup smoke-check on demand, over either transport.
+
+    Drives a mock Core carrying THIS server's real cfg, so a script or an LLM can confirm the
+    loaded limits still refuse an out-of-range call before it starts driving the instrument.
+    Never touches the real hardware.
+    """
     ok, report = self_test(getattr(core, "cfg", None))
     return {"ok": ok, "report": report}
 
@@ -652,8 +681,15 @@ def _get_progress(core, a):
 
 
 def _get_snap_image(core, a):
-    snapshot = _stored_snapshot(core)
-    if snapshot is None:
+    """Read one bounded chunk of the stored snapshot, with the metadata to reassemble it.
+
+    The reply carries every public key of the stored snapshot (dtype, shape, order,
+    total_bytes, sha256, operation_id), so a client that keeps only the chunks can still
+    rebuild and verify the image.
+    """
+    session = _read_session(core)
+    snapshot = session["snapshot"] if session else None
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("_data"), bytes):
         raise RuntimeError("no remote snapshot is available; call snap and poll completion first")
     requested_id = a.get("operation_id")
     if requested_id is not None and requested_id != snapshot["operation_id"]:
@@ -665,7 +701,7 @@ def _get_snap_image(core, a):
     if offset > len(data):
         raise ValueError(f"offset {offset} exceeds snapshot size {len(data)}")
     end = min(offset + chunk_size, len(data))
-    out = _snapshot_metadata(core)
+    out = {key: value for key, value in snapshot.items() if not key.startswith("_")}
     out.update({
         "encoding": "base64",
         "offset": offset,
@@ -767,14 +803,24 @@ def _stat_files(core, a):
             "sizes": {f: os.path.getsize(f) for f in files if os.path.isfile(f)}}
 
 
+def _acquisitions_to_check(core, a):
+    """The list a pre-flight check runs against: the caller's, or the one already loaded.
+
+    Both checks are read-only, so a client can cost an acquisition list before setting it.
+    """
+    if "acquisitions" in a:
+        return _make_acquisition_list(a["acquisitions"])
+    return _state_get(core, "acq_list")
+
+
 def _get_disk_space(core, a):
-    acq_list = _make_acquisition_list(a["acquisitions"]) if "acquisitions" in a else _state_get(core, "acq_list")
+    acq_list = _acquisitions_to_check(core, a)
     return {"free_bytes": int(core.get_free_disk_space(acq_list)),
             "required_bytes": int(core.get_required_disk_space(acq_list))}
 
 
 def _check_motion_limits(core, a):
-    acq_list = _make_acquisition_list(a["acquisitions"]) if "acquisitions" in a else _state_get(core, "acq_list")
+    acq_list = _acquisitions_to_check(core, a)
     return {"outside_limits": list(core.check_motion_limits(acq_list))}
 
 
@@ -793,10 +839,6 @@ def _acquire_finish(core, a):
     return {"state": _state_get(core, "state")}
 
 
-def _procedure(core, a):
-    raise RuntimeError(f"procedure {a.get('name')!r} is not implemented server-side")
-
-
 def _unzero(core, a):
     core.unzero_axes(list(a.get("axes") or _AXES))
     return {}
@@ -813,8 +855,12 @@ def _close_shutters(core, a):
 
 
 def _stop_activity(core, a):
-    # Re-broadcasting camera/writer abort while already idle can double-trigger
-    # native teardown. An idempotent stop must be a real no-op in that state.
+    """Stop whatever is running, and do nothing at all if nothing is.
+
+    Re-broadcasting the camera/writer abort while already idle can double-trigger native
+    teardown, so an idempotent stop has to be a real no-op in that state, not a harmless-
+    looking second abort.
+    """
     if _state_get(core, "state") != "idle":
         core.stop()
     return {"state": _state_get(core, "state")}
@@ -944,11 +990,11 @@ COMMANDS = {
     "acquire_start": _acquire_start, "stat_files": _stat_files, "acquire_finish": _acquire_finish,
     "get_disk_space": _get_disk_space, "check_motion_limits": _check_motion_limits,
     "time_lapse_start": _time_lapse_start, "time_lapse_stop": _time_lapse_stop,
-    "procedure": _procedure,
 }
 
 _HINTS = {
-    "get_info": "report extensible microscope info including save paths and latest snapshot metadata.",
+    "get_info": "report extensible microscope info: app/version, state, stage type, save and "
+                "snap paths, ETL config path, and the current operation. args: none",
     "get_snap_image": "read the latest remote snapshot in bounded base64 chunks. args: "
                       "{operation_id?: str, offset?: int, max_bytes?: 1..524288}",
     "self_test": "verify (against a mock Core with this server's real cfg) that the loaded "
@@ -971,8 +1017,9 @@ _HINTS = {
     "acquire_start": "start one acquisition. args: {acquisition: {...}}",
     "set_acquisition_list": "replace the acquisition list. args: {acquisitions: [{...}], selected_row?: int}",
     "stat_files": "report which output files exist and their sizes. args: {files: [path,..]}",
-    "procedure": "run a named site procedure. args: {name: <procedure>}",
 }
+
+assert set(_HINTS) <= set(COMMANDS), "every hint must name a real command"
 
 
 def _num(v):
@@ -1190,7 +1237,7 @@ def _validate(core, call, args, limits):
         if (not isinstance(max_bytes, int) or isinstance(max_bytes, bool)
                 or not 1 <= max_bytes <= _MAX_SNAPSHOT_CHUNK_BYTES):
             bad(f"'max_bytes' must be an integer in 1..{_MAX_SNAPSHOT_CHUNK_BYTES}")
-    # reads / stop / hello / ping / stat_files / procedure: no arg contract
+    # reads / stop / hello / ping / stat_files: no arg contract
 
 
 def _limits_from_env():
@@ -1275,7 +1322,7 @@ def run(core, call, args=None):
 class SimCore:
     """A stand-in Core that carries the REAL ``cfg`` (so the REAL limits) but SIMULATES the
     hardware: a move just updates an in-memory position -- nothing physical happens. The
-    startup self-test drives this instead of the instrument, so it can prove -- on THIS
+    startup smoke-check drives this instead of the instrument, so it can check -- on THIS
     machine, with THIS loaded config -- that a good call is accepted and an out-of-limit one
     is refused, before the real server ever goes live.
     """
@@ -1298,14 +1345,16 @@ class SimCore:
 
 
 def self_test(cfg):
-    """Pre-flight: prove the loaded config's limits are actually ENFORCED before going live.
+    """Pre-flight smoke-check: are the loaded config's limits actually ENFORCED?
 
     Runs a battery through the SAME ``run()`` dispatch both transports use -- so this one
     check covers the TCP and the MCP lane alike -- against a :class:`SimCore` that mimics the
     hardware. A valid move must be accepted (and reach the mock stage); an out-of-limit move,
     a bad option, and an unknown command must all be refused (and NOT reach the mock stage).
-    This is the guard against a drifted limits file or a validation quirk. Returns
-    ``(ok, report_lines)`` and never touches the real instrument.
+    It is a smoke-check, not a proof: it samples the envelope rather than exhausting it, and
+    it is the guard against a drifted limits file or a validation quirk, not against every
+    possible one. The server refuses to bind if it fails. Returns ``(ok, report_lines)`` and
+    never touches the real instrument.
     """
     sim = SimCore(cfg)
     report, ok = [], True
