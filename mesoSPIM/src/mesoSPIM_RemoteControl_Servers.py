@@ -12,9 +12,12 @@ written exactly once:
     scope = RemoteControl(port=42000, token="...")
     scope.call("move_absolute", targets={"x": 100})
 
-Everything above module level here is standard library, so a script can import the clients
-without pulling in Qt or any hardware driver. See demo_client.py for a worked example and a
-viability check.
+Everything at module level here is standard library, so a script can import the clients
+without pulling in Qt or any hardware driver.
+
+Running this file as a script does one of two things: with ``--self-check`` it probes a
+RUNNING server and proves its limits are enforced without moving the stage; otherwise it
+starts the MCP bridge, which is how the GUI launches it.
 """
 
 from __future__ import annotations
@@ -346,9 +349,9 @@ class RemoteControlTCPServer:
 class RemoteControl:
     """The TCP client: connect once, authenticate once, then make named calls.
 
-    This is the client the MCP bridge, the test suite and demo_client.py all drive the
-    microscope through, so the wire format is implemented once rather than mirrored in a
-    separate example file where it could silently drift from the server.
+    The MCP bridge, the test suite and any operator script all drive the microscope through
+    this one class, so the wire format is implemented once rather than mirrored in a separate
+    example file where it could silently drift from the server that speaks it.
 
     The error contract is the protocol's, not Python's: a reply that does not carry the OK
     marker IS the error text, so it is raised verbatim rather than reshaped.
