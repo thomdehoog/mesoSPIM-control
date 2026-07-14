@@ -51,8 +51,31 @@ def frame(payload):
     return str(len(payload)).encode("ascii") + b"\n" + payload
 
 
+def frame_length(head):
+    """The payload length a frame header promises, refusing anything non-canonical.
+
+    Canonical means ASCII digits and nothing else: no sign, no padding, no whitespace, so
+    "+1" and "1 0" are refused rather than quietly coerced. Both framing implementations
+    below call this, because two copies of a security check are two chances for one of them
+    to be the laxer. The size cap is enforced here, on the header alone, so an oversized
+    frame is refused before a byte of its payload is read or buffered.
+    """
+    if not head or len(head) > MAX_FRAME_HEADER_BYTES or not head.isdigit():
+        raise FramingError("expected canonical byte-count header")
+    length = int(head)
+    if length > MAX_FRAME_BYTES:
+        raise FramingError(f"frame exceeds {MAX_FRAME_BYTES} bytes")
+    return length
+
+
 def read_frame(sock):
-    """Read one length-framed TCP reply from a socket."""
+    """Read one length-framed TCP reply, blocking until it is complete.
+
+    The blocking counterpart of FrameDecoder: this owns the socket and may wait on it, which
+    is what a client and the MCP bridge need. They stay separate implementations because
+    their contracts are -- the Qt server can never block, and this can never buffer across
+    calls -- but they share frame_length, so the header rules cannot drift apart.
+    """
     buf = b""
     while b"\n" not in buf:
         chunk = sock.recv(4096)
@@ -62,11 +85,7 @@ def read_frame(sock):
         if b"\n" not in buf and len(buf) > MAX_FRAME_HEADER_BYTES:
             raise FramingError("frame header is too long")
     head, _, rest = buf.partition(b"\n")
-    if not head or len(head) > MAX_FRAME_HEADER_BYTES or not head.isdigit():
-        raise FramingError("expected canonical byte-count header")
-    length = int(head)
-    if length > MAX_FRAME_BYTES:
-        raise FramingError(f"frame exceeds {MAX_FRAME_BYTES} bytes")
+    length = frame_length(head)
     while len(rest) < length:
         chunk = sock.recv(4096)
         if not chunk:
@@ -84,7 +103,13 @@ def handle_tcp_message(core, payload):
 
 
 class FrameDecoder:
-    """Incremental decoder for TCP frames arriving from Qt sockets."""
+    """Incremental decoder for TCP frames arriving from Qt sockets.
+
+    The non-blocking counterpart of read_frame: Qt hands us whatever bytes have arrived, so a
+    frame can be split across readyRead signals and several frames can arrive in one. It
+    therefore keeps a buffer and yields only complete frames, returning quietly when it needs
+    more -- it must never wait on the socket, because it runs on the Core's event loop.
+    """
 
     def __init__(self):
         self._buf = b""
@@ -99,11 +124,7 @@ class FrameDecoder:
                     raise FramingError("frame header is too long")
                 return
             head, _, rest = self._buf.partition(b"\n")
-            if not head or len(head) > MAX_FRAME_HEADER_BYTES or not head.isdigit():
-                raise FramingError("expected canonical byte-count header")
-            length = int(head)
-            if length > MAX_FRAME_BYTES:
-                raise FramingError(f"frame exceeds {MAX_FRAME_BYTES} bytes")
+            length = frame_length(head)
             if len(rest) < length:
                 return
             self._buf = rest[length:]
@@ -127,15 +148,36 @@ class AuthGate:
 
 
 class RemoteControlTCPServer:
-    """Single-client framed JSON TCP server hosted by mesoSPIM Core."""
+    """Single-client framed JSON TCP server hosted by mesoSPIM Core.
+
+    A plain Python object, deliberately not a QObject. That keeps the completion signals as
+    direct connections, which is the live-validated behaviour -- and it means _on_camera_frame
+    runs ON THE CAMERA THREAD while command dispatch mutates the same Core-owned session from
+    the Core thread. Two known consequences, neither of them fixable inside a cleanup:
+
+    - Cross-thread session access. capture_snap_image writes the snapshot from the camera
+      thread; dispatch writes the operation from the Core thread. Preserved as-is.
+    - A snap whose camera frame never arrives wedges the busy gate. The operation stays active
+      on milestone "snap_image"; stop only moves it to "stopping", which is still active, and
+      sig_finished cannot close a "snap_image" milestone. Every mutating command then raises
+      BusyError until mesoSPIM restarts. Server Stop/Start is NOT a recovery path: it
+      deliberately preserves the Core-owned session, precisely so a GUI click cannot clear a
+      busy gate while the instrument is running. Operation-ID matching would not fix this
+      either -- it prevents a stale callback completing a NEWER operation, and says nothing
+      about a completion signal that never arrives. Real recovery needs a timeout, a
+      cancel-on-stop transition, or a recovery command. All are out of scope here.
+    """
 
     def __init__(self, core, host="127.0.0.1", port=42000, token=None):
-        # PRE-FLIGHT SELF-TEST (fail-closed), FIRST -- before we even import Qt or open a
-        # socket: prove -- against a mock Core carrying THIS instrument's real cfg -- that the
-        # loaded limits are actually enforced. If they are not (a drifted limits file, a
-        # validation quirk), we raise here so the server never binds and the Core reports the
-        # failure to the GUI; the real hardware is never exposed. Covers both lanes: MCP
-        # forwards to this server, and every call runs the same validated dispatch this tests.
+        """Smoke-check the limits, then bind. Fail-closed, and in that order.
+
+        The smoke-check runs FIRST, before Qt is even imported or a socket opened: it drives a
+        mock Core carrying THIS instrument's real cfg and checks the loaded limits still refuse
+        an out-of-range call. If they do not -- a drifted limits file, a validation quirk --
+        this raises, the server never binds, and Core reports the failure to the tab. The
+        hardware is never exposed. It covers both lanes, because MCP forwards to this server
+        and every call runs the same validated dispatch.
+        """
         ok, report = self_test(getattr(core, "cfg", None))
         if not ok:
             failed = [line for line in report if line.startswith("FAIL")]
@@ -152,15 +194,16 @@ class RemoteControlTCPServer:
         self._port = int(self._server.serverPort())
         self._server.newConnection.connect(self._on_new_connection)
         self._clients = {}
-        if hasattr(core, "sig_finished"):
-            core.sig_finished.connect(self._on_core_finished)
-        if hasattr(core, "sig_time_lapse_finished"):
-            core.sig_time_lapse_finished.connect(self._on_time_lapse_finished)
-        if hasattr(core, "sig_time_lapse_cancelled"):
-            core.sig_time_lapse_cancelled.connect(self._on_time_lapse_finished)
-        camera_signal = getattr(getattr(core, "camera_worker", None), "sig_camera_frame", None)
-        if camera_signal is not None:
-            camera_signal.connect(self._on_camera_frame)
+        self._connections = [
+            (getattr(core, "sig_finished", None), self._on_core_finished),
+            (getattr(core, "sig_time_lapse_finished", None), self._on_time_lapse_finished),
+            (getattr(core, "sig_time_lapse_cancelled", None), self._on_time_lapse_finished),
+            (getattr(getattr(core, "camera_worker", None), "sig_camera_frame", None),
+             self._on_camera_frame),
+        ]
+        for signal, slot in self._connections:
+            if signal is not None:
+                signal.connect(slot)
         logger.info("Remote control TCP listening on %s:%d", self._host, self._port)
 
     @property
@@ -168,6 +211,13 @@ class RemoteControlTCPServer:
         return self._port
 
     def _on_new_connection(self):
+        """Accept each pending client, then read what it may already have sent.
+
+        A fast local client can deliver its first frame before readyRead is connected, and Qt
+        does not replay an already-emitted signal. Without the explicit drain, that first frame
+        would sit in the socket buffer until more bytes arrived -- and the MCP bridge, which
+        sends its token and then waits, would hang instead of authenticating.
+        """
         while self._server.hasPendingConnections():
             conn = self._server.nextPendingConnection()
             self._clients[conn] = {
@@ -176,9 +226,6 @@ class RemoteControlTCPServer:
             }
             conn.readyRead.connect(partial(self._on_ready_read, conn))
             conn.disconnected.connect(partial(self._on_disconnected, conn))
-            # A fast local client can send its first frame before readyRead is
-            # connected.  Qt does not replay an already-emitted signal, so
-            # consume anything that was buffered with the pending connection.
             if conn.bytesAvailable():
                 self._on_ready_read(conn)
 
@@ -202,13 +249,18 @@ class RemoteControlTCPServer:
             pass
 
     def _on_ready_read(self, conn):
+        """Drain everything that has arrived, not just the first frame.
+
+        readyRead is not recursive: Qt will not re-enter this slot while it is running. An
+        authenticated loopback client can send its command while we are still writing "OK", so
+        bytes that arrive during this call would sit unread until the NEXT readyRead -- which
+        may never come, because the client is waiting for our reply. Hence the drain loop, and
+        hence the re-check of conn after each frame: a handler may have dropped the client.
+        """
         client = self._clients.get(conn)
         if client is None:
             return
         try:
-            # readyRead is not recursive.  An authenticated loopback client can
-            # send its command while this slot is still replying "OK", so drain
-            # all bytes that became available before returning to the event loop.
             while conn in self._clients and conn.bytesAvailable():
                 client["decoder"].feed(bytes(conn.readAll()))
                 for payload in client["decoder"].frames():
@@ -217,16 +269,12 @@ class RemoteControlTCPServer:
                         return
         except FramingError as exc:
             self._send(conn, f"framing error: {exc}")
-            self._close(conn)
+            self._drop_client(conn)
 
     def _send(self, conn, text):
         if conn in self._clients:
             conn.write(frame(text))
             conn.flush()
-
-    def _close(self, conn):
-        if conn in self._clients:
-            self._drop_client(conn)
 
     def _handle(self, conn, message):
         client = self._clients.get(conn)
@@ -238,7 +286,7 @@ class RemoteControlTCPServer:
                 self._send(conn, "OK")
             else:
                 self._send(conn, "AUTH-FAILED")
-                self._close(conn)
+                self._drop_client(conn)
             return
         self._send(conn, handle_tcp_message(self.core, message))
 
@@ -246,13 +294,16 @@ class RemoteControlTCPServer:
         complete_operation(self.core, "finished")
 
     def _on_camera_frame(self):
+        """Runs ON THE CAMERA THREAD -- this is a direct connection. See the class docstring."""
         capture_snap_image(self.core)
 
     def _on_time_lapse_finished(self):
-        # Core's time-lapse scheduler can leave its public state at
-        # run_acquisition_list after the final time point. The remote adapter
-        # owns the remote completion contract, so normalize that stale readback
-        # here without changing mesoSPIM Core or MainWindow.
+        """Complete the remote time-lapse operation, normalizing Core's stale state readback.
+
+        Core's time-lapse scheduler can leave its public state at run_acquisition_list after
+        the final time point. The remote adapter owns the remote completion contract, so the
+        readback is normalized here rather than by changing mesoSPIM Core or MainWindow.
+        """
         try:
             self.core.state["state"] = "idle"
         except (AttributeError, KeyError, TypeError):
@@ -260,15 +311,16 @@ class RemoteControlTCPServer:
         complete_operation(self.core, "time_lapse")
 
     def stop(self):
+        """Drop the clients, disconnect the completion signals, close the listener.
+
+        The disconnect walks the same _connections list the connect did, so the two can no
+        longer drift apart: a signal added to one and forgotten in the other would leave this
+        object alive, listening to a Core it no longer serves. The Core-owned session is
+        deliberately left alone -- see the class docstring.
+        """
         for conn in list(self._clients):
             self._drop_client(conn)
-        for signal, slot in (
-            (getattr(self.core, "sig_finished", None), self._on_core_finished),
-            (getattr(self.core, "sig_time_lapse_finished", None), self._on_time_lapse_finished),
-            (getattr(self.core, "sig_time_lapse_cancelled", None), self._on_time_lapse_finished),
-            (getattr(getattr(self.core, "camera_worker", None), "sig_camera_frame", None),
-             self._on_camera_frame),
-        ):
+        for signal, slot in self._connections:
             if signal is not None:
                 try:
                     signal.disconnect(slot)
@@ -390,7 +442,15 @@ def mcp_reply(config, msg):
 
 
 def start_mcp_server_process(parent, package_directory, host, port, token, tcp_token, tcp_port):
-    """Start this file as the standalone MCP server used by the GUI."""
+    """Start this file as the standalone MCP server used by the GUI.
+
+    Launched by absolute path, not with -m: the child would then depend on inheriting a
+    working directory, and the failure mode of that assumption is "the MCP lane silently does
+    not start". The path is derived from the package directory the GUI already knows, and the
+    sys.path shim at the top of this file is what lets the child re-import the command module
+    when it runs with no package. The QProcess is parented to the caller, so whoever started
+    it reaps it.
+    """
     from PyQt5 import QtCore
 
     script = str(Path(package_directory) / "src" / "mesoSPIM_RemoteControl_Servers.py")
