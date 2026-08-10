@@ -253,6 +253,20 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
         # shards_l = pick_shards_for_level(shard_shape, chunks, lvl_shape)
         shards_l = pick_shards_for_level(shard_shape, chunks, lvl_shape) if zarr_version == 3 else None
 
+        # The writer flushes one chunk-depth, full-XY slab per write. The shard
+        # depth MUST equal the chunk depth: a deeper shard would be filled by
+        # several slab writes, and each of those makes Zarr read the whole
+        # shard file back, merge, and rewrite it. Besides being several times
+        # slower, those read-modify-writes run concurrently on the thread pool
+        # and race against each other, silently losing planes. Clamping the
+        # shard depth makes every flush cover whole shards: each shard is
+        # written exactly once, never read back, and parallel flushes are safe.
+        if shards_l is not None and shards_l[0] != chunks[0]:
+            print(f"[init] level {l}: shard z-depth {shards_l[0]} != chunk z-depth "
+                  f"{chunks[0]}; clamping shard z-depth to {chunks[0]} to keep "
+                  f"writes whole-shard aligned (see comment above)")
+            shards_l = (chunks[0],) + tuple(shards_l[1:])
+
         name = f"{l}"
         if name in root:
             a = root[name]
@@ -434,9 +448,13 @@ class Live3DPyramidWriter:
         print("Live3DPyramidWriter: finalized.")
 
     def close_sync(self):
-        self.stop.set()
+        # Send the end-of-stream marker and let the consumer drain everything
+        # queued before it. `stop` must only be set AFTER the join: the
+        # consumer breaks as soon as it sees `stop`, so setting it first made
+        # any frames still waiting in the ingest queue vanish silently.
         self.q.put(None)
         self.worker.join()
+        self.stop.set()
 
         with self.lock:
             # flush odd Z-pair tails at levels >= 1
@@ -466,9 +484,11 @@ class Live3DPyramidWriter:
         return self.finalize_future
 
     def _finalize(self):
-        self.stop.set()
+        # Same ordering rule as close_sync: marker first, join, then stop --
+        # otherwise still-queued frames are dropped instead of written.
         self.q.put(None)
         self.worker.join()
+        self.stop.set()
 
         with self.lock:
             self._flush_pair_tails_all_the_way()
