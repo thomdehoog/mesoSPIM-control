@@ -253,6 +253,12 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
         # shards_l = pick_shards_for_level(shard_shape, chunks, lvl_shape)
         shards_l = pick_shards_for_level(shard_shape, chunks, lvl_shape) if zarr_version == 3 else None
 
+        if shards_l is not None:
+            # One write per shard: shard depth must equal chunk depth, else
+            # shards fill via racing read-modify-writes that can drop planes.
+            # Maintainers: consider logging when this overrides the config.
+            shards_l = (chunks[0], shards_l[1], shards_l[2])
+
         name = f"{l}"
         if name in root:
             a = root[name]
@@ -434,9 +440,9 @@ class Live3DPyramidWriter:
         print("Live3DPyramidWriter: finalized.")
 
     def close_sync(self):
-        self.stop.set()
         self.q.put(None)
         self.worker.join()
+        self.stop.set()  # only after the join, so queued frames are written, not dropped
 
         with self.lock:
             # flush odd Z-pair tails at levels >= 1
@@ -466,9 +472,9 @@ class Live3DPyramidWriter:
         return self.finalize_future
 
     def _finalize(self):
-        self.stop.set()
         self.q.put(None)
         self.worker.join()
+        self.stop.set()  # only after the join, so queued frames are written, not dropped
 
         with self.lock:
             self._flush_pair_tails_all_the_way()
