@@ -5,6 +5,7 @@
 
 ### New Features ✨
 - **MP_OME_Zarr_TCZYX_Writer**: a mode of the multi-process OME-Zarr writer that writes one `(t, c, z, y, x)` store per tile: channels along `c`, time points of a time lapse appended along `t`, stage position and channel names/colours in the OME metadata. No chunk or shard spans a channel or a time point, and every shard is written in one go. Configured with `MP_OME_Zarr_TCZYX_Writer = {...}`; see `docs/source/file_formats.rst`.
+- **Data viewer** (`View → Open Data Viewer`): a window that shows the acquisition being written as it lands, following the newest acquisition of the data folder with a dropdown for earlier ones; 2D/3D, per-channel window and colour, depth and time sliders. It reads the `MP_OME_Zarr_TCZYX_Writer` layout and comes from the separate `mesospim_view` package (see `docs/source/data_viewer.rst`); without it the menu entry says so.
 
 ### Bugfixes 🐛
 - PSF analysis tool: fixed bead detection finding 0 beads (or crashing) on beads elongated/wiggly in Z (e.g. stage-jitter artifacts): `keepBeads()` now keeps the brightest candidate among mutually-close peaks instead of discarding all of them, and 0 detected beads is reported in the UI instead of raising an uncaught error.

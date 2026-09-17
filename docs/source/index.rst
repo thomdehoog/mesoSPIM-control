@@ -124,6 +124,7 @@ multiview, and tiled imaging of large cleared-tissue samples.
    field_curvature
    image_processors
    timelapse
+   data_viewer
    changelog
 
 .. toctree::

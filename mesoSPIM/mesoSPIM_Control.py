@@ -21,6 +21,8 @@ package_directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(
     package_directory))  # this is critical for 'from mesoSPIM.src.mesoSPIM_MainWindow import mesoSPIM_MainWindow' to work in both script and package form.
 from mesoSPIM.src.plugins.manager import PluginRegistry
+from mesoSPIM.src import mesoSPIM_DataViewer
+mesoSPIM_DataViewer.prepare_qt()  # before any QApplication: Qt WebEngine allows its import only then
 
 def load_config_UI(current_path):
     '''

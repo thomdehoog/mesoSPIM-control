@@ -24,6 +24,7 @@ from .mesoSPIM_ContrastWindow import mesoSPIM_ContrastWindow
 from .mesoSPIM_ProcessorChainWindow import ProcessorChainWindow
 from .mesoSPIM_ScriptWindow import mesoSPIM_ScriptWindow # do not delete this line, it is actually used in exec()
 from .mesoSPIM_TileViewWindow import mesoSPIM_TileViewWindow
+from . import mesoSPIM_DataViewer
 from .mesoSPIM_State import mesoSPIM_StateSingleton
 from .mesoSPIM_Core import mesoSPIM_Core
 from .devices.joysticks.mesoSPIM_JoystickHandlers import mesoSPIM_JoystickHandler
@@ -442,6 +443,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.actionOpen_Webcam_Window.triggered.connect(self.open_webcam_window)
         self.actionOpen_Acquisition_Manager.triggered.connect(self.acquisition_manager_window.show)
         self.actionOpen_Tile_Overview.triggered.connect(self.tile_view_window.show)
+        self.actionOpen_Data_Viewer.triggered.connect(lambda: mesoSPIM_DataViewer.open_window(self))
         self.actionCascade_windows.triggered.connect(self.cascade_all_windows)
 
         # Add Processor Chain menu item to Plugins menu
