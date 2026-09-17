@@ -229,6 +229,34 @@ def pick_shards_for_level(
     return tuple(out)
 
 # ---------- Zarr v3 init (multiscales 0.5) ----------
+@dataclass
+class TCZYX:
+    """
+    Write into one (t, c, z, y, x) store per tile instead of one (z, y, x) store per stack.
+
+    Each z-stack the microscope acquires lands at [t, c] of the same arrays: channels
+    are the c axis, time points are appended along t. Chunks and shards get a leading
+    (1, 1) so none of them ever spans a channel or a time point -- a later channel or
+    time point only ever adds files, and a shard written once is never rewritten.
+    """
+    t: int                                  # time point this stack lands at (appended if new)
+    c: int                                  # channel this stack lands at
+    n_channels: int                         # the c extent, fixed when the store is created
+    channel_labels: Tuple[str, ...] = ()    # omero labels, e.g. ("488", "561")
+    channel_colors: Tuple[str, ...] = ()    # omero colours as "RRGGBB"
+
+
+def _tczyx_omero(tczyx: TCZYX) -> dict:
+    channels = []
+    for i in range(tczyx.n_channels):
+        label = tczyx.channel_labels[i] if i < len(tczyx.channel_labels) else f"channel {i}"
+        entry = {"label": label, "active": True}
+        if i < len(tczyx.channel_colors) and tczyx.channel_colors[i]:
+            entry["color"] = tczyx.channel_colors[i]
+        channels.append(entry)
+    return {"channels": channels}
+
+
 def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                   chunk_scheme: ChunkScheme = ChunkScheme(),
                   compressor=None,
@@ -236,12 +264,25 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                   translation: Tuple[int, int, int] = (0,0,0), # in units
                   xy_levels: int = 0,
                   shard_shape: Tuple[int,int,int] | None = None,
-                  ome_version: str = "0.5"):
+                  ome_version: str = "0.5",
+                  tczyx: TCZYX | None = None):
+    """
+    Create (or open) the multiscale arrays and write the OME metadata.
+
+    Returns (root, arrays, fresh): ``fresh[l]`` says whether level ``l`` was created
+    by this call. A store that existed already -- a tczyx store receiving its next
+    channel or time point -- keeps its description and its trimmed depth.
+    """
 
     # Map OME-NGFF version to Zarr store version
     zarr_version = 2 if ome_version == "0.4" else 3
     root = zarr.open_group(path, mode="a", zarr_version=zarr_version)
+    # (t, c) in front of every shape, chunk and shard when writing the tczyx layout
+    lead = (tczyx.t + 1, tczyx.n_channels) if tczyx else ()
+    lead_chunk = (1, 1) if tczyx else ()
+    dims = ["t", "c", "z", "y", "x"] if tczyx else ["z", "y", "x"]
     arrs = []
+    fresh = []
     for l in range(spec.levels):
         zf, yf, xf = level_factors(l, xy_levels)
         z_l = ceil_div(spec.z_size_estimate, zf)
@@ -256,39 +297,44 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
         name = f"{l}"
         if name in root:
             a = root[name]
+            if tczyx:
+                # A store written earlier: same tile, next channel or time point. Its z
+                # was trimmed when the first stack closed and is never touched again;
+                # only the t extent may grow.
+                if a.shape[1:2] != lead[1:] or a.shape[3:] != lvl_shape[1:] or a.dtype != np.uint16:
+                    raise ValueError(f"Existing {name}: {a.shape}/{a.dtype} does not fit {lead + lvl_shape}/uint16")
+                if a.shape[0] < lead[0]:
+                    a.resize((lead[0],) + a.shape[1:])
+                fresh.append(False)
+                arrs.append(a)
+                continue
             if a.shape != lvl_shape or a.dtype != np.uint16:
                 raise ValueError(f"Existing {name}: {a.shape}/{a.dtype} != {lvl_shape}/uint16")
             if a.shape[0] < z_l:
                 a.resize((z_l, y_l, x_l))
         elif zarr_version == 3:
-            kwargs = dict(name=name, shape=lvl_shape, chunks=chunks, dtype="uint16")
+            kwargs = dict(name=name, shape=lead + lvl_shape, chunks=lead_chunk + chunks, dtype="uint16")
             if compressor is not None:
                 # v3: list of codecs
                 kwargs["compressors"] = [compressor]
             if shards_l is not None:
                 # v3: inner shard (must divide chunks)
-                kwargs["shards"] = shards_l
-            kwargs["dimension_names"] = ["z", "y", "x"]
+                kwargs["shards"] = lead_chunk + shards_l
+            kwargs["dimension_names"] = dims
             if VERBOSE:
-                print(f"[init] creating {name}: shape={lvl_shape} chunks={chunks} shards={shards_l}")
+                print(f"[init] creating {name}: shape={kwargs['shape']} chunks={kwargs['chunks']} shards={kwargs.get('shards')}")
             a = root.create_array(**kwargs)
         else:
             # Zarr v2 path
             if VERBOSE:
-                print(f"[init] creating {name} (Zarr v2): shape={lvl_shape} chunks={chunks}")
+                print(f"[init] creating {name} (Zarr v2): shape={lead + lvl_shape} chunks={lead_chunk + chunks}")
             v2_comp = _ensure_v2_compressor(compressor)
-
-            # optional: dimension hint for some tools
-            try:
-                a.attrs["_ARRAY_DIMENSIONS"] = ["z", "y", "x"]
-            except Exception:
-                pass
 
             # Work around AsyncGroup.create_array() not accepting `dimension_separator`
             from zarr import create as zcreate
             a = zcreate(
-                shape = lvl_shape,
-                chunks = chunks,
+                shape = lead + lvl_shape,
+                chunks = lead_chunk + chunks,
                 dtype = "uint16",
                 compressor = v2_comp,  # numcodecs codec
                 overwrite = False,
@@ -297,8 +343,19 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                 zarr_format = 2,  # v2 array
                 dimension_separator = "/",  # nested directories in .zarray
             )
+            # optional: dimension hint for some tools
+            try:
+                a.attrs["_ARRAY_DIMENSIONS"] = dims
+            except Exception:
+                pass
 
+        fresh.append(True)
         arrs.append(a)
+
+    if tczyx and not all(fresh):
+        # The description below was written with the first stack; nothing in it changes
+        # for a later channel or time point.
+        return root, arrs, fresh
 
     # OME attributes: multiscales with per-axis physical scales
     dz, dy, dx = voxel_size
@@ -306,11 +363,15 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
     for l in range(spec.levels):
         zf, yf, xf = level_factors(l, xy_levels)
         s = [dz * zf, dy * yf, dx * xf]
+        t = list(translation)
+        if tczyx:
+            s = [1.0, 1.0] + s
+            t = [0.0, 0.0] + t
         datasets.append({
             "path": f"{l}",
             "coordinateTransformations": [
                 {"type": "scale", "scale": s},
-                {"type": "translation", "translation": list(translation)}
+                {"type": "translation", "translation": t}
                 ],
         })
 
@@ -319,8 +380,10 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
         {"name": "y", "type": "space", "unit": unit},
         {"name": "x", "type": "space", "unit": unit},
     ]
+    if tczyx:
+        axes = [{"name": "t", "type": "time"}, {"name": "c", "type": "channel"}] + axes
     if ome_version == "0.5":
-        root.attrs["ome"] = {
+        ome = {
             "version": "0.5",
             "multiscales": [{
                 "axes": axes,
@@ -329,6 +392,9 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                 "type": "image",
             }],
         }
+        if tczyx:
+            ome["omero"] = _tczyx_omero(tczyx)
+        root.attrs["ome"] = ome
     else:
         # OME-Zarr 0.4 stores multiscales at top level
         root.attrs["multiscales"] = [{
@@ -337,7 +403,9 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
             "datasets": datasets,
             "name": "image",
         }]
-    return root, arrs
+        if tczyx:
+            root.attrs["omero"] = _tczyx_omero(tczyx)
+    return root, arrs, fresh
 
 
 
@@ -363,7 +431,8 @@ class Live3DPyramidWriter:
                  async_close: bool = True,
                  shard_shape: Tuple[int, int, int] | None = None,
                  translation: Tuple[int,int,int] = (0,0,0),
-                 ome_version: str = "0.5"):
+                 ome_version: str = "0.5",
+                 tczyx: TCZYX | None = None):
 
         self.spec = spec
         self.chunk_scheme = chunk_scheme
@@ -372,13 +441,15 @@ class Live3DPyramidWriter:
         self.max_workers = max_workers or min(8, os.cpu_count() or 4)
         self.async_close = async_close
         self.finalize_future = None
+        # Where this stack lands inside a (t, c, z, y, x) store; () for a (z, y, x) store.
+        self.index = (tczyx.t, tczyx.c) if tczyx else ()
 
-        self.root, self.arrs = init_ome_zarr(
+        self.root, self.arrs, self.fresh_levels = init_ome_zarr(
             spec, path,
             chunk_scheme=chunk_scheme, compressor=compressor,
             voxel_size=voxel_size, xy_levels=self.xy_levels,
             shard_shape=shard_shape, translation=translation,
-            ome_version=ome_version,
+            ome_version=ome_version, tczyx=tczyx,
         )
 
         self.levels = spec.levels
@@ -448,9 +519,7 @@ class Live3DPyramidWriter:
                     self._pad_and_flush_partial_chunk(l)
 
         self.pool.shutdown(wait=True)
-
-        for l, a in enumerate(self.arrs):
-            a.resize((self.z_counts[l], a.shape[1], a.shape[2]))
+        self._trim_z()
 
     # inside class Live3DPyramidWriter
 
@@ -479,9 +548,7 @@ class Live3DPyramidWriter:
         # for fut in self.pending_futs:
         #     fut.result()
         self.pool.shutdown(wait=True)
-
-        for l, a in enumerate(self.arrs):
-            a.resize((self.z_counts[l], a.shape[1], a.shape[2]))
+        self._trim_z()
 
         # optional: mark completion for external watchers
         try:
@@ -493,6 +560,19 @@ class Live3DPyramidWriter:
             pass
 
     # ---------- Internals ----------
+
+    def _trim_z(self):
+        """Cut every level down to the planes actually written.
+
+        A store that already held a stack (a later channel or time point of a tczyx
+        store) was trimmed when that first stack closed, and every stack of a tile has
+        the same depth, so only freshly created arrays are resized.
+        """
+        for l, a in enumerate(self.arrs):
+            if not self.fresh_levels[l]:
+                continue
+            lead = a.shape[:len(self.index)]
+            a.resize(lead + (self.z_counts[l],) + a.shape[len(self.index) + 1:])
 
     def _flush_pair_tails_all_the_way(self):
         if not hasattr(self, "_pair_buf"):
@@ -520,7 +600,10 @@ class Live3DPyramidWriter:
     def _consume(self):
         while True:
             item = self.q.get()
-            if item is None or self.stop.is_set():
+            # Only the end marker ends the loop. close() raises the stop flag before the
+            # queue is empty, and breaking on the flag dropped every plane still queued
+            # behind it -- the tail of a stack, whenever the disk lagged the camera.
+            if item is None:
                 break
             self._ingest_raw(item)
 
@@ -533,16 +616,19 @@ class Live3DPyramidWriter:
         # acquire *before* grabbing the lock (it’s called from inside-lock code now)
 
         if self.max_inflight_chunks == 1 and self.max_inflight_chunks == 1: # Helps with single threaded debugging
-            self.arrs[level][z0:z0 + buf3d.shape[0], :, :] = buf3d
+            self._write_chunk_slice(self.arrs[level], z0, buf3d, self.index)
         else:
             self._inflight_sem.acquire()
-            fut = self.pool.submit(self._write_chunk_slice, self.arrs[level], z0, buf3d)
+            fut = self.pool.submit(self._write_chunk_slice, self.arrs[level], z0, buf3d, self.index)
             # Release the slot when done (and drop ref to the future immediately)
             fut.add_done_callback(lambda _f: self._inflight_sem.release())
 
     @staticmethod
-    def _write_chunk_slice(arr, z0, buf3d):
-        arr[z0:z0 + buf3d.shape[0], :, :] = buf3d  # contiguous, aligned write
+    def _write_chunk_slice(arr, z0, buf3d, index=()):
+        # contiguous, aligned write; a padded last chunk is cut at the array's end
+        # (a tczyx store keeps the depth its first stack was trimmed to)
+        n = min(buf3d.shape[0], arr.shape[len(index)] - z0)
+        arr[index + (slice(z0, z0 + n),)] = buf3d[:n]
 
     def _ensure_active_buffer(self, level: int, start_z: int):
         """Allocate active chunk buffer for a level if absent, starting at start_z."""
