@@ -115,6 +115,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.tile_view_window.show()
 
         self.webcam_window = None
+        self.data_viewer_window = None
         self.check_config_file()
         self.open_webcam_window()
 
@@ -259,6 +260,43 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
     def open_tile_view_window(self):
         self.tile_view_window.show()
+
+    def open_data_viewer_window(self):
+        """Open the Data viewer: the acquisition being written, shown as it lands.
+
+        The window comes from the separate ``mesospim_view`` package (a neuroglancer page
+        driven from Python; see https://github.com/thomdehoog/ZMART-viewer). It watches the
+        folder the acquisition list saves into -- the newest ``.ome.zarr`` acquisition in it
+        by default, with a dropdown for earlier ones -- and needs stores written by the
+        ``MP_OME_Zarr_TCZYX_Writer``: one (t, c, z, y, x) store per tile.
+        """
+        if self.data_viewer_window is not None:
+            self.data_viewer_window.show()
+            self.data_viewer_window.raise_()
+            return
+        try:
+            from mesospim_view.window import make_window_class
+        except ImportError as error:
+            self.display_warning(f"The Data viewer needs the 'mesospim_view' package:\n{error}")
+            return
+        folder = self.acquisition_folder()
+        if folder is None:
+            folder = QtWidgets.QFileDialog.getExistingDirectory(self, 'Folder with acquisitions')
+            if not folder:
+                return
+        self.data_viewer_window = make_window_class()(folder)
+        self.data_viewer_window.resize(1200, 800)
+        self.data_viewer_window.show()
+
+    def acquisition_folder(self):
+        """The folder the acquisition list saves into, or None if there is no list yet."""
+        try:
+            acq_list = self.state['acq_list']
+            if len(acq_list) > 0 and acq_list[0]['folder']:
+                return acq_list[0]['folder']
+        except Exception:
+            pass
+        return None
 
 
     def __del__(self):
@@ -442,6 +480,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.actionOpen_Webcam_Window.triggered.connect(self.open_webcam_window)
         self.actionOpen_Acquisition_Manager.triggered.connect(self.acquisition_manager_window.show)
         self.actionOpen_Tile_Overview.triggered.connect(self.tile_view_window.show)
+        self.actionOpen_Data_Viewer.triggered.connect(self.open_data_viewer_window)
         self.actionCascade_windows.triggered.connect(self.cascade_all_windows)
 
         # Add Processor Chain menu item to Plugins menu
