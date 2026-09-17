@@ -1,5 +1,9 @@
 ## Unreleased
+### New Features ✨
+- 💎 **MP_OME_Zarr_TCZYX_Writer**: the multi-process OME-ZARR writer with one `(t, c, z, y, x)` store per tile. Channels are the `c` axis, time points of a time lapse are appended along `t` (the `_Time###` file suffix is read and stripped), stage position and channel names/colours are in the OME metadata. No chunk or shard spans a channel or a time point, and a shard is always exactly one z-chunk deep, so every shard is written in one go and a later stack only ever adds files. Configured with `MP_OME_Zarr_TCZYX_Writer = {...}`; tests in `mesoSPIM/test/test_omezarr_tczyx_writer.py`, a shard benchmark in `mesoSPIM/test/benchmark_omezarr_shards.py`.
+
 ### Bugfixes 🐛
+- The live OME-ZARR pipeline dropped the planes still queued when a stack closed (the stop flag was checked before the queue was drained), losing the tail of a stack whenever the disk lagged the camera. It now stops only at the end marker. Affects both OME-ZARR writers.
 - PSF analysis tool: fixed bead detection finding 0 beads (or crashing) on beads elongated/wiggly in Z (e.g. stage-jitter artifacts): `keepBeads()` now keeps the brightest candidate among mutually-close peaks instead of discarding all of them, and 0 detected beads is reported in the UI instead of raising an uncaught error.
 - PSF analysis tool: beads sitting too close to a Z-stack edge for the configured fitting window are now excluded (previously a window that exactly touched the edge was silently accepted, giving an unreliable, baseline-biased axial fit).
 - PSF analysis tool: FWHM histograms no longer silently drop beads with a measured FWHM below 1 µm. The histogram range's lower bound was hardcoded to 1, so `ax.hist(..., range=(1, xmax))` excluded any value under that from the bar counts entirely (not just from view) - noticeable e.g. with sub-micron lateral FWHM. Lower bound is now 0.
