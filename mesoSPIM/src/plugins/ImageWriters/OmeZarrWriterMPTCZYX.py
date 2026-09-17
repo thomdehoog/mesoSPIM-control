@@ -25,9 +25,10 @@ from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_wri
     omezarr_writer_worker
 )
 
-# The time index mesoSPIM appends to file names while running a time lapse:
-# 'Sample_Time003.ome.zarr' (see mesoSPIM_AcquisitionManagerWindow.append_time_index_to_filenames)
-_TIME_SUFFIX = re.compile(r'_Time(\d+)$')
+# The time index mesoSPIM writes into file names while running a time lapse. It
+# goes in front of the LAST suffix, so 'Sample.ome.zarr' becomes
+# 'Sample.ome_Time003.zarr' (see mesoSPIM_AcquisitionManagerWindow.append_time_index_to_filenames).
+_TIME_SUFFIX = re.compile(r'_Time(\d+)')
 
 # Default false colours for the omero block, by excitation wavelength (nm).
 _CHANNEL_COLORS = {'405': '5A73FF', '488': '00FF66', '561': 'FFBF1A', '640': 'FF33FF', '647': 'FF33FF', '785': 'FFFFFF'}
@@ -112,7 +113,8 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
     @classmethod
     def file_extensions(cls) -> Union[None, str, list[str]]:
-        return ['.ome.zarr']
+        # '.zarr' as well: with the time mark in place the name ends in '_Time003.zarr'.
+        return ['.ome.zarr', '.zarr']
 
     @classmethod
     def file_names(cls):
@@ -135,16 +137,14 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
     @staticmethod
     def split_time_index(uri: str) -> tuple[str, int]:
-        '''The acquisition path without its '_Time###' suffix, and the time index (0 without one).'''
+        '''The acquisition path without its '_Time###' mark, and the time index (0 without one).'''
         path = Path(uri)
-        name = path.name
-        # '.ome.zarr' is two suffixes; take everything after the first dot as the extension
-        stem, dot, extension = name.partition('.')
-        match = _TIME_SUFFIX.search(stem)
-        if not match:
+        matches = list(_TIME_SUFFIX.finditer(path.name))
+        if not matches:
             return uri, 0
-        stem = stem[:match.start()]
-        return str(path.with_name(stem + dot + extension)), int(match.group(1))
+        last = matches[-1]
+        name = path.name[:last.start()] + path.name[last.end():]
+        return str(path.with_name(name)), int(last.group(1))
 
     @staticmethod
     def channel_label(laser: str) -> str:

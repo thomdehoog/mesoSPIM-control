@@ -34,7 +34,7 @@ def acquisition_list(folder: Path, time_index: int) -> AcquisitionList:
             acqs.append(Acquisition(
                 x_pos=x_pos, y_pos=y_pos, z_start=10.0, z_end=10.0 + 5.0 * (PLANES - 1), z_step=5.0,
                 planes=PLANES, laser=laser, filter='Empty', zoom='1x', shutterconfig='Left',
-                folder=str(folder), filename=f'Sample_Time{time_index:03d}.ome.zarr',
+                folder=str(folder), filename=f'Sample.ome_Time{time_index:03d}.zarr',  # as mesoSPIM names a time point
                 image_writer_plugin=OMEZarrWriterMPTCZYX.name(),
             ))
     return AcquisitionList(acqs)
@@ -86,7 +86,7 @@ def test_two_time_points_of_two_tiles_and_channels(tmp_path, config):
     acquisition = tmp_path / 'Sample.ome.zarr'
     stores = sorted(p.name for p in acquisition.iterdir() if p.is_dir())
     assert stores == ['Mag1_Tile0_Sh0_Rot0.ome.zarr', 'Mag1_Tile1_Sh0_Rot0.ome.zarr']
-    assert not list(tmp_path.glob('*Time*.ome.zarr')), "the time suffix never reaches the disk"
+    assert not list(tmp_path.glob('*Time*')), "the time mark never reaches the disk"
 
     before = files_under(acquisition)
     write_time_point(tmp_path, 1, config)
@@ -130,9 +130,11 @@ def test_two_time_points_of_two_tiles_and_channels(tmp_path, config):
 
 def test_the_time_suffix_is_read_and_stripped():
     split = OMEZarrWriterMPTCZYX.split_time_index
-    assert split('/data/run/Sample_Time003.ome.zarr') == ('/data/run/Sample.ome.zarr', 3)
+    # mesoSPIM's own placing of the mark, before the last suffix
+    assert split('/data/run/Sample.ome_Time003.zarr') == ('/data/run/Sample.ome.zarr', 3)
     assert split('/data/run/Sample.ome.zarr') == ('/data/run/Sample.ome.zarr', 0)
-    assert split('/data/run/Sample_Time012_Time013.ome.zarr') == ('/data/run/Sample_Time012.ome.zarr', 13)
+    assert split('/data/run/Sample_Time003.ome.zarr') == ('/data/run/Sample.ome.zarr', 3)
+    assert split(r'C:\data\run\Sample.ome_Time012.zarr') == (r'C:\data\run\Sample.ome.zarr', 12)
     assert OMEZarrWriterMPTCZYX.channel_label('488 nm') == '488'
 
 
