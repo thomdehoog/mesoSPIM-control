@@ -16,6 +16,16 @@ import os
 import sys
 import importlib.util
 from PyQt5 import QtWidgets, QtCore
+
+# The Data viewer (View menu) shows a web page in a QWebEngineView. Qt only lets
+# that module be imported BEFORE the first QApplication exists, and it wants the
+# shared-OpenGL-context attribute set first as well; so both happen here, at
+# start-up, and are skipped without complaint when PyQtWebEngine is not installed.
+try:
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
+    from PyQt5 import QtWebEngineWidgets  # noqa: F401
+except ImportError:
+    pass
 import qdarkstyle
 package_directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(
