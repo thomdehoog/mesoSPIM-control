@@ -182,6 +182,8 @@ The Main window menu bar also has:
 * **Utils → PSF (beads) analysis from a stack** — launches the
   :doc:`Bead PSF Analysis <psf_analysis>` tool, preloaded with the most
   recently completed acquisition or a chosen TIFF file.
+* **View → Open Data Viewer** — the acquisition being written, shown as it
+  lands; see :doc:`data_viewer` (needs the ``mesospim_view`` package).
 
 Running an acquisition
 ~~~~~~~~~~~~~~~~~~~~~~

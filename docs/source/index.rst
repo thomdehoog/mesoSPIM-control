@@ -117,6 +117,7 @@ multiview, and tiled imaging of large cleared-tissue samples.
    psf_analysis
    image_processors
    timelapse
+   data_viewer
    changelog
 
 .. toctree::
