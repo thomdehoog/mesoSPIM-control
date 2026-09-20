@@ -470,12 +470,12 @@ def test_clear_all_clears_the_transcript_and_the_worker_between_turns():
 
 def test_options_row_sets_the_worker_at_once():
     gui = _gui()
-    gui._worker = type("_W", (), {"max_history_turns": 20, "look_image_size": 1024})()
+    gui._worker = type("_W", (), {"history_tokens": 8000, "look_image_size": 1024})()
     gui._apply_options()                                            # what _ensure_worker does on start
-    assert gui._worker.max_history_turns == 20 and gui._worker.look_image_size == 1024
-    gui.history_turns.setValue(5)
+    assert gui._worker.history_tokens == 8000 and gui._worker.look_image_size == 1024
+    gui.history_tokens.setValue(5000)
     gui.frame_size.setValue(512)
-    assert gui._worker.max_history_turns == 5 and gui._worker.look_image_size == 512
+    assert gui._worker.history_tokens == 5000 and gui._worker.look_image_size == 512
 
 
 def test_vision_box_defers_to_the_language_model_by_default(monkeypatch):

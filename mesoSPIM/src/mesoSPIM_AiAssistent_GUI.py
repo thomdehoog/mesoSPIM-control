@@ -289,7 +289,7 @@ class AiAssistentGUI(QtWidgets.QWidget):
 
     def _apply_options(self, *_):
         if self._worker is not None:
-            self._worker.max_history_turns = self.history_turns.value()
+            self._worker.history_tokens = self.history_tokens.value()
             self._worker.look_image_size = self.frame_size.value()
 
     def _build_ui(self):
@@ -409,13 +409,13 @@ class AiAssistentGUI(QtWidgets.QWidget):
         cfg = getattr(self.core, "cfg", None)
         start = getattr(cfg, config.TOOLS_CONFIG_KEY, None)
         self.tools_profile.setCurrentText(start if start in config.TOOL_PROFILES else config.DEFAULT_TOOL_PROFILE)
-        self.history_turns = QtWidgets.QSpinBox(preferences)
-        self.history_turns.setRange(1, 200)
-        self.history_turns.setValue(config.MAX_HISTORY_TURNS)
+        self.history_tokens = QtWidgets.QSpinBox(preferences)
+        self.history_tokens.setRange(1000, 1000000)
+        self.history_tokens.setValue(config.HISTORY_TOKENS)
         self.frame_size = QtWidgets.QSpinBox(preferences)
         self.frame_size.setRange(256, 4096)
         self.frame_size.setValue(config.LOOK_IMAGE_SIZE)
-        for widget in (self.tools_profile, self.history_turns, self.frame_size):
+        for widget in (self.tools_profile, self.history_tokens, self.frame_size):
             widget.setFont(font)
 
         def with_unit(spin, unit):
@@ -434,7 +434,7 @@ class AiAssistentGUI(QtWidgets.QWidget):
         options.addWidget(tool_set_label, 0, 0)
         options.addWidget(self.tools_profile, 0, 1)
         options.addWidget(memory_label, 0, 2)
-        options.addLayout(with_unit(self.history_turns, "messages"), 0, 3)   # yours: one per turn
+        options.addLayout(with_unit(self.history_tokens, "tokens"), 0, 3)   # what the older turns may cost
         options.addWidget(image_label, 0, 4)
         options.addLayout(with_unit(self.frame_size, "px"), 0, 5)
         options.setColumnStretch(6, 1)
@@ -465,13 +465,13 @@ class AiAssistentGUI(QtWidgets.QWidget):
             widest(tool_set_label, *(p.type_label for p in pickers)),
             widest(*(p.mode for p in pickers)),                  # "Same as language model" sets it
             widest(memory_label, *(w for p in pickers for w in (p.provider_label, p.base_url_label, p.key_label))),
-            widest(self.history_turns, *(p.provider for p in pickers)),
+            widest(self.history_tokens, *(p.provider for p in pickers)),
         )
         for grid in (options, self.language.grid, self.vision.grid):
             for index, width in enumerate(widths):
                 grid.setColumnMinimumWidth(index, width)
         self.tools_profile.currentTextChanged.connect(self._apply_profile)
-        self.history_turns.valueChanged.connect(self._apply_options)
+        self.history_tokens.valueChanged.connect(self._apply_options)
         self.frame_size.valueChanged.connect(self._apply_options)
         return setup
 

@@ -79,11 +79,13 @@ acquisition row may not carry the ETL settings either (it takes the current ones
 told which commands the set withholds, so a request for one gets "not in this tool set" rather
 than a stand-in command dressed up as the result. The start-up
 choice can be fixed per microscope with the config attribute `ai_assistant_tools` ("Regular" or
-"Full"). TCP and MCP always serve every command; this is the assistant only. **Memory** is how
-many of the operator's messages, with their answers, the model remembers; the newest three stay
-whole, older ones keep a one-line readout (state, position, optics) instead of the full state
-block and have long tool results shortened, so twenty turns of memory cost a fraction of what
-twenty full readouts would. Nothing is lost by it: every turn stays in a session store, and the
+"Full"). TCP and MCP always serve every command; this is the assistant only. **Memory** is a
+token budget for what the model remembers of the conversation: the newest whole turns that fit in
+it, as the model will see them, are kept and older ones dropped (8,000 tokens by default; pick
+what your model's context leaves after the 5,000 or so of the prompt). Within the memory the
+newest three turns stay whole, older ones keep a one-line readout (state, position, optics)
+instead of the full state block and have long tool results shortened, so a turn costs a fraction
+of its full readout and many more fit. Nothing is lost by it: every turn stays in a session store, and the
 assistant has two tools on it, one that returns an earlier turn in full or the turns in which a
 readout value changed, and one that finds earlier turns by words, for "what was the focus before
 I moved it" or "which batch did I say this is". Clear all empties the store. **Downsample image to** is the size of the frame handed to the
@@ -181,7 +183,7 @@ offline, with scripted models.
 Regular), the tool schemas (about 2,700 tokens for 37 tools) and the state block (about 500), so
 roughly 5,000 input tokens before the conversation; a tool call makes it two requests. The row
 schema is spelled out once, in `set_acquisition_list`, and the checks that take rows refer to it.
-That size is what lets a local model with an 8K context keep twenty messages of memory, and what
+That size is what leaves a local model with a 16K context a memory of some 8,000 tokens, and what
 keeps a free-tier per-minute token cap from stalling an evaluation; a test pins it.
 
 **Benchmarking across models, still to do.** One run of one model is a coin flip on the hard

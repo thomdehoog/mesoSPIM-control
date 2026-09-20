@@ -596,6 +596,52 @@ def _turn_starts(messages):
             if type(getattr(message, "parts", [None])[0]).__name__ == "UserPromptPart"]
 
 
+def _part_chars(part):
+    """The characters a message part will cost the model: its text, or its JSON when it is data
+    (tool arguments, a tool result), or the size of binary content such as an image."""
+    content = getattr(part, "content", None)
+    if content is None:
+        content = getattr(part, "args", None)
+    if content is None:
+        return 0
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, (bytes, bytearray)):
+        return len(content)
+    try:
+        return len(json.dumps(content, default=str))
+    except (TypeError, ValueError):
+        return len(str(content))
+
+
+def estimate_tokens(messages):
+    """A token estimate for these messages: characters over TOKEN_CHARS. Close enough for a
+    budget, and provider-independent, which is what the memory box needs."""
+    chars = sum(_part_chars(part) for message in messages for part in (getattr(message, "parts", None) or []))
+    return chars // config.TOKEN_CHARS
+
+
+def budget_history(messages, max_tokens):
+    """The newest whole turns whose estimated cost, as the model will see them (compact_history
+    applied), fits in `max_tokens`. The newest turn is always kept, whatever it costs: the model
+    must see what it just did. A turn starts at an operator prompt, so a tool call is never
+    separated from its result."""
+    starts = _turn_starts(messages)
+    if not starts:
+        return list(messages)
+    compact = compact_history(messages)
+    bounds = starts + [len(messages)]
+    costs = [estimate_tokens(compact[begin:end]) for begin, end in zip(bounds, bounds[1:])]
+    keep = len(costs) - 1
+    total = costs[keep]
+    for index in range(keep - 1, -1, -1):
+        if total + costs[index] > max_tokens:
+            break
+        total += costs[index]
+        keep = index
+    return list(messages[starts[keep]:])
+
+
 def _compact_prompt(text):
     """The operator's message with its readout reduced to the few values later turns may refer to
     ("put it back to what it was"): a stale readout is noise, its optics and position are not."""
@@ -787,7 +833,7 @@ class AssistantWorker(QtCore.QObject):
         self.store = SessionStore()      # every turn in full, for recall_turn and search_history
         self.cancel = threading.Event()
         self.gate = ConfirmationGate(on_ask=self.sig_confirm.emit)
-        self.max_history_turns = config.MAX_HISTORY_TURNS  # the tab sets these
+        self.history_tokens = config.HISTORY_TOKENS        # the tab sets these
         self.look_image_size = config.LOOK_IMAGE_SIZE
         self.trace_folder = None                           # set by the tab: every turn is recorded there
 
@@ -826,7 +872,7 @@ class AssistantWorker(QtCore.QObject):
             # every tool call the first attempt already made.
             result = self._agent.run_sync(with_state(self._acceptor, text, self.store), message_history=self._history)
             self.store.finish(result.new_messages(), result.output)
-            self._history = trim_history(result.all_messages(), self.max_history_turns)
+            self._history = budget_history(result.all_messages(), self.history_tokens)
             self._record(text, result.new_messages(), started, reply=result.output)
             chosen = self._endpoint.model if self._endpoint else None
             others = [name for name in served_models(result.new_messages()) if name != chosen]

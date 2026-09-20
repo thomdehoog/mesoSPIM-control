@@ -14,11 +14,14 @@ the scoreboard as the record.
 | State block of the newest message | ~500 | the readout the model acts on |
 | Fixed cost per request | ~5,500 | was 7,400 before the slimming |
 
-Then the memory: up to twenty operator turns. Before compaction each carried its 500-token
-readout and every tool result in full, so a long session added up to ten thousand tokens of
-stale readouts, more than the system prompt. Now the newest three turns stay whole and older
-ones keep a one-line readout (state, position, optics) and shortened tool results, applied by
-pydantic-ai's `ProcessHistory` before every model request. On the free tiers the per-request
+Then the memory, a token budget (8,000 by default, the tab's Memory box) rather than a message
+count: after each turn the newest whole turns whose estimated cost fits are kept, the rest
+dropped. Before compaction each turn carried its 500-token readout and every tool result in
+full, so a long session added up to ten thousand tokens of stale readouts, more than the system
+prompt. Now the newest three turns stay whole and older ones keep a one-line readout (state,
+position, optics) and shortened tool results, applied by pydantic-ai's `ProcessHistory` before
+every model request, and the budget is measured on that compact form, so it is what the model
+actually receives that is bounded. On the free tiers the per-request
 size is what trips the per-minute token cap; on a local model with an 8K or 32K window it is
 what leaves room for the conversation.
 
@@ -34,6 +37,10 @@ what leaves room for the conversation.
 - **The readout before the operator's words**, so the fixed prefix is followed by the readout
   and the request comes last, which is also what stopped a small model copying the block.
 - **A size guard** in the tests, so the prompt cannot creep back.
+- **Memory budgeted in tokens, not messages.** A message count bounds nothing: twenty short turns
+  and twenty turns with a config dump each are the same count. The budget is an estimate
+  (characters over four, `TOKEN_CHARS`), provider-independent and close to the counters on the
+  text and compact JSON the assistant exchanges; the newest turn is always kept.
 - **A session store with two recall tools.** Every turn is kept in full for the session (the
   operator's words, the readout, the tool calls with results, the reply), so compaction loses
   nothing: `recall_turn` returns an earlier turn in full or the turns in which a readout key

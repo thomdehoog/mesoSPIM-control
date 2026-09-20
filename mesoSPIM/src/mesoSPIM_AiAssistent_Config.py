@@ -91,7 +91,13 @@ POLL_INTERVAL_S = 0.15
 # many characters and an image's base64 is replaced by its size.
 TRACES_FOLDER_CONFIG_KEY = "ai_assistant_traces_folder"
 TRACE_RESULT_CHARS = 2000
-MAX_HISTORY_TURNS = 20  # older turns (and their tool results) are dropped from what the model sees
+# The memory is budgeted in tokens, not messages: the newest whole turns that fit in HISTORY_TOKENS
+# as the model will see them (compacted, below) are kept, the rest dropped. Tokens are estimated
+# as characters over TOKEN_CHARS, which lands near the providers' counters on English text and
+# compact JSON. Eight thousand leaves an 8K-context local model no room and is right for 16K and
+# up; the tab's Memory box sets it per session.
+HISTORY_TOKENS = 8000
+TOKEN_CHARS = 4
 # Within the memory, the newest turns are kept in full; older ones keep a one-line readout instead
 # of the whole state block and have long tool results shortened. Twenty readouts of 500 tokens
 # would otherwise outweigh the system prompt on a small model.

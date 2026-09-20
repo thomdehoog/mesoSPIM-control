@@ -620,28 +620,67 @@ def test_the_agent_compacts_the_history_before_each_model_request():
     assert stored[-2].parts[0].content.startswith("turn 5\n\n<microscope_state>")
 
 
-def test_run_turn_caps_the_history(monkeypatch):
-    monkeypatch.setattr(ai.config, "MAX_HISTORY_TURNS", 1)
+def _text_turn(n, chars):
+    """One operator turn as pydantic-ai messages, whose reply is `chars` long."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+    return [ModelRequest(parts=[UserPromptPart(content=f"turn {n}")]), ModelResponse(parts=[TextPart("r" * chars)])]
+
+
+def test_budget_history_keeps_the_newest_whole_turns_that_fit():
+    pytest.importorskip("pydantic_ai")
+    history = [m for n in range(4) for m in _text_turn(n, 400)]          # about 100 tokens a turn
+    assert ai.budget_history(history, 250) == history[4:]                 # two turns fit, at a turn boundary
+    assert ai.budget_history(history, 10000) == history
+    assert ai.budget_history(history, 1) == history[6:]                   # the newest turn, whatever it costs
+    assert ai.budget_history([], 100) == []
+    assert ai.estimate_tokens(history) == 4 * (len("turn 0") + 400) // ai.config.TOKEN_CHARS
+
+
+def test_budget_history_counts_the_turns_as_the_model_sees_them():
+    """A turn costs what it will cost after compaction: an old readout and a long tool result
+    count small, so a long session keeps more turns than their raw size would allow."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+    state = json.dumps({"state": "idle", "position": {"x": 1.0}, "optics": {"intensity": 10}, "limits": {"x": list(range(300))}})
+
+    def turn(n):
+        return [ModelRequest(parts=[UserPromptPart(content=f"turn {n}\n\n<microscope_state>\n{state}\n</microscope_state>")]),
+                ModelResponse(parts=[ToolCallPart(tool_name="get_config", args={}, tool_call_id=f"c{n}")]),
+                ModelRequest(parts=[ToolReturnPart(tool_name="get_config", content="x" * 4000, tool_call_id=f"c{n}")]),
+                ModelResponse(parts=[TextPart(f"reply {n}")])]
+    history = [m for n in range(10) for m in turn(n)]           # three stay whole, seven go compact
+    raw = ai.estimate_tokens(history)
+    compact = ai.estimate_tokens(ai.compact_history(history))
+    assert compact < raw / 2
+    kept = ai.budget_history(history, compact)
+    assert kept == history                                                # the compact cost is what is budgeted
+    assert len(ai.budget_history(history, compact // 2)) < len(history)
+
+
+def test_run_turn_budgets_the_history(monkeypatch):
+    pytest.importorskip("pydantic_ai")
+    monkeypatch.setattr(ai.config, "HISTORY_TOKENS", 150)
     worker = AssistantWorker(FakeAcceptor())
-    long = [_turn("UserPromptPart"), _turn("TextPart"), _turn("UserPromptPart"), _turn("TextPart")]
+    long = [m for n in range(3) for m in _text_turn(n, 400)]
     result = FakeResult("ok")
     result.all_messages = lambda: long
     monkeypatch.setattr(ai, "build_agent", lambda a, c, **k: FakeAgent([result]))
     worker.run_turn("hi")
-    assert worker._history == long[2:]
+    assert worker._history == long[4:]
     worker.reset()
     assert worker._history == []
 
 
-def test_worker_uses_its_own_history_cap(monkeypatch):
+def test_worker_uses_its_own_history_budget(monkeypatch):
+    pytest.importorskip("pydantic_ai")
     worker = AssistantWorker(FakeAcceptor())
-    worker.max_history_turns = 1
-    long = [_turn("UserPromptPart"), _turn("TextPart"), _turn("UserPromptPart"), _turn("TextPart")]
+    worker.history_tokens = 150
+    long = [m for n in range(3) for m in _text_turn(n, 400)]
     result = FakeResult("ok")
     result.all_messages = lambda: long
     monkeypatch.setattr(ai, "build_agent", lambda a, c, **k: FakeAgent([result]))
     worker.run_turn("hi")
-    assert worker._history == long[2:]
+    assert worker._history == long[4:]
 
 
 def test_a_dedicated_vision_model_reads_the_frame_for_a_text_only_main_model(monkeypatch):
