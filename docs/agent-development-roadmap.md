@@ -1,6 +1,6 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.0, 6 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 1.1, 6 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
 made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
@@ -151,6 +151,24 @@ blocks; if a basic workflow only works with a skill, the gap is fixed in the blo
   same building blocks, so flexibility stays. Skills load on demand, so the prompt stays small.
 - [ ] **G2. Cases per skill** in the same test matrix as everything else.
 
+## Phase H: what should be code, after the skills
+
+The last step: with the workflows and skills in use, decide which functions should become Python or
+analysis routines instead of model steps or skills. A routine is promoted only with evidence from the
+test matrix that a model loop or a skill is too slow, too imprecise or too costly for that job.
+
+- [ ] **H1. Review the measurements and the skills for candidates.** A function belongs in code when it
+  needs:
+  - **precision:** image registration, PSF or bead fitting, focus-curve fitting;
+  - **speed or frequency:** a loop every few seconds, such as closed-loop focus during a long time
+    lapse, which is too slow and too expensive as model steps;
+  - **determinism and an audit trail:** results that must be identical every run and traceable, such
+    as a calibration later measurements depend on;
+  - **heavy computation:** projections, statistics over many frames, analysis of saved data.
+- [ ] **H2. Build each promoted function as a measuring block,** for example `register_frames` or
+  `measure_psf`: it returns numbers, and the model still decides when to use it and what to do with the
+  result. Each one gets cases in the test matrix; a skill that it replaces is retired.
+
 ## Order and dependencies
 
 | Item | Effort | Builds on |
@@ -175,6 +193,7 @@ blocks; if a basic workflow only works with a skill, the gap is fixed in the blo
 | F2 `wait` over TCP and MCP | half a day | D2, Nikita |
 | F3 Model for long requests | 2 hours | B5 |
 | G Skills | per skill, half a day | A to E |
+| H What should be code | review half a day; per routine 1 to 2 days | G |
 
 Phases A to E: about ten days. B2 needs the microscope and can run in parallel with A. D can run in
 parallel with C. Each phase is one pull request, measured against the baseline before it is sent.
@@ -208,6 +227,9 @@ model" is a scripted stand-in that replays a fixed sequence of tool calls.
 
 - **1.0, 6 October 2026.** First version, after the 1.27 release candidate. Built from a review of the
   1.27 code; phases A to G; validation in three environments, each without and with the model.
+
+- **1.1, 6 October 2026.** Phase H added: after the skills, decide which functions should become
+  Python or analysis routines, by evidence, and build them as measuring blocks.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 itself changes, raise the version and add a line here saying what changed and why.
