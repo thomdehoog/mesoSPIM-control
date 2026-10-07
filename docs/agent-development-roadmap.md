@@ -133,7 +133,8 @@ No change in behaviour; everything after depends on it.
   in the readout. One request class with one explicit state; one pending continuation at a time; a
   continuation limit per request. The window shows the open request with its turns and tokens and a
   Cancel of its own; Stop microscope, Cancel, Disconnect and Clear context end it. *Done 7 October
-  2026 (969924a).*
+  2026 (969924a, f7f9387). Phases C and D on flash-lite: 26 of 54 smoke and 91 of 180 generated
+  cases (before: 21 and 68); centring 6/6 and 17/20, every focusing-dependent group still 0.*
 - [x] **D3. The plan** is text: a checklist the model writes in its reply, which the tab renders and
   keeps for the request. No tool, three lines in the manual. *Done 7 October 2026 (969924a); the
   readout of the request's later turns carries the plan back.*

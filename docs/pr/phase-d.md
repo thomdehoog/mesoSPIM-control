@@ -1,6 +1,6 @@
 # AI Assistant: requests, wait as a continuation, and the plan
 
-Branch `agent/d-pr`, on top of `agent/c-pr`. One commit: `ai_assistant/` (a new `requests.py`,
+Branch `agent/d-pr`, on top of `agent/c-pr`. Two commits: `ai_assistant/` (a new `requests.py`,
 `assistant.py`, `config.py`, `gui.py`, `manual.md`).
 
 ## Summary
@@ -11,7 +11,7 @@ Branch `agent/d-pr`, on top of `agent/c-pr`. One commit: `ai_assistant/` (a new 
   a continuation therefore waits for Run. Light changes are counted per request over ten minutes.
 - **`wait`.** `wait(until="done"|"idle"|seconds)` ends the turn. The request continues when the
   condition holds, in a turn that starts with the result. One wait can be pending at a time, at most
-  30 per request.
+  30 per request, and a turn that waits cannot wait again.
 - **The request line.** The window shows the open request, with its turns, tokens, wait and plan,
   and a Cancel of its own. Stop microscope, Cancel, Disconnect and Clear context end it.
 - **The plan.** A checklist in a reply becomes the request's plan; the request's later turns get it
@@ -28,12 +28,14 @@ Branch `agent/d-pr`, on top of `agent/c-pr`. One commit: `ai_assistant/` (a new 
   through the real worker.
 - **Please check.** The request line and its Cancel on Windows, in demo mode and on the instrument.
 
-## Results so far, phases C and D together, flash-lite
+## Results, phases C and D together, flash-lite
 
 | Set | Before C and D | After |
 |---|---|---|
-| Smoke cases | 21 of 54 | 25 of 54 |
-| Generated cases | 68 of 180 | to follow |
+| Smoke cases | 21 of 54 | 26 of 54 |
+| Generated cases | 68 of 180 | 91 of 180 |
+
+Centring went from 0 to 6 of 6 smoke and 17 of 20 generated cases.
 
 Focusing does not improve: the model takes one focus step and stops. That is recorded as evidence
 for phase H, not fixed here.

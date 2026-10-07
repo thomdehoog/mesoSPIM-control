@@ -86,6 +86,16 @@ def test_a_turn_that_waits_may_not_touch_the_instrument_again():
     assert results(trace, "snap")[0]["error"]["code"] == "refused" and "asked to wait" in results(trace, "snap")[0]["error"]["message"]
 
 
+def test_a_turn_that_waits_cannot_wait_again():
+    """flash-lite went look, wait, look, wait in one turn until the request limit stopped it; the
+    second wait is refused with what to do instead."""
+    requests = Requests(lambda: 0.0)
+    requests.typed("go")
+    requests.wait("30")
+    with pytest.raises(ValueError, match="already waits: end it now"):
+        requests.wait("30")
+
+
 def test_nothing_started_is_nothing_to_wait_for_and_one_wait_at_a_time():
     requests = Requests(lambda: 0.0)
     requests.typed("go")
