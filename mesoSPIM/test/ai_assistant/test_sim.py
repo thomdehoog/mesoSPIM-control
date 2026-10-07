@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from mesoSPIM.src.remote_control.frame import frame_stats
+from mesoSPIM.test.ai_assistant.evals import focus_check
 from mesoSPIM.test.ai_assistant.evals import harness
 from mesoSPIM.test.ai_assistant.evals.sim import START, SampleInstrument
 from mesoSPIM.test.ai_assistant.test_evals import SCRIPTED, scripted
@@ -115,6 +116,34 @@ def test_a_case_on_the_simulator_fires_its_schedules_and_scores_the_outcome():
     assert trace["truth"]["elapsed_s"] >= 190 and trace["truth"]["off_centre_um"] == 300.0
     assert harness.score(case, trace) == ["off_centre_um is 300.0, expected at most 100"]
     assert harness.check_cases([case]) == []
+
+
+@pytest.mark.parametrize("light", [
+    {}, {"intensity": 2}, {"intensity": 100, "camera_exposure_time": 0.2}, {"zoom": "2x"}, {"hot_pixel": True}])
+def test_the_focus_measure_peaks_clearly_at_the_sharp_frame(light):
+    """B3 on simulated focus series across +-300 um: dim, saturated, zoomed in, with a hot pixel."""
+    core = instrument(f=1000.0)
+    hot = light.pop("hot_pixel", False)
+    for key, value in light.items():
+        core.state[key] = value
+    frames = {}
+    for f in range(700, 1301, 20):
+        core.state["position"]["f_pos"] = float(f)
+        frames[f] = core.render()
+        if hot:
+            frames[f][17, 33] = 65535
+    report = focus_check.check_series(frames, sharp=1000)
+    assert report["clear"] and report["falls_both_sides"] and report["peak_off_sharp_um"] <= 40, report
+
+
+def test_the_focus_check_reads_a_recorded_series_from_a_folder(tmp_path):
+    import tifffile
+    core = instrument(f=0.0)
+    for f in (-300, -100, 0, 100, 300):
+        core.state["position"]["f_pos"] = float(f)
+        tifffile.imwrite(tmp_path / f"f_{f}.tif", core.render())
+    assert sorted(focus_check.load_series(tmp_path)) == [-300, -100, 0, 100, 300]
+    assert focus_check.main([str(tmp_path), "--sharp", "0"]) == 0
 
 
 def test_the_clock_starts_on_a_fixed_morning():

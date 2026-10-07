@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from mesoSPIM.src.remote_control import dispatcher as dispatcher
-from mesoSPIM.src.remote_control.frame import bin_frame, describe_frame, downsample, focus_measure, frame_stats
+from mesoSPIM.src.remote_control.frame import bin_frame, describe_frame, focus_measure, frame_stats
 from mesoSPIM.test.remote_control.support.fakes import RecordingCore
 
 
@@ -34,11 +34,27 @@ def test_flat_frame_has_no_centroid_and_zero_focus():
     assert stats["focus_measure"] == 0.0 and stats["saturated_fraction"] == 0.0
 
 
+def _spots(blur, light=1.0, seed=0):
+    """Spots a few pixels wide on a background, blurred by `blur` pixels, with shot noise."""
+    rng = np.random.default_rng(seed)
+    rows, cols = np.mgrid[0:256, 0:256]
+    frame = np.full((256, 256), 100.0)
+    for r, c in rng.uniform(40, 216, (40, 2)):
+        sigma = np.hypot(3.0, blur)
+        frame += light * 6000 * (3.0 / sigma) ** 2 * np.exp(-((rows - r) ** 2 + (cols - c) ** 2) / (2 * sigma ** 2))
+    return frame + rng.normal(0, 1, frame.shape) * np.sqrt(frame)
+
+
 def test_focus_measure_prefers_the_sharper_image():
-    rng = np.random.default_rng(0)
-    sharp = rng.integers(0, 4000, (200, 200)).astype(np.float32)
-    blurred = np.kron(downsample(sharp, 100), np.ones((2, 2), dtype=np.float32))   # block mean = blur
-    assert focus_measure(sharp) > focus_measure(blurred)
+    sharp, blurred = focus_measure(_spots(0)), focus_measure(_spots(8))
+    assert sharp > 10 * blurred
+    assert focus_measure(_spots(16, light=0.05)) < blurred           # a dim, blurred frame is not read as sharp
+    assert focus_measure(_spots(0, light=4)) == pytest.approx(sharp, rel=0.15)   # brightness does not change it
+    hot = _spots(8)
+    hot[17, 33] = 65535
+    assert focus_measure(hot) == pytest.approx(blurred, rel=0.15)    # nor does a hot pixel
+    noise_only = np.random.default_rng(1).normal(100, 10, (256, 256))
+    assert focus_measure(noise_only) < 0.1 * blurred                 # pixel-to-pixel noise is not detail
 
 
 def test_png_is_bounded_and_stretched():
