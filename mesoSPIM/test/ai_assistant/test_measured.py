@@ -68,6 +68,18 @@ def test_a_wrong_calibration_sign_stops_at_the_second_move(tmp_path):
     assert refused(call(tools, "move_relative", deltas=second))
 
 
+def test_one_wrong_axis_is_stopped_even_while_the_other_converges(tmp_path):
+    """Only y is set wrong. The first move centres x and doubles y's offset: the whole offset is
+    smaller, but y's is larger, so the next measured move waits (flash-lite made two such moves
+    before this check looked at each direction)."""
+    core = instrument({"y": "down"}, x=-585.0, y=158.0)
+    _, _, tools = guarded(core, tmp_path)
+    first = call(tools, "look", question="?")["kept"]["centre_move_um"]
+    assert "error" not in call(tools, "move_relative", deltas=first)
+    second = call(tools, "look", question="?")["kept"]["centre_move_um"]
+    assert refused(call(tools, "move_relative", deltas=second))
+
+
 @pytest.mark.parametrize("scale, axis_swap", [(1.5, False), (1.0, True)])
 def test_a_move_off_the_measurement_waits_for_run(tmp_path, scale, axis_swap):
     core = instrument(x=-400.0, y=250.0)

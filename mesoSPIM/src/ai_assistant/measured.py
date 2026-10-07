@@ -5,8 +5,9 @@ code's own measurement passes without it, within bounds, when the measurement is
 newest frame was taken after the last move or setting, and code could measure from it.
 
 - A move on x and y within MEASURED_TOLERANCE of the frame's centre_move_um and at most one field
-  of view, and each next measured offset smaller than the last: a move that makes it worse (a
-  wrong calibration sign) stops the next one.
+  of view, and each next measured offset smaller than the last, in neither image direction larger
+  (beyond MEASURED_SLACK_UM): a move that makes it worse on any axis (a wrong calibration sign)
+  stops the next one, even while the other axis converges.
 - A focus move to the map's best focus, or a search step of at most MEASURED_FOCUS_STEP_UM within
   MEASURED_FOCUS_RANGE_UM of where the request started.
 - An intensity or exposure within a factor of MEASURED_LIGHT_FACTOR of the frame's.
@@ -64,7 +65,7 @@ class MeasuredValues:
             self.moves += 1
             offset = frame["measures"].get("offset_um")
             if offset:
-                self.last_offset = math.hypot(offset["right"], offset["up"])
+                self.last_offset = (abs(offset["right"]), abs(offset["up"]))
 
     def _move(self, name, values, frame):
         if self.moves >= config.MEASURED_MOVES_MAX or not set(values) <= {"x", "y", "f"} or not values:
@@ -85,8 +86,11 @@ class MeasuredValues:
             return False
         if math.hypot(dx, dy) > field[0]:
             return False
-        now = math.hypot(offset["right"], offset["up"])
-        return self.last_offset is None or now < self.last_offset          # each next offset smaller
+        if self.last_offset is None:
+            return True
+        now = (abs(offset["right"]), abs(offset["up"]))                    # each next offset smaller,
+        return (math.hypot(*now) < math.hypot(*self.last_offset)           # and no direction worse
+                and all(a <= b + config.MEASURED_SLACK_UM for a, b in zip(now, self.last_offset)))
 
     def _focusing(self, target, step):
         groups = (sample_map(self.history) or {}).get("groups") or []

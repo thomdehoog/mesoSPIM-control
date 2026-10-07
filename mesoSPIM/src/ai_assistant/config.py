@@ -247,6 +247,7 @@ REQUEST_INTERVAL_CONFIG_KEY = "ai_assistant_request_interval_s"
 # attribute named here to True, after a check on the instrument with an operator present.
 MEASURED_VALUES_CONFIG_KEY = "ai_assistant_measured_values"
 MEASURED_TOLERANCE = 0.2
+MEASURED_SLACK_UM = 5.0     # how much one image direction's offset may grow while the whole shrinks
 MEASURED_MOVES_MAX = 8
 MEASURED_FOCUS_STEP_UM = 100
 MEASURED_FOCUS_RANGE_UM = 300

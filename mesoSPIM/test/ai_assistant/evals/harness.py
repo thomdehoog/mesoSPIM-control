@@ -11,7 +11,9 @@ A case:
      "setup": {"state": "live", "timelapse_active": true, "schedules": [...], "frames": [one per turn],
                "axes": {"x": "left"}, ...}, "answer": true|false (the Run / Cancel
      answer), "expect": {...}}
-Setup keys are state keys of the simulated instrument (state, intensity, snap_folder, ...);
+"true_axes" (with a sample) is how the stage really moves the sample when "axes", what the
+assistant is told, is wrong; "measured" switches on measured values (E1). Setup keys are state
+keys of the simulated instrument (state, intensity, snap_folder, ...);
 timelapse_active is the Core attribute a GUI time lapse sets; frame chooses a synthetic camera
 frame ("spots", "ring") whose content only a model that looks at the picture can report. A case
 with "memory": n keeps only the last n turns in the model's history, so what it needs from
@@ -376,7 +378,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     axes = dict(ai.config.DEFAULT_AXES, **(setup.get("axes") or {}))
     if "sample" in setup:                             # the simulator over time (sim.py)
         from mesoSPIM.test.ai_assistant.evals.sim import SampleInstrument
-        core = SampleInstrument(axes)
+        core = SampleInstrument(dict(axes, **(setup.get("true_axes") or {})))   # a wrong coordinate system
     else:
         core = SimulatedInstrument()
     scheduler = ai.Scheduler(clock=getattr(core, "clock", time.time))
@@ -393,7 +395,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
         elif key == "schedules":                      # already set when the case starts
             for item in value:
                 scheduler.add(**item)
-        elif key in ("axes", "sample", "run_for_s", "measured"):
+        elif key in ("axes", "true_axes", "sample", "run_for_s", "measured"):
             pass                                      # read below
         elif key == "position":
             core.state["position"].update(value)
