@@ -1,6 +1,6 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.4, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 1.5, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
 made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
@@ -150,6 +150,13 @@ No change in behaviour; everything after depends on it.
   Measured moves are capped per request. Behind a setting, off until checked on the microscope with an
   operator present. Safety tests on both sides, including a stale frame and a wrong calibration sign.
   Adds at most a paragraph to the manual.
+  *Built offline in the fork, 7 October 2026 (agent/e, ac8c28f and ed494e6), off by default
+  (`ai_assistant_measured_values` in the microscope config). The paragraph goes into the prompt only
+  when it is on, not into the manual. Convergence is checked per image direction: a move that makes
+  either worse stops the next one. On 18 unattended cases on flash-lite, with an operator who cancels
+  every question: centring 6 of 6 with no question asked, a wrong coordinate system 6 of 6 with the
+  sample kept near where it was, acquisition 0 of 6 (focus). The box stays open until the microscope
+  cells pass with an operator present.*
 
 ## Set aside: only if needed
 
@@ -185,7 +192,9 @@ determinism and an audit trail (a calibration later measurements depend on), or 
   and stops; no focusing, acquisition-with-checks or time-lapse case ends in focus, with or without
   C and D (precision, and in a time lapse speed and determinism). A first take on a `focus_sweep`
   block is parked on agent/h. Also: conditional requests ("if nothing is visible, stop; otherwise
-  run") are run regardless, with the condition read correctly.*
+  run") are run regardless, with the condition read correctly. From the E1 runs: with a wrong
+  coordinate system the model negates `centre_move_um` instead of moving by it, and it reports
+  success after its moves were refused.*
 - [ ] **H2. Build each promoted function as a measuring block,** such as `register_frames`: it returns
   numbers, the model decides. Cases in the matrix; a skill it replaces is retired.
 
@@ -264,6 +273,10 @@ environment, so both columns test the same thing and no scripts are written by h
 - **1.4, 7 October 2026.** Phase F taken out of the plan and listed as set aside, only if needed:
   none of it is needed for multi-step requests, three items would change Nikita's code, and B5
   showed a stronger model does not help. The letters G and H stay.
+
+- **1.5, 7 October 2026.** E1 built offline, off by default: the convergence check looks at each
+  image direction, after a run with one axis set wrong made two wrong moves. H1 gets two findings
+  from the unattended runs.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 changes, raise the version and add a line here saying what changed and why.
