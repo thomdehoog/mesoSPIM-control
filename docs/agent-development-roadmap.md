@@ -1,6 +1,6 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.2, 6 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 1.3, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
 made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
@@ -67,57 +67,75 @@ No change in behaviour; everything after depends on it.
 
 ## Phase B: measurement, partly at the microscope
 
-- [ ] **B1. A simulator that behaves over time:** focus follows the stage, the sample's place follows
+- [x] **B1. A simulator that behaves over time:** focus follows the stage, the sample's place follows
   x and y, brightness follows intensity and exposure with saturation, acquisitions progress on the
-  clock from A2, and drift and bleaching can be switched on per case.
+  clock from A2, and drift and bleaching can be switched on per case. *Done 7 October 2026 (2af6e36,
+  4e1c932); cases are scored on its truth.*
 - [ ] **B2. Recorded real frames:** a focus series (about 30 frames across ±300 µm) and an x/y grid
-  over a few real samples, served by the simulator by position.
+  over a few real samples, served by the simulator by position. *Needs the microscope.*
 - [ ] **B3. Check the focus measure** on the recorded series: it must peak clearly at the sharp
-  frame. If not, fix it here (a percentile range instead of min-max, a binned sample).
-- [ ] **B4. Multi-step cases from templates with seeds,** scored on outcomes: about 50 hand-written
+  frame. If not, fix it here (a percentile range instead of min-max, a binned sample). *On the
+  simulator the old measure read highest far from focus; fixed 7 October 2026 (5d342f5, 4e1c932):
+  the Laplacian's energy over the squared signal, noise taken off, peaking 58 to 472 times above the
+  frames 100 um away. The check on the recorded series (evals/focus_check.py) waits for B2.*
+- [x] **B4. Multi-step cases from templates with seeds,** scored on outcomes: about 50 hand-written
   smoke cases, and 150 to 200 generated ones (15 to 25 per group) before each pull request. Groups:
   centring, focusing, exposure, live tuning, acquisition with checks, time lapses by schedule with
-  drift, recovery from refusals, vague requests, requests that must stop partway.
-- [ ] **B5. Baseline and a strong-model check:** GLM 5.3 Flash through Baseten for routine runs, one
-  strong model once. If the strong model already solves most cases, F4 moves forward.
+  drift, recovery from refusals, vague requests, requests that must stop partway. *Done 7 October
+  2026 (f60fbb5): 54 smoke and 180 generated cases, in the replay suite.*
+- [x] **B5. Baseline and a strong-model check:** GLM 5.3 Flash through Baseten for routine runs, one
+  strong model once. If the strong model already solves most cases, F4 moves forward. *Done 7
+  October 2026 (21ded41) on gemini-3.5-flash-lite (GLM is not reachable from the cloud session):
+  21 of 54 smoke and 68 of 180 generated cases. gemini-3.1-pro-preview on the smoke set: 26 of 54.
+  Both fail every centring, acquisition-with-checks and time-lapse case, so the gap is the tools,
+  not the model: F4 stays where it is.*
 
 ## Phase C: feedback the model can build on
 
-- [ ] **C1. The frame history.** Frames from looks, snaps and live are kept as small copies (bin 4 or
+- [x] **C1. The frame history.** Frames from looks, snaps and live are kept as small copies (bin 4 or
   8, 16-bit, capped by bytes, about 100 frames) in the session store, numbered, with time, source,
   position, settings and an optional label (`look(label="before")`). Per frame, code adds brightness,
   saturation, focus measure, centroid, and the offset from centre in pixels and in micrometres from
   the nominal scale (pixel size, binning, the axes box), marked uncalibrated until C4.
-- [ ] **C2. `look` over chosen frames:** `frames=3`, `frames=[1, 7]`, `frames="3-10"`, at most about
-  16; `snap=false` reuses recorded frames, so the model decides per look what must be fresh. The
+  *Done 7 October 2026 (d0366d7).*
+- [x] **C2. `look` over chosen frames:** `frames="last 3"`, `frames="1,7"`, `frames="3-10"`, at most
+  about 16; `snap=false` reuses recorded frames, so the model decides per look what must be fresh. The
   result adds drift against the first frame shown and the change against the previous one. The
   readout gives the count, the labels and the last three. The eyes keep their text memory and stop
-  carrying images.
-- [ ] **C3. The map, derived from the frames.** No store of its own: one readout line computed from
+  carrying images. *Done 7 October 2026 (d0366d7). A count is "last 3": one string argument cannot
+  tell a count from a frame number.*
+- [x] **C3. The map, derived from the frames.** No store of its own: one readout line computed from
   the frame history, grouped by zoom and light settings, with the sample's position in stage
   coordinates, the best focus from the focus curve with its uncertainty, good settings, labelled
   positions and the age of each. Frames flagged by code's checks are left out and named. Scored
   against the simulator's truth before any model uses it.
-- [ ] **C4. `calibrate`:** moves a known small step, measures the image shift, and stores scale and
+  *Done 7 October 2026 (d0366d7): on the simulator the best focus within 20 um and the sample
+  within 50 um of the truth.*
+- [x] **C4. `calibrate`:** moves a known small step, measures the image shift, and stores scale and
   direction per zoom in the microscope's config directory. In `CONFIRM_FIRST`, so one Run covers the
   block. C1 and C3 switch to the calibrated scale once present.
+  *Done 7 October 2026 (d0366d7, d35d222): the file is git-ignored.*
 
 ## Phase D: long tasks
 
-- [ ] **D1. The request.** Store entries carry a request id and whether their text was typed by the
+- [x] **D1. The request.** Store entries carry a request id and whether their text was typed by the
   operator or written by the machine (a schedule instruction, a continuation result). The guard reads
   typed text only, keeps the request's first prompt as its reference, and keeps its memory for the
   request. Budgets per request and time window: light changes per ten minutes, measured moves per
   request. Safety test: a number in a schedule instruction or a continuation never counts as given.
-- [ ] **D2. `wait` as a continuation.** `wait(until, max_s)` with `until` "done", "idle" or seconds.
+  *Done 7 October 2026 (969924a). Light changes are counted per request over ten minutes, so a new
+  typed request starts afresh; the budget of measured moves comes with E1, which makes them.*
+- [x] **D2. `wait` as a continuation.** `wait(until, max_s)` with `until` "done", "idle" or seconds.
   "Done": the operation this request started last is finished or released, core state is not
   acquiring and no time lapse is active; with nothing started it returns at once. The wait ends the
   turn; the tab starts a follow-up turn of the same request when the condition is met, with the result
   in the readout. One request class with one explicit state; one pending continuation at a time; a
   continuation limit per request. The window shows the open request with its turns and tokens and a
-  Cancel of its own; Stop microscope, Cancel, Disconnect and Clear context end it.
-- [ ] **D3. The plan** is text: a checklist the model writes in its reply, which the tab renders and
-  keeps for the request. No tool, three lines in the manual.
+  Cancel of its own; Stop microscope, Cancel, Disconnect and Clear context end it. *Done 7 October
+  2026 (969924a).*
+- [x] **D3. The plan** is text: a checklist the model writes in its reply, which the tab renders and
+  keeps for the request. No tool, three lines in the manual. *Done 7 October 2026 (969924a); the
+  readout of the request's later turns carries the plan back.*
 
 ## Phase E: autonomy within bounds, with a session at the microscope
 
@@ -157,6 +175,11 @@ that it needs precision (registration, PSF fitting, curve fitting), speed (a loo
 determinism and an audit trail (a calibration later measurements depend on), or heavy computation.
 
 - [ ] **H1. Review the measurements and the skills for candidates** against those four criteria.
+  *First evidence, from the runs of 7 October 2026: focusing. Flash-lite steps f once, sees "better"
+  and stops; no focusing, acquisition-with-checks or time-lapse case ends in focus, with or without
+  C and D (precision, and in a time lapse speed and determinism). A first take on a `focus_sweep`
+  block is parked on agent/h. Also: conditional requests ("if nothing is visible, stop; otherwise
+  run") are run regardless, with the condition read correctly.*
 - [ ] **H2. Build each promoted function as a measuring block,** such as `register_frames`: it returns
   numbers, the model decides. Cases in the matrix; a skill it replaces is retired.
 
@@ -228,6 +251,13 @@ environment, so both columns test the same thing and no scripts are written by h
   `changed` on setters plus changed state keys, accepted on measured tokens. `calibrate` joins
   `CONFIRM_FIRST`; C1 uses a nominal scale until C4. Duplicated text removed; efforts live in the table
   only; A to E re-estimated at fifteen days.
+
+- **1.3, 7 October 2026.** After phases A to D in the fork. B5 ran on gemini-3.5-flash-lite, the
+  strong-model check on gemini-3.1-pro-preview: the strong model fails the same groups, so F4 stays.
+  C2's count is written "last 3". D1's light budget is per request over ten minutes; the budget of
+  measured moves moves to E1. The prompt-size test no longer caps the prompt: first make the agent
+  work on cloud models, then scale down to local ones. H1 has its first evidence (focusing,
+  conditional requests); routines wait for H, failures before it are recorded, not fixed.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 changes, raise the version and add a line here saying what changed and why.
