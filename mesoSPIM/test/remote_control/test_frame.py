@@ -46,15 +46,15 @@ def _spots(blur, light=1.0, seed=0):
 
 
 def test_focus_measure_prefers_the_sharper_image():
-    sharp, blurred = focus_measure(_spots(0)), focus_measure(_spots(8))
-    assert sharp > 10 * blurred
-    assert focus_measure(_spots(16, light=0.05)) < blurred           # a dim, blurred frame is not read as sharp
-    assert focus_measure(_spots(0, light=4)) == pytest.approx(sharp, rel=0.15)   # brightness does not change it
-    hot = _spots(8)
+    measures = [focus_measure(_spots(blur)) for blur in (0, 1, 2, 3, 4, 6)]
+    assert measures == sorted(measures, reverse=True) and measures[0] > 5 * measures[3]
+    assert focus_measure(_spots(6, light=0.05)) <= measures[5]        # a dim, blurred frame is not read as sharp
+    assert focus_measure(_spots(0, light=4)) == pytest.approx(measures[0], rel=0.15)   # brightness does not change it
+    hot = _spots(3)
     hot[17, 33] = 65535
-    assert focus_measure(hot) == pytest.approx(blurred, rel=0.15)    # nor does a hot pixel
+    assert focus_measure(hot) == pytest.approx(measures[3], rel=0.15)                 # nor does a hot pixel
     noise_only = np.random.default_rng(1).normal(100, 10, (256, 256))
-    assert focus_measure(noise_only) < 0.1 * blurred                 # pixel-to-pixel noise is not detail
+    assert focus_measure(noise_only) < 0.1 * measures[3]              # pixel-to-pixel noise is not detail
 
 
 def test_png_is_bounded_and_stretched():

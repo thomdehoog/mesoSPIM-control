@@ -124,8 +124,9 @@ def test_the_focus_measure_peaks_clearly_at_the_sharp_frame(light):
     """B3 on simulated focus series across +-300 um: dim, saturated, zoomed in, with a hot pixel."""
     core = instrument(f=1000.0)
     hot = light.pop("hot_pixel", False)
-    for key, value in light.items():
-        core.state[key] = value
+    if "zoom" in light:
+        core.set_zoom(light.pop("zoom"))
+    core.state.set_parameters(light)
     frames = {}
     for f in range(700, 1301, 20):
         core.state["position"]["f_pos"] = float(f)

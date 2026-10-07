@@ -64,19 +64,22 @@ def frame_stats(frame):
 
 
 def focus_measure(frame):
-    """Gradient energy over the squared signal: higher is sharper, and the same at any intensity or
-    exposure. The brightest 0.1% is clipped and the frame binned to about _FOCUS_SIDE pixels, so a
-    hot pixel or a saturated patch does not decide it; the camera noise's share of the gradient,
-    estimated from the pixel-to-pixel differences, is taken off, so a dim frame far from focus does
-    not read sharp. Only comparable between frames of the same scene at the same zoom, which is
-    what a focus search does."""
+    """Laplacian energy over the squared signal: higher is sharper, and the same at any intensity
+    or exposure. The second derivative answers to detail, not to a smooth body or a gradient in the
+    background. The brightest 0.1% is clipped and the frame binned to about _FOCUS_SIDE pixels, so a
+    hot pixel or a saturated patch does not decide it; the camera noise's share, estimated from the
+    pixel-to-pixel differences, is taken off, so a dim frame far from focus does not read sharp.
+    Only comparable between frames of the same scene at the same zoom, which is what a focus search
+    does."""
     frame = np.minimum(frame, np.percentile(_sample(frame), 99.9))
     binned = bin_frame(frame, max(2, int(np.ceil(max(frame.shape) / _FOCUS_SIDE))))
     if binned.shape[0] < 3 or binned.shape[1] < 3:
         return 0.0
-    across, down = np.diff(binned, axis=1)[:-1, :], np.diff(binned, axis=0)[:, :-1]
-    noise = 1.4826 * float(np.median(np.abs(across - np.median(across))))
-    energy = float(np.mean(across ** 2 + down ** 2)) - 2 * noise ** 2
+    laplacian = (binned[:-2, 1:-1] + binned[2:, 1:-1] + binned[1:-1, :-2] + binned[1:-1, 2:]
+                 - 4 * binned[1:-1, 1:-1])
+    across = np.diff(binned, axis=1)
+    noise = 1.4826 * float(np.median(np.abs(across - np.median(across)))) / np.sqrt(2)   # one pixel's noise
+    energy = float(np.mean(laplacian ** 2)) - 20 * noise ** 2                         # a Laplacian of noise: 20 times
     signal = float(np.mean(np.clip(binned - np.percentile(binned, 10), 0, None)))
     return max(energy, 0.0) / signal ** 2 if signal > 0 else 0.0
 

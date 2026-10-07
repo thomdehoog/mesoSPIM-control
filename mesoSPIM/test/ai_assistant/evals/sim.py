@@ -37,6 +37,7 @@ REFERENCE_EXPOSURE_S = 0.02
 DEFAULT_EXPOSURE_S = 0.02
 FOCUS_BLUR = 0.1                      # um of blur per um of defocus
 DEPTH_UM = 500.0                      # the sample's extent in z, as a Gaussian width
+BODY_WEIGHT = 0.3                     # the diffuse body under the spots, relative to a spot
 POLL_S = 1.0                          # a poll of a running operation
 STAGE_SPEED_UM_S = 5000.0
 PLANE_OVERHEAD_S = 0.01
@@ -57,7 +58,8 @@ class SimClock:
 
 
 class Sample:
-    """Spots in a disc, fixed by the seed, around a place in stage coordinates."""
+    """Spots in a disc, fixed by the seed, on a diffuse body of BODY_WEIGHT, around a place in
+    stage coordinates."""
 
     def __init__(self, spec, position):
         self.x = float(spec.get("x", position["x_pos"]))
@@ -87,6 +89,8 @@ class SampleInstrument(harness.SimulatedInstrument):
 
     def __init__(self, axes=None, frame_seed=0):
         super().__init__()
+        self.state.set_parameters({"camera_exposure_time": DEFAULT_EXPOSURE_S, "camera_binning": "1x1",
+                                   "pixelsize": self.cfg.pixelsize[self.state["zoom"]]})   # production's defaults
         self.clock = SimClock()
         self.sample = None                    # placed once the case has set the position
         self.axes = dict(harness.ai.config.DEFAULT_AXES, **(axes or {}))
@@ -140,14 +144,10 @@ class SampleInstrument(harness.SimulatedInstrument):
 
     # --- the picture ---
     def _exposure(self):
-        try:
-            return float(self.state["camera_exposure_time"])
-        except KeyError:
-            return DEFAULT_EXPOSURE_S
+        return float(self.state["camera_exposure_time"])
 
     def um_per_pixel(self):
-        pixel_um = self.cfg.pixelsize.get(self.state["zoom"], 1.0)
-        return self.cfg.camera_parameters["x_pixels"] * pixel_um / COLS
+        return self.cfg.camera_parameters["x_pixels"] * float(self.state["pixelsize"]) / COLS
 
     def offset_um(self):
         """Where the sample's centre is in the image, in um right of and above the centre."""
@@ -171,7 +171,8 @@ class SampleInstrument(harness.SimulatedInstrument):
         blur_px = FOCUS_BLUR * abs(self.focus_error_um()) / scale
         rows, cols = np.mgrid[0:ROWS, 0:COLS]
         frame = np.full((ROWS, COLS), BACKGROUND, dtype=np.float64)
-        for dx, dy, size_um, weight in self.sample.spots:
+        body = np.array([[0.0, 0.0, self.sample.radius_um / 2, BODY_WEIGHT]])
+        for dx, dy, size_um, weight in np.concatenate([body, self.sample.spots]):
             col = COLS / 2 + (right + dx) / scale
             row = ROWS / 2 - (up + dy) / scale
             sigma = math.hypot(size_um / scale, blur_px)
@@ -191,9 +192,13 @@ class SampleInstrument(harness.SimulatedInstrument):
         return {"off_centre_um": round(math.hypot(right, up), 1), "offset_um": [round(right, 1), round(up, 1)],
                 "focus_error_um": round(self.focus_error_um(), 1),
                 "saturated_fraction": round(float(np.mean(frame >= FULL_SCALE)), 4),
-                "peak_fraction": round(float(np.percentile(frame, 99.9)) / FULL_SCALE, 3),
+                "peak_fraction": round(float(frame.max()) / FULL_SCALE, 3),    # the manual's rule: below 0.1 is dim
                 "bleached": round(1.0 - math.exp(-self.sample.bleach * self.dose), 3),
                 "elapsed_s": round(self.elapsed(), 1)}
+
+    def set_zoom(self, value, *args, **kwargs):
+        super().set_zoom(value, *args, **kwargs)
+        self.state["pixelsize"] = self.cfg.pixelsize[value]             # as production's serial worker does
 
     # --- what takes time ---
     def snap(self, write_flag=True):
