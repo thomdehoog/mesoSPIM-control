@@ -51,16 +51,19 @@ Facts from the 1.27 code that fix the design. Each is used by one item below.
 
 No change in behaviour; everything after depends on it.
 
-- [ ] **A1. Port the evaluation and the offline tests** from `remote-control-py312` onto the 1.27
+- [x] **A1. Port the evaluation and the offline tests** from `remote-control-py312` onto the 1.27
   layout, in the fork: module paths, class renames, the fake-Qt setup (it reuses
   `test/remote_control/conftest.py`). The 158 cases and their twins run as a regression suite and
-  report the tokens per case.
-- [ ] **A2. One clock.** Every time read in the assistant goes through the scheduler's injectable,
-  epoch-like clock.
-- [ ] **A3. Results that read back.** Setters return `changed` (the value read back after Core applied
+  report the tokens per case. *Done 7 October 2026 (03c124c, 0d37c5f, 7e46678, dcf7303): a recorded
+  gemini-3.5-flash-lite run of every case is replayed offline; each must score as recorded and grow at
+  most 3% in estimated tokens.*
+- [x] **A2. One clock.** Every time read in the assistant goes through the scheduler's injectable,
+  epoch-like clock. *Done 7 October 2026 (ba0c9bc); request spacing to a provider stays on real time.*
+- [x] **A3. Results that read back.** Setters return `changed` (the value read back after Core applied
   it, polled with a time-out); every result ends with the state keys that changed since the previous
   result. Existing shapes stay. Accepted when no case in the A1 suite grows by more than a few percent
-  in tokens.
+  in tokens. *Done 7 October 2026 (ae0b323): every score as recorded, +0.04% tokens in all, largest
+  case +0.2%.*
 
 ## Phase B: measurement, partly at the microscope
 
