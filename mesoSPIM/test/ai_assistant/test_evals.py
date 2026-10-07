@@ -262,7 +262,7 @@ def test_the_vision_history_cases_change_the_frame_between_turns():
     trace = harness.run_case(case("vision-history-sharper"), model, seeing, vision_model=_counting_eyes_model(seen))
     assert harness.score(case("vision-history-sharper"), trace) == [], trace
     looks = [t for t in trace["tools"] if t["tool"] == "look"]
-    assert looks[0]["result"] != looks[1]["result"] and [s["images"] for s in seen] == [1, 2]   # two frames, both attached
+    assert looks[0]["result"] != looks[1]["result"] and [s["images"] for s in seen] == [1, 1]   # each look its own frame
     asks = scripted((("look", {"question": "q"}), "One."), (("look", {"question": "q"}), "Two."),
                     (("ask_eyes", {"question": "what changed?"}), "The sample moved off-centre."))
     trace = harness.run_case(case("vision-history-ask-without-a-frame"), asks, seeing, vision_model=_counting_eyes_model([]))

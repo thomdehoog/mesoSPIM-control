@@ -409,22 +409,24 @@ def _counting_eyes_model(seen):
     return FunctionModel(model_function)
 
 
-def test_the_eyes_remember_the_session_frames_and_detach_the_old_ones():
-    """Every look is a turn in the eyes' own conversation; the last `kept` frames stay attached,
-    older turns keep their text; a question without a frame goes into the same conversation."""
+def test_the_eyes_see_the_frames_a_look_attaches_and_keep_only_text():
+    """Every look is a turn in the eyes' own conversation with the frames it attaches; once
+    answered, a turn keeps its text and loses its pictures; a question without a frame goes into
+    the same conversation."""
     pytest.importorskip("pydantic_ai")
     import base64
     seen = []
-    eyes = ai.VisionSession(Endpoint.from_preset("Gemini", api_key="k"), frames_kept=2, model=_counting_eyes_model(seen))
+    eyes = ai.VisionSession(Endpoint.from_preset("Gemini", api_key="k"), model=_counting_eyes_model(seen))
     assert "look first" in eyes.ask("anything?") and seen == []          # nothing seen: no request
-    image = {"format": "png", "base64": base64.b64encode(b"\x89PNG fake").decode()}
-    for n in range(4):
-        answer = eyes.look(image, f"question {n}", {"focus_measure": 0.1 * n}, context='{"position":{"x":1}}')
+    png = base64.b64encode(b"\x89PNG fake").decode()
+    for n in range(3):
+        answer = eyes.look([(f"Frame {n + 1}, focus {0.1 * n}", png)], f"question {n}", context='{"position":{"x":1}}')
         assert answer == f"answer {n + 1}"
-    assert [s["images"] for s in seen] == [1, 2, 3, 3]                   # two kept plus the new one
-    assert "[frame no longer attached]" in " ".join(seen[-1]["texts"]) and "Frame 1," in " ".join(seen[-1]["texts"])
-    assert 'Instrument: {"position":{"x":1}}' in seen[0]["texts"][0] and "Frame numbers" in seen[0]["texts"][0]
-    assert eyes.ask("which was sharpest?") == "answer 5" and seen[-1]["images"] == 2
+    assert eyes.look([("Frame 1", png), ("Frame 3", png)], "which is sharper?") == "answer 4"
+    assert [s["images"] for s in seen] == [1, 1, 1, 2]                   # only what the look attaches
+    assert "[frame no longer attached]" in " ".join(seen[-1]["texts"]) and "Frame 2, focus" in " ".join(seen[-1]["texts"])
+    assert 'Instrument now: {"position":{"x":1}}' in seen[0]["texts"][0]
+    assert eyes.ask("which was sharpest?") == "answer 5" and seen[-1]["images"] == 0
     assert "No new frame" in seen[-1]["texts"][-1] and eyes.frames == 4
     eyes.reset()
     assert eyes.frames == 0 and "look first" in eyes.ask("and now?")
@@ -456,7 +458,7 @@ def test_look_goes_through_the_eyes_when_there_are_any():
     first = ai.look(acceptor, endpoint, "centred?", True, threading.Event(), eyes=eyes)
     second = ai.look(acceptor, endpoint, "moved since?", True, threading.Event(), eyes=eyes)
     assert (first["answer"], first["frames_seen"], second["answer"], second["frames_seen"]) == ("answer 1", 1, "answer 2", 2)
-    assert seen[-1]["images"] == 2 and '"position"' in seen[0]["texts"][0]     # the readout travels with the frame
+    assert seen[-1]["images"] == 1 and '"position"' in seen[0]["texts"][0]     # the readout travels with the frame
 
 
 def test_ask_eyes_is_offered_with_a_seeing_model_only():
@@ -614,8 +616,8 @@ def test_confirm_first_tool_runs_after_run():
     assert out["status"] == COMPLETED and acc.calls[0] == ("load_sample", {})
 
 
-def test_only_the_three_stage_moves_ask():
-    assert set(ai.config.CONFIRM_FIRST) == {"load_sample", "unload_sample", "preview_acquisition"}
+def test_only_the_three_stage_moves_and_calibrate_ask():
+    assert set(ai.config.CONFIRM_FIRST) == {"load_sample", "unload_sample", "preview_acquisition", "calibrate"}
     acc = FakeAcceptor(flip_after=1)
     gate = ai.ConfirmationGate(on_ask=lambda name, args: pytest.fail(f"asked for {name}"))
     for name, kind in (("get_state", READ), ("run_acquisition_list", WAIT), ("time_lapse_start", WAIT)):
@@ -647,6 +649,12 @@ def test_tools_publish_each_commands_schema():
             continue
         if tool.name in ai.config.ROWS_BY_REFERENCE:                 # rows by reference to set_acquisition_list
             assert tool.function_schema.json_schema == ai._rows_by_reference(COMMANDS[tool.name].schema)
+        elif tool.name in ai.config.CODE_ONLY_ARGS:                  # less what only the assistant's code uses
+            wire = COMMANDS[tool.name].schema
+            hidden = ai.config.CODE_ONLY_ARGS[tool.name]
+            assert tool.function_schema.json_schema == dict(wire, properties={
+                k: v for k, v in wire["properties"].items() if k not in hidden})
+            assert set(hidden) <= set(wire["properties"])
         else:
             assert tool.function_schema.json_schema == COMMANDS[tool.name].schema
 
@@ -734,21 +742,25 @@ def test_no_tool_tells_the_assistant_to_poll():
             assert "poll" not in text, (profile, tool.name)
 
 
-def test_a_request_stays_the_size_the_operator_is_told():
+def test_the_operator_is_told_the_size_of_a_request(tmp_path):
     """What the model gets before any conversation, in the default Regular set: the prompt and
-    every tool the tab offers, look and the history tools included. CONTEXT_TOO_SMALL_HELP tells
-    the operator that is about 7,000 tokens; 25,500 characters at about 3.7 a token (24,9xx now,
-    the schedule tools and ask_eyes included)."""
+    every tool the tab offers, look, calibrate and the history tools included. Not a cap: features
+    that make requests work come first. CONTEXT_TOO_SMALL_HELP tells the operator of a local server
+    how large a request is, and that number must stay within a fifth of the size, at about 3.7
+    characters a token; when the size moves past it, the help text moves with it."""
     pytest.importorskip("pydantic_ai")
     from mesoSPIM.src.ai_assistant.assistant import build_tools
+    from mesoSPIM.src.ai_assistant.frames import Calibration
     endpoint = ai.Endpoint.from_preset(ai.config.DEFAULT_PROVIDER)
     tools = build_tools(FakeAcceptor(), threading.Event(), profile="Regular",
-                        endpoint=endpoint, store=ai.SessionStore(),
+                        endpoint=endpoint, store=ai.SessionStore(calibration=Calibration(tmp_path / "c.json")),
                         scheduler=ai.Scheduler(), vision_session=ai.VisionSession(endpoint))
-    assert {"look", "ask_eyes", "recall_turn", "search_history", "schedule", "cancel_schedule"} <= {t.name for t in tools}
+    assert {"look", "ask_eyes", "recall_turn", "search_history", "schedule", "cancel_schedule",
+            "calibrate"} <= {t.name for t in tools}
     schemas = sum(len(json.dumps(t.function_schema.json_schema)) + len(t.description or "") for t in tools)
-    assert len(ai.build_system_prompt(profile="Regular")) + schemas < 25500, len(ai.build_system_prompt(profile="Regular")) + schemas
-    assert "about 7,000 tokens" in ai.config.CONTEXT_TOO_SMALL_HELP
+    tokens = (len(ai.build_system_prompt(profile="Regular")) + schemas) / 3.7
+    told = int(re.search(r"about ([\d,]+) tokens", ai.config.CONTEXT_TOO_SMALL_HELP).group(1).replace(",", ""))
+    assert 0.8 * told <= tokens <= 1.2 * told, (tokens, told)
     by_name = {t.name: t.function_schema.json_schema for t in tools}
     rows = by_name["set_acquisition_list"]["properties"]["acquisitions"]["items"]["properties"]
     assert "z_start" in rows                                          # the installer spells the row out
@@ -1160,8 +1172,8 @@ def test_one_clock_keeps_the_assistants_time():
     eyes = ai.VisionSession(Endpoint.from_preset("Gemini", api_key="k"), model=_counting_eyes_model(seen),
                             clock=scheduler.clock)
     clock[0] += 90
-    eyes.look({"format": "png", "base64": base64.b64encode(b"\x89PNG").decode()}, "centred?", {})
-    assert seen[0]["texts"][-1].startswith("Frame 1, 12:01:30.")
+    eyes.look([("Frame 1", base64.b64encode(b"\x89PNG").decode())], "centred?")
+    assert seen[0]["texts"][0].startswith("12:01:30.")
 
     class Advancing(FakeAcceptor):           # every poll takes a simulated minute
         def dispatch(self, name, args):
