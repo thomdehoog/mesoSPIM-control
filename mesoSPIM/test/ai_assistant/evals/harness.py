@@ -393,7 +393,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
         elif key == "schedules":                      # already set when the case starts
             for item in value:
                 scheduler.add(**item)
-        elif key in ("axes", "sample", "run_for_s"):
+        elif key in ("axes", "sample", "run_for_s", "measured"):
             pass                                      # read below
         elif key == "position":
             core.state["position"].update(value)
@@ -411,7 +411,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     requests = Requests(scheduler.clock)
     agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, gate=gate, store=store,
                            profile=case.get("profile") or profile, scheduler=scheduler, vision_session=eyes, axes=axes,
-                           requests=requests)
+                           requests=requests, measured=bool(setup.get("measured")))
     frames = setup.get("frames") or []                            # one frame per turn: the sample changes between them
     history, tools, replies, served, error, prompts_run = [], [], [], [], None, []
     started = time.monotonic()
