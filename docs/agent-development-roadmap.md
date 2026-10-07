@@ -1,6 +1,6 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.3, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 1.4, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
 made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
@@ -30,9 +30,10 @@ Facts from the 1.27 code that fix the design. Each is used by one item below.
 
 1. While a time lapse is active the dispatcher refuses every setting and move, whoever started it,
    and Core keeps it active between points. "Keep it in focus" cannot run inside `time_lapse_start`.
-   Until F2, the assistant drives a time lapse as a schedule of single acquisitions. (B4, F2)
+   The assistant drives a time lapse as a schedule of single acquisitions. (B4)
 2. Core keeps one display frame, refreshed every second plane during a stack, so it holds whatever
-   plane was shown last. A chosen image per time point needs a hook in Core or the writer. (F1)
+   plane was shown last. A chosen image per time point would need a hook in Core or the writer;
+   the assistant looks between its own acquisitions instead. (set aside below)
 3. While a turn runs, the input is disabled and schedules do not fire, so a wait must end the turn
    and continue later. (D2)
 4. The guard's "a value you did not give" reads the numbers in every stored prompt, and a scheduled
@@ -88,7 +89,7 @@ No change in behaviour; everything after depends on it.
   October 2026 (21ded41) on gemini-3.5-flash-lite (GLM is not reachable from the cloud session):
   21 of 54 smoke and 68 of 180 generated cases. gemini-3.1-pro-preview on the smoke set: 26 of 54.
   Both fail every centring, acquisition-with-checks and time-lapse case, so the gap is the tools,
-  not the model: F4 stays where it is.*
+  not the model: a stronger model for long requests is not needed.*
 
 ## Phase C: feedback the model can build on
 
@@ -149,15 +150,19 @@ No change in behaviour; everything after depends on it.
   operator present. Safety tests on both sides, including a stale frame and a wrong calibration sign.
   Adds at most a paragraph to the manual.
 
-## Phase F: later, partly with Nikita
+## Set aside: only if needed
 
-- [ ] **F1. Frames from acquisitions:** one representative image per time point (the middle plane or
-  a projection) handed to the frame history. Touches Core or the image writer.
-- [ ] **F2. Moves between the points of a time lapse** the session started, in the dispatcher, so
-  `time_lapse_start` can replace the schedule of single acquisitions.
-- [ ] **F3. `wait` over TCP and MCP,** in the shared remote-control layer.
-- [ ] **F4. A stronger model for long requests:** a second model box, used when a request needs a
-  plan. Moves forward if B5 shows the gap is model capability.
+Taken out of the plan in 1.4. Each would change code Nikita maintains or add a model, and none is
+needed for multi-step requests; each comes back only with a reason from the lab's practice.
+
+- **Frames from acquisitions** (a representative image per time point, by a hook in Core or the
+  image writer): the assistant takes its own look between the acquisitions it schedules.
+- **Moves between the points of a time lapse** (in the dispatcher, so `time_lapse_start` could
+  replace the schedule): the schedule of single acquisitions works; only Core's own time-lapse
+  timing or file naming would call for it.
+- **`wait` over TCP and MCP** (in the shared layer): it helps other clients only, and changes an
+  interface they rely on.
+- **A stronger model for long requests:** B5's strong model fails the same cases as flash-lite.
 
 ## Phase G: skills, the last polishing step
 
@@ -203,10 +208,6 @@ determinism and an audit trail (a calibration later measurements depend on), or 
 | D2 `wait` as continuation | 1.5 days | D1, A2 |
 | D3 Plan as text | half a day | D1 |
 | E1 Guard bounds | 1.5 days + bench | C2, C3, C4, D1 |
-| F1 Acquisition frames | 1 to 2 days | C1, Nikita |
-| F2 Moves during a time lapse | half a day | Nikita |
-| F3 `wait` over TCP and MCP | half a day | D2, Nikita |
-| F4 Model for long requests | 2 hours | B5 |
 | G Skills | half a day per skill | A to E |
 | H What should be code | half a day; 1 to 2 days per routine | G |
 
@@ -258,6 +259,10 @@ environment, so both columns test the same thing and no scripts are written by h
   measured moves moves to E1. The prompt-size test no longer caps the prompt: first make the agent
   work on cloud models, then scale down to local ones. H1 has its first evidence (focusing,
   conditional requests); routines wait for H, failures before it are recorded, not fixed.
+
+- **1.4, 7 October 2026.** Phase F taken out of the plan and listed as set aside, only if needed:
+  none of it is needed for multi-step requests, three items would change Nikita's code, and B5
+  showed a stronger model does not help. The letters G and H stay.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 changes, raise the version and add a line here saying what changed and why.
