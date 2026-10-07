@@ -28,6 +28,7 @@ Expectations:
                    installed list's length, and a number reaches into a list (acq_list.0.zoom)
     core_calls     methods the instrument must have seen (e.g. "start")
     core_calls_not methods it must not have seen
+    core_call_counts {method: [low, high]}: how often the instrument saw it (runs in a time lapse)
     confirm        the confirm-first command the operator was asked about
     asks           the reply asks for what is missing (a question, "please specify ...") and nothing
                    was changed
@@ -528,6 +529,10 @@ def score(case, trace):
     for name in expect.get("core_calls_not", []):
         if name in trace["core_calls"]:
             failures.append(f"the instrument saw {name}")
+    for name, (low, high) in expect.get("core_call_counts", {}).items():
+        seen = trace["core_calls"].count(name)
+        if not low <= seen <= high:
+            failures.append(f"the instrument saw {name} {seen} times, expected {low} to {high}")
     if "confirm" in expect and expect["confirm"] not in trace["asked"]:
         failures.append(f"the operator was not asked to confirm {expect['confirm']}")
     if expect.get("asks"):
@@ -565,7 +570,7 @@ def check_cases(cases):
     """Problems in the case file itself: duplicate ids, unknown tools, unknown expectation keys."""
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
              "core_calls_not", "confirm", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none", "schedules",
-             "truth"}
+             "truth", "core_call_counts"}
     tools = set(COMMANDS) | {"look", "ask_eyes", "recall_turn", "search_history", "update_acquisition_row", "schedule",
                              "cancel_schedule"}
     problems, seen = [], set()

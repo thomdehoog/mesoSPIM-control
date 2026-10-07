@@ -1,0 +1,5208 @@
+[
+ {
+  "id": "gen-centring-1",
+  "category": "centring",
+  "prompt": "Can you centre the specimen in the view?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -338,
+    "y": 16,
+    "seed": 6891
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-2",
+  "category": "centring",
+  "prompt": "Can you centre the specimen in the view?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -199,
+    "y": 548,
+    "seed": 4970
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-3",
+  "category": "centring",
+  "prompt": "The sample is off to one side; bring it to the middle of the field of view.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -305,
+    "y": 358,
+    "seed": 8269
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-4",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 563,
+    "y": -266,
+    "seed": 4105
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-5",
+  "category": "centring",
+  "prompt": "Get the sample centred in the image before I start.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -238,
+    "y": 84,
+    "seed": 1209
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-6",
+  "category": "centring",
+  "prompt": "Move the stage so that the sample sits in the centre of the camera image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 155,
+    "y": 578,
+    "seed": 7114
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-7",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 511,
+    "y": -335,
+    "seed": 7816
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-8",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 308,
+    "y": -142,
+    "seed": 231
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-9",
+  "category": "centring",
+  "prompt": "Get the sample centred in the image before I start.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -9,
+    "y": 515,
+    "seed": 19
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-10",
+  "category": "centring",
+  "prompt": "The sample is off to one side; bring it to the middle of the field of view.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 519,
+    "y": -433,
+    "seed": 5329
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-11",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 425,
+    "y": -501,
+    "seed": 3633
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-12",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -587,
+    "y": -252,
+    "seed": 7340
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-13",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -278,
+    "y": -292,
+    "seed": 8017
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-14",
+  "category": "centring",
+  "prompt": "Centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 440,
+    "y": 56,
+    "seed": 8970
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-15",
+  "category": "centring",
+  "prompt": "Put the sample in the middle of the frame, please.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -297,
+    "y": -572,
+    "seed": 8966
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-16",
+  "category": "centring",
+  "prompt": "Can you centre the specimen in the view?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -361,
+    "y": -443,
+    "seed": 5195
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-17",
+  "category": "centring",
+  "prompt": "The sample is off to one side; bring it to the middle of the field of view.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -603,
+    "y": 250,
+    "seed": 541
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-18",
+  "category": "centring",
+  "prompt": "The sample is off to one side; bring it to the middle of the field of view.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 592,
+    "y": 57,
+    "seed": 2451
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-19",
+  "category": "centring",
+  "prompt": "Can you centre the specimen in the view?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 31,
+    "y": -370,
+    "seed": 8595
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-centring-20",
+  "category": "centring",
+  "prompt": "The sample is off to one side; bring it to the middle of the field of view.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -585,
+    "y": 158,
+    "seed": 9664
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-1",
+  "category": "focusing",
+  "prompt": "Make the sample sharp.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5224.0,
+    "seed": 9619
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-2",
+  "category": "focusing",
+  "prompt": "The image looks blurry. Focus on the sample with the focus axis.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5100.0,
+    "seed": 266
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-3",
+  "category": "focusing",
+  "prompt": "The image looks blurry. Focus on the sample with the focus axis.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5152.0,
+    "seed": 6096
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-4",
+  "category": "focusing",
+  "prompt": "Bring the sample into focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4912.0,
+    "seed": 1649
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-5",
+  "category": "focusing",
+  "prompt": "Adjust f until the sample is in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4915.0,
+    "seed": 8753
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-6",
+  "category": "focusing",
+  "prompt": "Can you focus the image on the specimen?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4853.0,
+    "seed": 3089
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-7",
+  "category": "focusing",
+  "prompt": "Find the best focus for the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4887.0,
+    "seed": 1902
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-8",
+  "category": "focusing",
+  "prompt": "The image looks blurry. Focus on the sample with the focus axis.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4796.0,
+    "seed": 2030
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-9",
+  "category": "focusing",
+  "prompt": "Bring the sample into focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5186.0,
+    "seed": 374
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-10",
+  "category": "focusing",
+  "prompt": "Find the best focus for the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4810.0,
+    "seed": 1147
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-11",
+  "category": "focusing",
+  "prompt": "Find the best focus for the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4834.0,
+    "seed": 7145
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-12",
+  "category": "focusing",
+  "prompt": "Bring the sample into focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5114.0,
+    "seed": 9773
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-13",
+  "category": "focusing",
+  "prompt": "Find the best focus for the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4801.0,
+    "seed": 7705
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-14",
+  "category": "focusing",
+  "prompt": "The image looks blurry. Focus on the sample with the focus axis.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4776.0,
+    "seed": 952
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-15",
+  "category": "focusing",
+  "prompt": "Find the best focus for the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4819.0,
+    "seed": 8675
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-16",
+  "category": "focusing",
+  "prompt": "Make the sample sharp.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5196.0,
+    "seed": 2865
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-17",
+  "category": "focusing",
+  "prompt": "Adjust f until the sample is in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5146.0,
+    "seed": 8333
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-18",
+  "category": "focusing",
+  "prompt": "Can you focus the image on the specimen?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4842.0,
+    "seed": 4112
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-19",
+  "category": "focusing",
+  "prompt": "Bring the sample into focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 4827.0,
+    "seed": 5504
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-focusing-20",
+  "category": "focusing",
+  "prompt": "The image looks blurry. Focus on the sample with the focus axis.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "f": 5184.0,
+    "seed": 3935
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-1",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 5886
+   },
+   "intensity": 50,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-2",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 2169
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-3",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 6790
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-4",
+  "category": "exposure",
+  "prompt": "Tune the intensity until the sample is properly exposed.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 3151
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-5",
+  "category": "exposure",
+  "prompt": "Set the intensity so the image is neither saturated nor underexposed.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 3656
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-6",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 9309
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-7",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 9298
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-8",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 767
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-9",
+  "category": "exposure",
+  "prompt": "Fix the exposure of the sample with the laser intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 2584
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-10",
+  "category": "exposure",
+  "prompt": "Find an intensity at which the sample is bright but nothing is saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 9199
+   },
+   "intensity": 50,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-11",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 8104
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-12",
+  "category": "exposure",
+  "prompt": "Find an intensity at which the sample is bright but nothing is saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 817
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-13",
+  "category": "exposure",
+  "prompt": "Get a good exposure on the sample by changing the intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 1368
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-14",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 6584
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-15",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 3499
+   },
+   "intensity": 50
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-16",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 8657
+   },
+   "intensity": 5,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-17",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 20000,
+    "seed": 9968
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-18",
+  "category": "exposure",
+  "prompt": "Fix the exposure of the sample with the laser intensity.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 4588
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-19",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 7793
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-exposure-20",
+  "category": "exposure",
+  "prompt": "Adjust the laser intensity so that the sample is well exposed: not saturated and not too dim.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "brightness": 1000000,
+    "seed": 4501
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-1",
+  "category": "live tuning",
+  "prompt": "Start live, then adjust the intensity until the sample is well exposed, and leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4203,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-2",
+  "category": "live tuning",
+  "prompt": "Go live and centre the sample in the image; leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8534,
+    "x": 203,
+    "y": -539
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-3",
+  "category": "live tuning",
+  "prompt": "Switch on live and tune the intensity for a good exposure; keep live on.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4562,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-4",
+  "category": "live tuning",
+  "prompt": "Start live, then adjust the intensity until the sample is well exposed, and leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 667,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-5",
+  "category": "live tuning",
+  "prompt": "Go live and centre the sample in the image; leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4255,
+    "x": -259,
+    "y": -186
+   },
+   "intensity": 10,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-6",
+  "category": "live tuning",
+  "prompt": "Turn on live, bring the sample into focus, and keep live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 689,
+    "f": 5201.0
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-7",
+  "category": "live tuning",
+  "prompt": "Start the live view and focus the sample, then leave live on.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7135,
+    "f": 4885.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-8",
+  "category": "live tuning",
+  "prompt": "Turn on live, bring the sample into focus, and keep live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4769,
+    "f": 4894.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-9",
+  "category": "live tuning",
+  "prompt": "In live mode, set the intensity so that the sample is bright but not saturated. Leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5530,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-10",
+  "category": "live tuning",
+  "prompt": "Go live and centre the sample in the image; leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1536,
+    "x": -323,
+    "y": -491
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-11",
+  "category": "live tuning",
+  "prompt": "Turn on live, bring the sample into focus, and keep live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4744,
+    "f": 5248.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-12",
+  "category": "live tuning",
+  "prompt": "Switch on live and tune the intensity for a good exposure; keep live on.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4808,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-13",
+  "category": "live tuning",
+  "prompt": "Start the live view and focus the sample, then leave live on.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 3928,
+    "f": 5111.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-14",
+  "category": "live tuning",
+  "prompt": "Turn on live, bring the sample into focus, and keep live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1162,
+    "f": 5222.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-15",
+  "category": "live tuning",
+  "prompt": "In live mode, set the intensity so that the sample is bright but not saturated. Leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6795,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-16",
+  "category": "live tuning",
+  "prompt": "Start live, then adjust the intensity until the sample is well exposed, and leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 9189,
+    "brightness": 20000
+   },
+   "intensity": 5,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-17",
+  "category": "live tuning",
+  "prompt": "Start the live view and focus the sample, then leave live on.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5523,
+    "f": 4839.0
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "focus_error_um_max": 40
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-18",
+  "category": "live tuning",
+  "prompt": "Go live and centre the sample in the image; leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8155,
+    "x": -647,
+    "y": -231
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-19",
+  "category": "live tuning",
+  "prompt": "Go live and centre the sample in the image; leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2551,
+    "x": 664,
+    "y": 194
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "truth": {
+    "off_centre_um_max": 150
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-live-tuning-20",
+  "category": "live tuning",
+  "prompt": "Start live, then adjust the intensity until the sample is well exposed, and leave live running.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1388,
+    "brightness": 20000
+   },
+   "intensity": 5
+  },
+  "expect": {
+   "truth": {
+    "saturated_fraction_max": 0.0005,
+    "peak_fraction_min": 0.1
+   },
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-1",
+  "category": "acquisition with checks",
+  "prompt": "Prepare the sample (centred, in focus) and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -161,
+    "y": -563,
+    "f": 5156.0,
+    "seed": 3622
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-2",
+  "category": "acquisition with checks",
+  "prompt": "Look at the sample, correct its position and focus if needed, and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 251,
+    "y": -108,
+    "f": 5117.0,
+    "seed": 9583
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-3",
+  "category": "acquisition with checks",
+  "prompt": "Centre and focus the sample, then start the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 283,
+    "y": 564,
+    "f": 5208.0,
+    "seed": 9589
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-4",
+  "category": "acquisition with checks",
+  "prompt": "Before acquiring, make sure the sample is in the middle of the image and sharp. Then run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -143,
+    "y": -410,
+    "f": 4751.0,
+    "seed": 1949
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-5",
+  "category": "acquisition with checks",
+  "prompt": "Before acquiring, make sure the sample is in the middle of the image and sharp. Then run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -423,
+    "y": -171,
+    "f": 4902.0,
+    "seed": 2398
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-6",
+  "category": "acquisition with checks",
+  "prompt": "Get the sample centred and focused and then acquire the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 251,
+    "y": 543,
+    "f": 5250.0,
+    "seed": 7994
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-7",
+  "category": "acquisition with checks",
+  "prompt": "Prepare the sample (centred, in focus) and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 154,
+    "y": -394,
+    "f": 5200.0,
+    "seed": 3310
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-8",
+  "category": "acquisition with checks",
+  "prompt": "Prepare the sample (centred, in focus) and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -340,
+    "y": 398,
+    "f": 5179.0,
+    "seed": 5215
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-9",
+  "category": "acquisition with checks",
+  "prompt": "Prepare the sample (centred, in focus) and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 420,
+    "y": 23,
+    "f": 4909.0,
+    "seed": 7708
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-10",
+  "category": "acquisition with checks",
+  "prompt": "Before acquiring, make sure the sample is in the middle of the image and sharp. Then run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -237,
+    "y": -475,
+    "f": 4772.0,
+    "seed": 666
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-11",
+  "category": "acquisition with checks",
+  "prompt": "Look at the sample, correct its position and focus if needed, and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 412,
+    "y": 25,
+    "f": 4793.0,
+    "seed": 6084
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-12",
+  "category": "acquisition with checks",
+  "prompt": "Before acquiring, make sure the sample is in the middle of the image and sharp. Then run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 562,
+    "y": -115,
+    "f": 5224.0,
+    "seed": 4746
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-13",
+  "category": "acquisition with checks",
+  "prompt": "Look at the sample, correct its position and focus if needed, and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -373,
+    "y": 511,
+    "f": 4808.0,
+    "seed": 9953
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-14",
+  "category": "acquisition with checks",
+  "prompt": "Check that the sample is centred and in focus, fix it if not, then run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 10,
+    "y": -344,
+    "f": 4836.0,
+    "seed": 2982
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-15",
+  "category": "acquisition with checks",
+  "prompt": "Centre and focus the sample, then start the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -365,
+    "y": 321,
+    "f": 5089.0,
+    "seed": 4962
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-16",
+  "category": "acquisition with checks",
+  "prompt": "Check that the sample is centred and in focus, fix it if not, then run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 143,
+    "y": -586,
+    "f": 4782.0,
+    "seed": 7887
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-17",
+  "category": "acquisition with checks",
+  "prompt": "Centre and focus the sample, then start the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -634,
+    "y": -41,
+    "f": 4917.0,
+    "seed": 6737
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-18",
+  "category": "acquisition with checks",
+  "prompt": "Get the sample centred and focused and then acquire the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": -247,
+    "y": 280,
+    "f": 5113.0,
+    "seed": 2175
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-19",
+  "category": "acquisition with checks",
+  "prompt": "Look at the sample, correct its position and focus if needed, and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 185,
+    "y": -227,
+    "f": 4755.0,
+    "seed": 1819
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-acquisition-with-checks-20",
+  "category": "acquisition with checks",
+  "prompt": "Prepare the sample (centred, in focus) and run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "x": 642,
+    "y": -157,
+    "f": 5236.0,
+    "seed": 4856
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "truth": {
+    "off_centre_um_max": 150,
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-1",
+  "category": "time lapse by schedule",
+  "prompt": "I need the list acquired every 3 minutes over 15 minutes, with the sample kept in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -6.1
+    },
+    "seed": 1992
+   },
+   "run_for_s": 1260,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-2",
+  "category": "time lapse by schedule",
+  "prompt": "For 12 minutes, run the acquisition list every 4 minutes, checking the focus each time.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 6.2
+    },
+    "seed": 6088
+   },
+   "run_for_s": 1200
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-3",
+  "category": "time lapse by schedule",
+  "prompt": "Run the acquisition list every 4 minutes for 12 minutes, and keep the sample in focus between runs.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 6.6
+    },
+    "seed": 732
+   },
+   "run_for_s": 1200
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-4",
+  "category": "time lapse by schedule",
+  "prompt": "Every 3 minutes, check the focus and run the acquisition list; stop after 15 minutes.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -3.4
+    },
+    "seed": 9327
+   },
+   "run_for_s": 1260,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-5",
+  "category": "time lapse by schedule",
+  "prompt": "I need the list acquired every 4 minutes over 12 minutes, with the sample kept in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 6.8
+    },
+    "seed": 8232
+   },
+   "run_for_s": 1200,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-6",
+  "category": "time lapse by schedule",
+  "prompt": "Acquire the list every 4 minutes for the next 12 minutes. Refocus before each run.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -6.7
+    },
+    "seed": 6980
+   },
+   "run_for_s": 1200,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-7",
+  "category": "time lapse by schedule",
+  "prompt": "For 12 minutes, run the acquisition list every 4 minutes, checking the focus each time.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -5.9
+    },
+    "seed": 1031
+   },
+   "run_for_s": 1200
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-8",
+  "category": "time lapse by schedule",
+  "prompt": "Run the acquisition list every 4 minutes for 12 minutes, and keep the sample in focus between runs.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -5.0
+    },
+    "seed": 7320
+   },
+   "run_for_s": 1200,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-9",
+  "category": "time lapse by schedule",
+  "prompt": "Make a time series: the acquisition list every 5 minutes, 20 minutes in all, and keep it in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -3.5
+    },
+    "seed": 4139
+   },
+   "run_for_s": 1800
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     4,
+     5
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-10",
+  "category": "time lapse by schedule",
+  "prompt": "I need the list acquired every 5 minutes over 20 minutes, with the sample kept in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -3.0
+    },
+    "seed": 482
+   },
+   "run_for_s": 1800
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     4,
+     5
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-11",
+  "category": "time lapse by schedule",
+  "prompt": "Acquire the list every 3 minutes for the next 15 minutes. Refocus before each run.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -3.0
+    },
+    "seed": 5994
+   },
+   "run_for_s": 1260
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-12",
+  "category": "time lapse by schedule",
+  "prompt": "I need the list acquired every 2 minutes over 10 minutes, with the sample kept in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 4.5
+    },
+    "seed": 2019
+   },
+   "run_for_s": 840,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-13",
+  "category": "time lapse by schedule",
+  "prompt": "Run the acquisition list every 3 minutes for 15 minutes, and keep the sample in focus between runs.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -4.8
+    },
+    "seed": 9910
+   },
+   "run_for_s": 1260
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-14",
+  "category": "time lapse by schedule",
+  "prompt": "For 20 minutes, run the acquisition list every 5 minutes, checking the focus each time.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -3.1
+    },
+    "seed": 5644
+   },
+   "run_for_s": 1800,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     4,
+     5
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-15",
+  "category": "time lapse by schedule",
+  "prompt": "Acquire the list every 4 minutes for the next 12 minutes. Refocus before each run.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 4.2
+    },
+    "seed": 5935
+   },
+   "run_for_s": 1200
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     3,
+     4
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-16",
+  "category": "time lapse by schedule",
+  "prompt": "Every 2 minutes, check the focus and run the acquisition list; stop after 10 minutes.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -5.1
+    },
+    "seed": 5358
+   },
+   "run_for_s": 840
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-17",
+  "category": "time lapse by schedule",
+  "prompt": "Make a time series: the acquisition list every 3 minutes, 15 minutes in all, and keep it in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -6.2
+    },
+    "seed": 2563
+   },
+   "run_for_s": 1260,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-18",
+  "category": "time lapse by schedule",
+  "prompt": "Make a time series: the acquisition list every 3 minutes, 15 minutes in all, and keep it in focus.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": -4.2
+    },
+    "seed": 8329
+   },
+   "run_for_s": 1260
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-19",
+  "category": "time lapse by schedule",
+  "prompt": "For 10 minutes, run the acquisition list every 2 minutes, checking the focus each time.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 3.3
+    },
+    "seed": 758
+   },
+   "run_for_s": 840
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     5,
+     6
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-time-lapse-by-schedule-20",
+  "category": "time lapse by schedule",
+  "prompt": "Run the acquisition list every 5 minutes for 20 minutes, and keep the sample in focus between runs.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "drift_um_per_min": {
+     "f": 6.0
+    },
+    "seed": 2164
+   },
+   "run_for_s": 1800,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_call_counts": {
+    "start": [
+     4,
+     5
+    ]
+   },
+   "schedules": 0,
+   "truth": {
+    "focus_error_um_max": 40
+   }
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-1",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 9685
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-2",
+  "category": "recovery from refusals",
+  "prompt": "Take a snap, then centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5810
+   },
+   "state": "live"
+  },
+  "expect": {
+   "not_calls": [
+    "stop",
+    "stop_activity",
+    "move_absolute",
+    "move_relative"
+   ],
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-3",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7288
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-4",
+  "category": "recovery from refusals",
+  "prompt": "Take a snap, then centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8671
+   },
+   "state": "live"
+  },
+  "expect": {
+   "not_calls": [
+    "stop",
+    "stop_activity",
+    "move_absolute",
+    "move_relative"
+   ],
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-5",
+  "category": "recovery from refusals",
+  "prompt": "Run the acquisition list and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6695
+   },
+   "acq_list": []
+  },
+  "expect": {
+   "not_calls": [
+    "set_acquisition_list",
+    "update_acquisition_row"
+   ],
+   "core_calls_not": [
+    "start"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-6",
+  "category": "recovery from refusals",
+  "prompt": "Run the acquisition list and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5254
+   },
+   "axes": {
+    "x": "left"
+   },
+   "acq_list": []
+  },
+  "expect": {
+   "not_calls": [
+    "set_acquisition_list",
+    "update_acquisition_row"
+   ],
+   "core_calls_not": [
+    "start"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-7",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6089
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-8",
+  "category": "recovery from refusals",
+  "prompt": "Run the acquisition list and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1492
+   },
+   "acq_list": []
+  },
+  "expect": {
+   "not_calls": [
+    "set_acquisition_list",
+    "update_acquisition_row"
+   ],
+   "core_calls_not": [
+    "start"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-9",
+  "category": "recovery from refusals",
+  "prompt": "Set the filter to 515 long pass and take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4538
+   }
+  },
+  "expect": {
+   "state": {
+    "filter": "515LP"
+   },
+   "calls_any": [
+    "snap",
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-10",
+  "category": "recovery from refusals",
+  "prompt": "Set the filter to 515LP, the zoom to 3x, and take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 9922
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "state": {
+    "filter": "515LP",
+    "zoom": "1x"
+   },
+   "reply_mentions_any": [
+    "3x"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-11",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7310
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-12",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6910
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-13",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4063
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-14",
+  "category": "recovery from refusals",
+  "prompt": "Take a snap, then centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8575
+   },
+   "state": "live"
+  },
+  "expect": {
+   "not_calls": [
+    "stop",
+    "stop_activity",
+    "move_absolute",
+    "move_relative"
+   ],
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-15",
+  "category": "recovery from refusals",
+  "prompt": "Take a snap, then centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7577
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   },
+   "state": "live"
+  },
+  "expect": {
+   "not_calls": [
+    "stop",
+    "stop_activity",
+    "move_absolute",
+    "move_relative"
+   ],
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-16",
+  "category": "recovery from refusals",
+  "prompt": "Move z by 40000 um, then focus the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1418
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [],
+   "state": {
+    "position.z_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-17",
+  "category": "recovery from refusals",
+  "prompt": "Move x to 30000 um and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4829
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [
+    "snap"
+   ],
+   "state": {
+    "position.x_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-18",
+  "category": "recovery from refusals",
+  "prompt": "Move z by 40000 um, then focus the sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7358
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "max_calls": {
+    "move_absolute": 1,
+    "move_relative": 1
+   },
+   "not_calls": [],
+   "state": {
+    "position.z_pos": 0.0
+   },
+   "reply_mentions_any": [
+    "limit",
+    "range"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-19",
+  "category": "recovery from refusals",
+  "prompt": "Run the acquisition list and then take a snap.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 128
+   },
+   "acq_list": []
+  },
+  "expect": {
+   "not_calls": [
+    "set_acquisition_list",
+    "update_acquisition_row"
+   ],
+   "core_calls_not": [
+    "start"
+   ]
+  }
+ },
+ {
+  "id": "gen-recovery-from-refusals-20",
+  "category": "recovery from refusals",
+  "prompt": "Take a snap, then centre the sample in the image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1876
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   },
+   "state": "live"
+  },
+  "expect": {
+   "not_calls": [
+    "stop",
+    "stop_activity",
+    "move_absolute",
+    "move_relative"
+   ],
+   "state": {
+    "state": "live"
+   }
+  }
+ },
+ {
+  "id": "gen-vague-requests-1",
+  "category": "vague requests",
+  "prompt": "Improve the picture.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8933,
+    "f": 4848.0
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-2",
+  "category": "vague requests",
+  "prompt": "Can you make it look nicer?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1517,
+    "f": 5209.0
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-3",
+  "category": "vague requests",
+  "prompt": "Optimise the settings for this sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8909,
+    "f": 5187.0
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-4",
+  "category": "vague requests",
+  "prompt": "Make the image better.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1980,
+    "f": 4920.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-5",
+  "category": "vague requests",
+  "prompt": "Can you make it look nicer?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8620,
+    "f": 5156.0
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-6",
+  "category": "vague requests",
+  "prompt": "Set it up properly for imaging.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4139,
+    "f": 5228.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-7",
+  "category": "vague requests",
+  "prompt": "Set it up properly for imaging.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 3212,
+    "f": 4914.0
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-8",
+  "category": "vague requests",
+  "prompt": "Improve the picture.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5008,
+    "f": 5100.0
+   },
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-9",
+  "category": "vague requests",
+  "prompt": "Optimise the settings for this sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2680,
+    "f": 5226.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-10",
+  "category": "vague requests",
+  "prompt": "Improve the picture.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8517,
+    "f": 4830.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-11",
+  "category": "vague requests",
+  "prompt": "Can you make it look nicer?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8906,
+    "f": 5130.0
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-12",
+  "category": "vague requests",
+  "prompt": "Improve the picture.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 9310,
+    "f": 4893.0
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-13",
+  "category": "vague requests",
+  "prompt": "Set it up properly for imaging.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1975,
+    "f": 5180.0
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-14",
+  "category": "vague requests",
+  "prompt": "Optimise the settings for this sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 9169,
+    "f": 5140.0
+   },
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-15",
+  "category": "vague requests",
+  "prompt": "Can you make it look nicer?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6802,
+    "f": 5163.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-16",
+  "category": "vague requests",
+  "prompt": "Tune everything up for a good image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5215,
+    "f": 4845.0
+   },
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-17",
+  "category": "vague requests",
+  "prompt": "Optimise the settings for this sample.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8119,
+    "f": 4916.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-18",
+  "category": "vague requests",
+  "prompt": "Can you make it look nicer?",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6406,
+    "f": 4803.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-19",
+  "category": "vague requests",
+  "prompt": "Make the image better.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6474,
+    "f": 5087.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-vague-requests-20",
+  "category": "vague requests",
+  "prompt": "Tune everything up for a good image.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 62,
+    "f": 5204.0
+   }
+  },
+  "expect": {
+   "not_calls": [
+    "move_absolute",
+    "move_relative",
+    "set_intensity",
+    "set_filter",
+    "set_zoom",
+    "set_laser",
+    "set_etl",
+    "set_shutterconfig",
+    "update_acquisition_row",
+    "set_acquisition_list"
+   ],
+   "reply_mentions_any": [
+    "?"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-1",
+  "category": "must stop partway",
+  "prompt": "Check the exposure. If anything is saturated, stop and tell me; if not, run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2305
+   },
+   "intensity": 50,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-2",
+  "category": "must stop partway",
+  "prompt": "Look at the sample. If nothing is visible, stop and tell me; otherwise run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7111,
+    "x": 6000,
+    "y": 0
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-3",
+  "category": "must stop partway",
+  "prompt": "Take a look, and only if the sample is centred run the acquisition list. If not, stop and report.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2757,
+    "x": 600,
+    "y": -400
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-4",
+  "category": "must stop partway",
+  "prompt": "Check the image first; run the list only if it is not saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7132,
+    "brightness": 1000000
+   },
+   "intensity": 50
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-5",
+  "category": "must stop partway",
+  "prompt": "Check the image first; run the list only if it is not saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2417
+   },
+   "intensity": 50,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-6",
+  "category": "must stop partway",
+  "prompt": "Check the exposure. If anything is saturated, stop and tell me; if not, run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 3061
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-7",
+  "category": "must stop partway",
+  "prompt": "Take a look, and only if the sample is centred run the acquisition list. If not, stop and report.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7001,
+    "x": 600,
+    "y": -400
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-8",
+  "category": "must stop partway",
+  "prompt": "Check the exposure. If anything is saturated, stop and tell me; if not, run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 3215,
+    "brightness": 1000000
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-9",
+  "category": "must stop partway",
+  "prompt": "If the sample is visible and in focus, run the acquisition list. Otherwise tell me what is wrong.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 816
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-10",
+  "category": "must stop partway",
+  "prompt": "Check the image first; run the list only if it is not saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1388,
+    "brightness": 1000000
+   },
+   "intensity": 50
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-11",
+  "category": "must stop partway",
+  "prompt": "Check the image first; run the list only if it is not saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 2841,
+    "brightness": 1000000
+   },
+   "intensity": 50
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-12",
+  "category": "must stop partway",
+  "prompt": "If the sample is visible and in focus, run the acquisition list. Otherwise tell me what is wrong.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 1420,
+    "f": 4750.0
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-13",
+  "category": "must stop partway",
+  "prompt": "Look at the focus. If the sample is out of focus, just tell me and do nothing else; otherwise run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 5785,
+    "f": 5250.0
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-14",
+  "category": "must stop partway",
+  "prompt": "Check the image first; run the list only if it is not saturated.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 8457,
+    "brightness": 1000000
+   },
+   "intensity": 50,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-15",
+  "category": "must stop partway",
+  "prompt": "If the sample is visible and in focus, run the acquisition list. Otherwise tell me what is wrong.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7056,
+    "f": 4750.0
+   },
+   "intensity": 10,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-16",
+  "category": "must stop partway",
+  "prompt": "Look at the focus. If the sample is out of focus, just tell me and do nothing else; otherwise run the list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7794
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-17",
+  "category": "must stop partway",
+  "prompt": "Look at the sample. If nothing is visible, stop and tell me; otherwise run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 718
+   },
+   "intensity": 10
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-18",
+  "category": "must stop partway",
+  "prompt": "Look at the sample. If nothing is visible, stop and tell me; otherwise run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 4749
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-19",
+  "category": "must stop partway",
+  "prompt": "Look at the sample. If nothing is visible, stop and tell me; otherwise run the acquisition list.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 7009
+   },
+   "intensity": 10,
+   "axes": {
+    "x": "left",
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ },
+ {
+  "id": "gen-must-stop-partway-20",
+  "category": "must stop partway",
+  "prompt": "If the sample is visible and in focus, run the acquisition list. Otherwise tell me what is wrong.",
+  "setup": {
+   "position": {
+    "x_pos": 0.0,
+    "y_pos": 0.0,
+    "z_pos": 0.0,
+    "f_pos": 5000.0
+   },
+   "sample": {
+    "seed": 6497,
+    "f": 4750.0
+   },
+   "intensity": 10,
+   "axes": {
+    "y": "down"
+   }
+  },
+  "expect": {
+   "core_calls_not": [
+    "start"
+   ],
+   "calls_any": [
+    "look"
+   ]
+  }
+ }
+]
