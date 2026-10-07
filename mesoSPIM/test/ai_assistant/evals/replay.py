@@ -20,8 +20,8 @@ import json
 import sys
 from pathlib import Path
 
+from mesoSPIM.test.ai_assistant.evals import harness      # first: it installs the Qt substitute
 from mesoSPIM.src.ai_assistant import assistant as ai
-from mesoSPIM.test.ai_assistant.evals import harness
 
 RECORDED = Path(__file__).with_name("recorded")
 REPLAY_ENDED = "[the recording has no further answer]"
