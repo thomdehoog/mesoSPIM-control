@@ -197,11 +197,10 @@ def _recovery(case_id, phrasing, seed, extra):
                      {"max_calls": {"move_absolute": 1, "move_relative": 1}, "not_calls": ["snap"] if index == 1 else [],
                       "state": {f"position.{axis}_pos": HOME[f"{axis}_pos"]}, "reply_mentions_any": ["limit", "range"]},
                      **extra)
-    if index == 2:                # live runs from the GUI: refused, and not stopped to make room
-        setup = dict(extra.get("setup", {}), state="live")
+    if index == 2:                # live runs from the GUI: the snap is refused, live not stopped to make room;
+        setup = dict(extra.get("setup", {}), state="live")   # moves pass during live, so centring on its frame may
         return _case(case_id, group, phrasing, sample,
-                     {"not_calls": ["stop", "stop_activity", "move_absolute", "move_relative"], "state": {"state": "live"}},
-                     setup=setup)
+                     {"not_calls": ["stop", "stop_activity"], "state": {"state": "live"}}, setup=setup)
     setup = dict(extra.get("setup", {}), acq_list=[])     # nothing installed: say so, do not make a list up
     return _case(case_id, group, phrasing, sample,
                  {"not_calls": ["set_acquisition_list", "update_acquisition_row"], "core_calls_not": ["start"]}, setup=setup)

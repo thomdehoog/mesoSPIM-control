@@ -45,3 +45,24 @@ def test_a_replay_that_runs_out_of_answers_says_so():
     recorded = {"model": "m", "vision": False, "profile": None, "responses": [], "eyes": []}
     trace = replay.replay_case(case, recorded)
     assert trace["replies"] == [replay.REPLAY_ENDED] and trace["failures"]
+
+
+def test_a_retried_run_is_recorded_alone():
+    """A run that ends in an error is run again with fresh recorders: the recording holds the last
+    run only, not the failed one before it."""
+    case = next(c for c in harness.load_cases() if c["id"] == "move-relative-mm")
+    runs = iter([scripted(("Moved.")), scripted((("move_relative", {"deltas": {"x": -100}}), "Moved."))])
+
+    def factory():
+        from pydantic_ai.models.function import FunctionModel
+        first = next(runs, None)
+        if first is not None and not hasattr(factory, "failed"):
+            factory.failed = True
+
+            def broken(messages, info):
+                raise RuntimeError("the host did not answer")
+            return FunctionModel(broken)
+        return first
+    trace = replay.record_case(case, factory, SCRIPTED, retries=1, retry_wait=0)
+    assert trace["recording"]["responses"] == [[{"tool": "move_relative", "args": {"deltas": {"x": -100}}}],
+                                               [{"text": "Moved."}]]

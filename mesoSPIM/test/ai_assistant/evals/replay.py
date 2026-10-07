@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from mesoSPIM.test.ai_assistant.evals import harness      # first: it installs the Qt substitute
@@ -84,11 +85,18 @@ def recorder(model):
 
 def record_case(case, model_factory, endpoint, profile=None, attempts=1, retries=2, retry_wait=None):
     """Run the case on the real model up to `attempts` times, until a run passes, and return the
-    last run's trace with its recording under "recording"."""
+    last run's trace with its recording under "recording". A run that ends in an error (a provider's
+    rate limit) is run again up to `retries` times; every run has fresh recorders, so a recording
+    holds one run and replays as it."""
     for _ in range(max(1, attempts)):
-        main = recorder(model_factory())
-        eyes = recorder(model_factory()) if endpoint.vision else None
-        trace = harness.run_case(case, main, endpoint, profile, retries=retries, retry_wait=retry_wait, vision_model=eyes)
+        for retry in range(retries + 1):
+            if retry:
+                time.sleep(harness.RETRY_WAIT_S if retry_wait is None else retry_wait)
+            main = recorder(model_factory())
+            eyes = recorder(model_factory()) if endpoint.vision else None
+            trace = harness.run_case(case, main, endpoint, profile, retries=0, vision_model=eyes)
+            if not trace["error"]:
+                break
         trace["failures"] = harness.score(case, trace)
         if not trace["error"] and not trace["failures"]:
             break

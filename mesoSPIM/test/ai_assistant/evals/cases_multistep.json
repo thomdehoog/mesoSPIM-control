@@ -1009,9 +1009,7 @@
   "expect": {
    "not_calls": [
     "stop",
-    "stop_activity",
-    "move_absolute",
-    "move_relative"
+    "stop_activity"
    ],
    "state": {
     "state": "live"
