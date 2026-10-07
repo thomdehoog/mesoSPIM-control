@@ -26,15 +26,9 @@ def _run_pytest(paths, environment=None, show_output=False):
 
 
 def _offline():
-    paths = [
-        TESTS / "test_commands.py",
-        TESTS / "test_busy_gate.py",
-        TESTS / "test_transport_matrix.py",
-        TESTS / "test_transport_security.py",
-        TESTS / "test_gui.py",
-        TESTS / "test_frame.py",
-    ]
-    return _run_pytest(paths)
+    """Both suites on the Qt substitute, the replayed evaluation included; the live tests skip
+    themselves without their safety variables."""
+    return _run_pytest([TESTS, TESTS.parent / "ai_assistant"])
 
 
 def _pyqt():

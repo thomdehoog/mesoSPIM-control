@@ -14,7 +14,9 @@ case is printed as it finishes; every trace is appended to the output file, whos
 {date}, {provider} and {model}; several models run one after the other, each --repeat times, so
 one command benchmarks a prompt across models and shows which cases are a coin flip. The exit
 status is 1 when a case fails. --rescore re-applies the expectations to recorded traces without
-calling a model, for a changed case file. scoreboard.py summarises run files."""
+calling a model, for a changed case file. scoreboard.py summarises run files. --record keeps each
+case's run in recorded/ for replay.py, the offline regression suite; a failed case is run again, up
+to --attempts times, so the recording holds a passing run where the model can give one."""
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,7 @@ import time
 from pathlib import Path
 
 from mesoSPIM.test.ai_assistant.evals import harness
+from mesoSPIM.test.ai_assistant.evals import replay
 from mesoSPIM.src.ai_assistant import assistant as ai
 from mesoSPIM.src.ai_assistant import config as config
 
@@ -58,6 +61,27 @@ def run_suite(cases, model, endpoint, profile, sink, repeat=1, pause=0.0, log=pr
     return results
 
 
+def record_suite(cases, model_factory, endpoint, cases_file, profile=None, attempts=3, pause=0.0, log=print, retries=2,
+                 retry_wait=None):
+    """Run every case on the model and keep its run in the recording, with the estimated tokens of
+    its replay as the baseline; saved after each case, so a run cut short keeps what it did."""
+    recording, results = replay.load_recording(cases_file), []
+    for case in cases:
+        if results:
+            time.sleep(pause)
+        trace = replay.record_case(case, model_factory, endpoint, profile, attempts, retries, retry_wait)
+        recorded = trace.pop("recording")
+        again = replay.replay_case(case, recorded)
+        recorded["tokens"] = again["tokens"]
+        recording[case["id"]] = recorded
+        replay.save_recording(cases_file, recording)
+        results.append((case, trace, trace["failures"]))
+        drift = "" if again["failures"] == trace["failures"] else f"  REPLAY DIFFERS: {again['failures']}"
+        log(f"{'PASS' if not trace['failures'] else 'FAIL'}  {case['id']:<32} {trace['seconds']:>6.1f}s  "
+            f"{recorded['provider_tokens']['input']:>6} in  {' | '.join(trace['failures'])}{drift}")
+    return results
+
+
 def report(results, log=print):
     failed = [r for r in results if r[2]]
     log(f"\n{len(results) - len(failed)} of {len(results)} runs pass")
@@ -85,6 +109,8 @@ def main(argv=None):
     parser.add_argument("--cases", default=str(harness.CASES_FILE))
     parser.add_argument("--out", default="assistant-evals-{date}-{model}.jsonl",
                         help="trace file; {date}, {provider} and {model} are filled in")
+    parser.add_argument("--record", action="store_true", help="keep each case's run in recorded/ for replay.py")
+    parser.add_argument("--attempts", type=int, default=3, help="with --record: runs of a failing case")
     parser.add_argument("--rescore", default="", help="score these recorded traces instead of running")
     parser.add_argument("--pause", type=float, default=2.0, help="seconds between cases, for per-minute rate limits")
     parser.add_argument("--retries", type=int, default=2, help="retries of a case after a provider error")
@@ -127,11 +153,17 @@ def main(argv=None):
         for endpoint in endpoints:
             out = arguments.out.format(date=dt.date.today().isoformat(), provider=endpoint.provider,
                                        model=file_name_part(endpoint.model))
+            def model_factory(endpoint=endpoint):
+                model = ai.build_model(endpoint)
+                return harness.throttled(model, arguments.request_interval) if arguments.request_interval else model
+            if arguments.record:
+                print(f"== {endpoint.provider} {endpoint.model} -> {replay.recording_file(arguments.cases)}")
+                results += record_suite(cases, model_factory, endpoint, arguments.cases, arguments.profile, arguments.attempts,
+                                        arguments.pause, retries=arguments.retries, retry_wait=arguments.retry_wait)
+                continue
             print(f"== {endpoint.provider} {endpoint.model} -> {out}")
             with open(out, "a", encoding="utf-8") as sink:
-                model = ai.build_model(endpoint)
-                if arguments.request_interval:
-                    model = harness.throttled(model, arguments.request_interval)
+                model = model_factory()
                 results += run_suite(cases, model, endpoint, arguments.profile, sink,
                                      repeat=arguments.repeat, pause=arguments.pause,
                                      retries=arguments.retries, retry_wait=arguments.retry_wait)
