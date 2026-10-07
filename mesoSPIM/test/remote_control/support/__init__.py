@@ -1,1 +1,1 @@
-"""Shared clients and contracts for the Remote Control live tests."""
+"""Shared clients, contracts, and in-memory Core objects for Remote Control tests."""
