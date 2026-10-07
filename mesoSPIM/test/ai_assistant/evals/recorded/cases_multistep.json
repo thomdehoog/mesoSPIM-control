@@ -46,7 +46,7 @@
    "requests": 4,
    "eyes_input": 1758
   },
-  "tokens": 31202
+  "tokens": 31715
  },
  "ms-acquisition-with-checks-2": {
   "model": "gemini-3.5-flash-lite",
@@ -187,7 +187,7 @@
    "requests": 13,
    "eyes_input": 16533
   },
-  "tokens": 109971
+  "tokens": 112797
  },
  "ms-acquisition-with-checks-3": {
   "model": "gemini-3.5-flash-lite",
@@ -222,7 +222,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 22945
+  "tokens": 23212
  },
  "ms-acquisition-with-checks-4": {
   "model": "gemini-3.5-flash-lite",
@@ -265,7 +265,7 @@
    "requests": 3,
    "eyes_input": 1761
   },
-  "tokens": 23306
+  "tokens": 23678
  },
  "ms-acquisition-with-checks-5": {
   "model": "gemini-3.5-flash-lite",
@@ -306,7 +306,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 30738
+  "tokens": 31094
  },
  "ms-acquisition-with-checks-6": {
   "model": "gemini-3.5-flash-lite",
@@ -341,7 +341,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 22950
+  "tokens": 23217
  },
  "ms-centring-1": {
   "model": "gemini-3.5-flash-lite",
@@ -369,7 +369,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15206
+  "tokens": 15384
  },
  "ms-centring-2": {
   "model": "gemini-3.5-flash-lite",
@@ -397,7 +397,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15228
+  "tokens": 15406
  },
  "ms-centring-3": {
   "model": "gemini-3.5-flash-lite",
@@ -425,7 +425,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15227
+  "tokens": 15405
  },
  "ms-centring-4": {
   "model": "gemini-3.5-flash-lite",
@@ -453,7 +453,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15210
+  "tokens": 15388
  },
  "ms-centring-5": {
   "model": "gemini-3.5-flash-lite",
@@ -481,7 +481,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15215
+  "tokens": 15393
  },
  "ms-centring-6": {
   "model": "gemini-3.5-flash-lite",
@@ -509,7 +509,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15216
+  "tokens": 15394
  },
  "ms-exposure-1": {
   "model": "gemini-3.5-flash-lite",
@@ -565,7 +565,7 @@
    "requests": 4,
    "eyes_input": 5098
   },
-  "tokens": 31281
+  "tokens": 31837
  },
  "ms-exposure-2": {
   "model": "gemini-3.5-flash-lite",
@@ -592,7 +592,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15289
+  "tokens": 15467
  },
  "ms-exposure-3": {
   "model": "gemini-3.5-flash-lite",
@@ -647,7 +647,7 @@
    "requests": 4,
    "eyes_input": 5124
   },
-  "tokens": 31385
+  "tokens": 31938
  },
  "ms-exposure-4": {
   "model": "gemini-3.5-flash-lite",
@@ -703,7 +703,7 @@
    "requests": 4,
    "eyes_input": 5124
   },
-  "tokens": 31468
+  "tokens": 32024
  },
  "ms-exposure-5": {
   "model": "gemini-3.5-flash-lite",
@@ -758,7 +758,7 @@
    "requests": 4,
    "eyes_input": 5077
   },
-  "tokens": 31307
+  "tokens": 31861
  },
  "ms-exposure-6": {
   "model": "gemini-3.5-flash-lite",
@@ -813,7 +813,7 @@
    "requests": 4,
    "eyes_input": 5114
   },
-  "tokens": 31358
+  "tokens": 31912
  },
  "ms-focusing-1": {
   "model": "gemini-3.5-flash-lite",
@@ -841,7 +841,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15225
+  "tokens": 15403
  },
  "ms-focusing-2": {
   "model": "gemini-3.5-flash-lite",
@@ -911,7 +911,7 @@
    "requests": 5,
    "eyes_input": 5094
   },
-  "tokens": 39119
+  "tokens": 39761
  },
  "ms-focusing-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1072,7 +1072,7 @@
    "requests": 14,
    "eyes_input": 34445
   },
-  "tokens": 119108
+  "tokens": 122439
  },
  "ms-focusing-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1181,7 +1181,7 @@
    "requests": 9,
    "eyes_input": 16615
   },
-  "tokens": 73562
+  "tokens": 75158
  },
  "ms-focusing-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1209,7 +1209,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15244
+  "tokens": 15422
  },
  "ms-focusing-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1245,7 +1245,7 @@
    "requests": 2,
    "eyes_input": 1740
   },
-  "tokens": 15383
+  "tokens": 15611
  },
  "ms-live-tuning-1": {
   "model": "gemini-3.5-flash-lite",
@@ -1348,7 +1348,7 @@
    "requests": 9,
    "eyes_input": 16742
   },
-  "tokens": 73250
+  "tokens": 74829
  },
  "ms-live-tuning-2": {
   "model": "gemini-3.5-flash-lite",
@@ -1409,7 +1409,7 @@
    "requests": 5,
    "eyes_input": 5140
   },
-  "tokens": 39279
+  "tokens": 39923
  },
  "ms-live-tuning-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1470,7 +1470,7 @@
    "requests": 5,
    "eyes_input": 5112
   },
-  "tokens": 39154
+  "tokens": 39799
  },
  "ms-live-tuning-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1498,7 +1498,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15188
+  "tokens": 15366
  },
  "ms-live-tuning-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1540,7 +1540,7 @@
    "requests": 3,
    "eyes_input": 1749
   },
-  "tokens": 23076
+  "tokens": 23393
  },
  "ms-live-tuning-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1574,7 +1574,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 22922
+  "tokens": 23189
  },
  "ms-must-stop-partway-1": {
   "model": "gemini-3.5-flash-lite",
@@ -1608,7 +1608,7 @@
    "requests": 2,
    "eyes_input": 1718
   },
-  "tokens": 15370
+  "tokens": 15598
  },
  "ms-must-stop-partway-2": {
   "model": "gemini-3.5-flash-lite",
@@ -1650,7 +1650,7 @@
    "requests": 3,
    "eyes_input": 1744
   },
-  "tokens": 23270
+  "tokens": 23637
  },
  "ms-must-stop-partway-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1684,7 +1684,7 @@
    "requests": 2,
    "eyes_input": 1732
   },
-  "tokens": 15380
+  "tokens": 15608
  },
  "ms-must-stop-partway-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1726,7 +1726,7 @@
    "requests": 3,
    "eyes_input": 1759
   },
-  "tokens": 23180
+  "tokens": 23552
  },
  "ms-must-stop-partway-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1768,7 +1768,7 @@
    "requests": 3,
    "eyes_input": 1750
   },
-  "tokens": 23322
+  "tokens": 23688
  },
  "ms-must-stop-partway-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1810,7 +1810,7 @@
    "requests": 3,
    "eyes_input": 1755
   },
-  "tokens": 23263
+  "tokens": 23630
  },
  "ms-recovery-from-refusals-1": {
   "model": "gemini-3.5-flash-lite",
@@ -1845,7 +1845,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 22885
+  "tokens": 23156
  },
  "ms-recovery-from-refusals-2": {
   "model": "gemini-3.5-flash-lite",
@@ -1875,7 +1875,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15201
+  "tokens": 15379
  },
  "ms-recovery-from-refusals-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1901,7 +1901,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15214
+  "tokens": 15392
  },
  "ms-recovery-from-refusals-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1927,7 +1927,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15174
+  "tokens": 15352
  },
  "ms-recovery-from-refusals-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1965,7 +1965,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 23028
+  "tokens": 23295
  },
  "ms-recovery-from-refusals-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1995,7 +1995,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15203
+  "tokens": 15381
  },
  "ms-time-lapse-by-schedule-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2094,7 +2094,7 @@
    "requests": 14,
    "eyes_input": 0
   },
-  "tokens": 120327
+  "tokens": 121573
  },
  "ms-time-lapse-by-schedule-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2340,7 +2340,7 @@
    "requests": 34,
    "eyes_input": 0
   },
-  "tokens": 320816
+  "tokens": 323842
  },
  "ms-time-lapse-by-schedule-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2382,7 +2382,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 23089
+  "tokens": 23356
  },
  "ms-time-lapse-by-schedule-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2622,7 +2622,7 @@
    "requests": 33,
    "eyes_input": 0
   },
-  "tokens": 308871
+  "tokens": 311808
  },
  "ms-time-lapse-by-schedule-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2775,7 +2775,7 @@
    "requests": 17,
    "eyes_input": 16635
   },
-  "tokens": 152698
+  "tokens": 158917
  },
  "ms-time-lapse-by-schedule-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2812,7 +2812,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 23042
+  "tokens": 23309
  },
  "ms-vague-requests-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2837,7 +2837,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15288
+  "tokens": 15466
  },
  "ms-vague-requests-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2925,7 +2925,7 @@
    "requests": 7,
    "eyes_input": 10084
   },
-  "tokens": 56370
+  "tokens": 57492
  },
  "ms-vague-requests-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2950,7 +2950,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15270
+  "tokens": 15448
  },
  "ms-vague-requests-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2978,7 +2978,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15224
+  "tokens": 15402
  },
  "ms-vague-requests-5": {
   "model": "gemini-3.5-flash-lite",
@@ -3003,7 +3003,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 15275
+  "tokens": 15453
  },
  "ms-vague-requests-6": {
   "model": "gemini-3.5-flash-lite",
@@ -3047,6 +3047,6 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 30724
+  "tokens": 31080
  }
 }
