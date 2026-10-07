@@ -318,10 +318,8 @@ def _place(usable, now):
 
 
 def _focus(usable, now):
-    """The best focus position from the frames at the newest frame's place (within MAP_SAME_PLACE_UM
-    on x, y and z): the vertex of a parabola through the sharpest frame and its neighbours on f,
-    with half their spacing as the uncertainty. At the edge of the frames' range, the edge, and
-    which way to search."""
+    """The best focus from the frames at the newest frame's place (within MAP_SAME_PLACE_UM on x,
+    y and z), by fit_focus."""
     if not usable or usable[-1]["position"]["f"] is None:
         return None
     here = usable[-1]["position"]
@@ -330,12 +328,20 @@ def _focus(usable, now):
         p = f["position"]
         if all(p[a] is not None and abs(p[a] - here[a]) <= config.MAP_SAME_PLACE_UM for a in ("x", "y", "z")):
             curve[p["f"]] = max(curve.get(p["f"], 0.0), f["measures"]["focus"])
+    found = fit_focus(curve)
+    return dict(found, frames_used=len(curve), age_s=int(now - usable[-1]["t"])) if found else None
+
+
+def fit_focus(curve):
+    """The best focus position from a focus curve {f: focus measure}: the vertex of a parabola
+    through the sharpest point and its neighbours on f, with half their spacing as the
+    uncertainty. At the edge of the curve, the edge, and which way to search. None for fewer
+    than two points."""
     if len(curve) < 2:
         return None
     positions = sorted(curve)
     index = max(range(len(positions)), key=lambda i: curve[positions[i]])
-    best = positions[index]
-    out = {"f": round(best, 1), "frames_used": len(positions), "age_s": int(now - usable[-1]["t"])}
+    out = {"f": round(positions[index], 1)}
     if index in (0, len(positions) - 1):
         out["edge"] = "search lower f" if index == 0 else "search higher f"
         out["plus_minus"] = round(abs(positions[1] - positions[0]) if index == 0 else

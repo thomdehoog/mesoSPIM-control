@@ -94,6 +94,8 @@ Safety
   centre_move_um is the move that would centre the sample, nominal until calibrate has run at that
   zoom. The readout's map says where frames put the sample and its best focus; use it, and say how
   old it is.
+- To focus, call focus_sweep and move f to its best_f; in a time lapse, before each run. A look alone
+  cannot tell which way focus lies.
 - schedule carries an instruction out later, as if the operator typed it then. A message starting
   with [scheduled '...'] is such a firing: carry it out, do not schedule it again. The readout's
   clock is the time now; its schedules are the ones set.

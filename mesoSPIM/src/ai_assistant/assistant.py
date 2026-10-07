@@ -30,7 +30,7 @@ from ..remote_control.servers import Acceptor
 from ..remote_control.commands import self_test
 from ..remote_control.frame import array_of, to_png
 from . import config
-from .frames import Calibration, FrameHistory, field_um, flag, nominal_scale, sample_map, shift
+from .frames import Calibration, FrameHistory, field_um, fit_focus, flag, nominal_scale, sample_map, shift
 from .requests import Requests
 from ..remote_control import config as rc_config
 
@@ -626,16 +626,10 @@ def calibrate(acceptor, cancel, history, axes, step_um=None, clock=time.time):
     step = float(step_um or round(config.CALIBRATE_STEP_FRACTION * field[0]))
 
     def snapped():
-        done = dispatch_and_wait(acceptor, "snap", {"prefix": "calibrate"}, WAIT, cancel, clock=clock)
-        if done.get("status") != COMPLETED:
-            raise RuntimeError(f"snap did not complete: {done.get('status')}")
-        document = acceptor.dispatch("get_frame", {"include_image": False, "array_side": config.FRAME_COPY_SIDE})
-        return history.add(array_of(document), document["stats"], "calibrate", _frame_readout(acceptor), axes)
+        return _snap_kept(acceptor, cancel, history, axes, "calibrate", clock)
 
     def moved(axis, delta):
-        done = dispatch_and_wait(acceptor, "move_relative", {"deltas": {axis: delta}}, WAIT, cancel, clock=clock)
-        if done.get("status") != COMPLETED:
-            raise RuntimeError(f"the {axis} move of {delta} um did not complete: {done.get('status')}")
+        _completed(acceptor, cancel, "move_relative", {"deltas": {axis: delta}}, clock)
 
     try:
         start = snapped()
@@ -668,6 +662,72 @@ def calibrate(acceptor, cancel, history, axes, step_um=None, clock=time.time):
     report["frames"] = used
     report["note"] = "kept for this zoom; frame measures and the map now use it"
     return report
+
+
+def focus_sweep(acceptor, cancel, history, axes, range_um=None, step_um=None, clock=time.time):
+    """Find the best focus near the current one: frames along f every two steps across the range,
+    then one step either side of the sharpest, and the focus curve fitted (frames.fit_focus). The
+    stage goes back to where it started; moving to the best focus is the model's call. A
+    measuring block: code finds the number, the model decides what to do with it."""
+    start = (_frame_readout(acceptor).get("position") or {}).get("f")
+    if start is None:
+        return {"error": {"code": "execution", "message": "the focus position is not in the readout"}}
+    reach = min(float(range_um or config.FOCUS_SWEEP_RANGE_UM), config.FOCUS_SWEEP_RANGE_UM)
+    step = max(float(step_um or config.FOCUS_SWEEP_STEP_UM), config.FOCUS_SWEEP_STEP_MIN_UM)
+    curve, frames, left_out = {}, [], {}
+
+    def measure(f):
+        _completed(acceptor, cancel, "move_absolute", {"targets": {"f": f}}, clock)
+        entry = _snap_kept(acceptor, cancel, history, axes, "focus_sweep", clock)
+        frames.append(entry["n"])
+        if flag(entry):
+            left_out[entry["n"]] = flag(entry)
+        else:
+            curve[f] = entry["measures"]["focus"]
+
+    try:
+        count = int(reach // (2 * step))
+        for k in range(-count, count + 1):
+            measure(start + 2 * step * k)
+        found = fit_focus(curve)
+        if found and "edge" not in found:
+            peak = max(curve, key=curve.get)
+            for f in (peak - step, peak + step):
+                if abs(f - start) <= reach and f not in curve:
+                    measure(f)
+    except (RuntimeError, ValueError) as error:
+        return {"error": {"code": "execution", "message": str(error)}, "frames": frames}
+    finally:
+        try:
+            _completed(acceptor, cancel, "move_absolute", {"targets": {"f": start}}, clock)
+        except (RuntimeError, ValueError):
+            pass                                  # the error above, or Cancel, says why
+    found = fit_focus(curve)
+    if found is None:
+        return {"error": {"code": "execution", "message": "no frame of the sweep shows the sample"},
+                "frames": frames, "left_out": left_out}
+    result = {"start_f": start, "best_f": found["f"], "plus_minus": found["plus_minus"],
+              "curve": {round(f, 1): round(v, 4) for f, v in sorted(curve.items())}, "frames": frames}
+    if "edge" in found:
+        result["edge"] = found["edge"]
+    if left_out:
+        result["left_out"] = left_out
+    result["note"] = config.FOCUS_SWEEP_NOTE
+    return result
+
+
+def _snap_kept(acceptor, cancel, history, axes, source, clock):
+    """Snap, and keep the frame in the history as `source`."""
+    _completed(acceptor, cancel, "snap", {"prefix": source}, clock)
+    document = acceptor.dispatch("get_frame", {"include_image": False, "array_side": config.FRAME_COPY_SIDE})
+    return history.add(array_of(document), document["stats"], source, _frame_readout(acceptor), axes)
+
+
+def _completed(acceptor, cancel, name, args, clock):
+    """Run a WAIT command to its end, or raise why it did not complete."""
+    done = dispatch_and_wait(acceptor, name, args, WAIT, cancel, clock=clock)
+    if done.get("status") != COMPLETED:
+        raise RuntimeError(f"{name} {json.dumps(args)} did not complete: {done.get('status')}")
 
 
 def _direction(right, up):
@@ -802,6 +862,12 @@ _CALIBRATE_SCHEMA = {
     "type": "object",
     "properties": {"step_um": {"type": "number", "minimum": 5, "maximum": 2000,
                                "description": "the test move on x and on y; a tenth of the field when omitted"}},
+    "additionalProperties": False,
+}
+_FOCUS_SWEEP_SCHEMA = {
+    "type": "object",
+    "properties": {"range_um": {"type": "number", "minimum": 20, "maximum": config.FOCUS_SWEEP_RANGE_UM},
+                   "step_um": {"type": "number", "minimum": config.FOCUS_SWEEP_STEP_MIN_UM, "maximum": 150}},
     "additionalProperties": False,
 }
 _ASK_EYES_SCHEMA = {
@@ -1364,6 +1430,25 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, gate=None, vision
                 description="Measures how the image moves with the stage at this zoom (small x and y moves and back) "
                             "so centring moves are calibrated. Needs a visible sample; asks for Run.",
             ))
+        if history is not None:
+            def _sweep_now(range_um, step_um):
+                args = {k: v for k, v in (("range_um", range_um), ("step_um", step_um)) if v is not None}
+                if on_call is not None:
+                    on_call("focus_sweep", json.dumps(args))
+                if cancel.is_set():
+                    return json.dumps({"status": "cancelled"})
+                refusal = guard.before("focus_sweep", args)
+                if refusal is not None:
+                    return json.dumps(refusal)
+                outcome = with_changes(with_advice("focus_sweep", focus_sweep(acceptor, cancel, history, axes, range_um,
+                                                                              step_um, clock)), trail)
+                guard.after("focus_sweep", args, outcome)
+                return json.dumps(outcome)
+
+            async def focus_sweep_tool(range_um=None, step_um=None) -> str:
+                return await asyncio.to_thread(_sweep_now, range_um, step_um)
+            tools.append(Tool.from_schema(focus_sweep_tool, name="focus_sweep", json_schema=_FOCUS_SWEEP_SCHEMA,
+                                          description=config.TOOL_DESCRIPTIONS["focus_sweep"]))
         if vision_session is not None and eyes.vision:
             def _ask_now(question):
                 if on_call is not None:

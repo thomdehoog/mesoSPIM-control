@@ -118,6 +118,8 @@ TOOL_DESCRIPTIONS = {
     # the stage and leaves live running.
     "stop": "Stops the stage only; live or an acquisition runs on (stop_activity ends it).",
     "stop_activity": "Ends live, an acquisition or a time lapse.",
+    "focus_sweep": "Finds the best focus near the current one: frames along f (default +-300 um), the focus "
+                   "curve fitted. Returns best_f; the stage goes back to where it started, so move f there.",
     "wait": "End this turn; the request goes on in a new turn when the wait is over, with the result.",
     "update_acquisition_row": "Change named keys of one acquisition row; the rest stays. To rename or edit "
                               "a row use this, never set_acquisition_list.",
@@ -270,6 +272,12 @@ MAP_GROUPS = 2
 # is no measurement.
 CALIBRATION_FILE = Path(__file__).resolve().parents[2] / "config" / "ai_assistant_calibration.json"
 CALIBRATE_STEP_FRACTION = 0.1
+# focus_sweep (assistant.py): frames every two steps across +-FOCUS_SWEEP_RANGE_UM, then one step
+# either side of the sharpest; a step of at least FOCUS_SWEEP_STEP_MIN_UM.
+FOCUS_SWEEP_RANGE_UM = 300
+FOCUS_SWEEP_STEP_UM = 50
+FOCUS_SWEEP_STEP_MIN_UM = 10
+FOCUS_SWEEP_NOTE = "the stage is back at start_f; move f to best_f to focus (an edge: sweep again from there)"
 CALIBRATE_CONFIDENCE_MIN = 0.05
 # The eyes: the vision model's own conversation for the session. A look attaches the frames it asks
 # about, each with its number, time, settings and code's measures; once answered, a turn keeps its
