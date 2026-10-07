@@ -270,6 +270,10 @@ class SimulatedInstrument(RecordingCore):
         super().run_time_lapse(*args, **kwargs)
         self.timelapse_active = False
 
+    def state_request_handler(self, request, *args, **kwargs):
+        super().state_request_handler(request, *args, **kwargs)
+        self.state.set_parameters(request)            # applied, as production's waveformer and camera do
+
     def _setting(self, key, method, value, *args, **kwargs):
         getattr(super(), method)(value, *args, **kwargs)
         self.state[key] = value

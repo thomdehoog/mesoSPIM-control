@@ -16,7 +16,7 @@ import pytest
 from mesoSPIM.src.ai_assistant import assistant as ai
 from mesoSPIM.src.ai_assistant.assistant import (
     AssistantWorker, Endpoint, dispatch_and_wait, start_assistant_for_core, stop_assistant_for_core)
-from mesoSPIM.src.remote_control.dispatcher import COMMANDS, READ, WAIT, COMPLETED
+from mesoSPIM.src.remote_control.dispatcher import ACTION, COMMANDS, READ, WAIT, COMPLETED
 from mesoSPIM.test.remote_control.support.fakes import RecordingCore
 
 
@@ -620,7 +620,7 @@ def test_only_the_three_stage_moves_ask():
     gate = ai.ConfirmationGate(on_ask=lambda name, args: pytest.fail(f"asked for {name}"))
     for name, kind in (("get_state", READ), ("run_acquisition_list", WAIT), ("time_lapse_start", WAIT)):
         ai._tool_fn(acc, name, kind, threading.Event(), gate=gate)()
-    assert [c[0] for c in acc.calls if c[0] != "get_progress"] == ["get_state", "run_acquisition_list", "time_lapse_start"]
+    assert [c[0] for c in acc.calls if c[0] not in ("get_progress", "get_snapshot")] == ["get_state", "run_acquisition_list", "time_lapse_start"]
 
 
 def test_interrupt_cancels_an_open_question():
@@ -1181,6 +1181,76 @@ def test_one_clock_keeps_the_assistants_time():
     worker.scheduler = scheduler                                    # the tab sets it after making the worker
     worker.configure(Endpoint.from_preset("Gemini", api_key="k"))
     assert worker.store.clock() == worker.eyes.clock() == clock[0]
+
+
+class SlowCore:
+    """An acceptor whose settings land `lag` reads after Core accepted them, as production applies
+    them on other threads; get_snapshot shows the same state."""
+
+    def __init__(self, lag=2, known=("intensity", "etl_l_offset")):
+        self.state = {"intensity": 10, "etl_l_offset": 2.3, "x": 0.0}
+        self.pending, self.lag, self.known, self.calls = {}, lag, known, []
+
+    def dispatch(self, name, args):
+        self.calls.append(name)
+        if name == "get_state_all":
+            if any(key not in self.known for key in args["keys"]):
+                raise ValueError("unknown state key")
+            self.lag -= 1
+            if self.lag <= 0:
+                self.state.update(self.pending)
+            return {key: self.state[key] for key in args["keys"]}
+        if name == "get_snapshot":
+            return {"state": "idle", "position": {"x": self.state["x"]},
+                    "optics": {"intensity": self.state["intensity"]}, "etl": {"etl_l_offset": self.state["etl_l_offset"]}}
+        if name == "move_relative":
+            self.state["x"] += args["deltas"]["x"]
+        else:
+            self.pending.update({k: v for k, v in args.items() if k != "wait"})
+        return {"accepted": True, "operation": {"id": "op-000001", "status": COMPLETED, "result": {}}}
+
+
+class _NoWait:
+    POLL_INTERVAL_S = 0.0
+    READ_BACK_S = 5
+
+
+def test_a_setter_returns_the_value_read_back_once_core_applied_it():
+    core = SlowCore(lag=3)
+    out = json.loads(ai._tool_fn(core, "set_intensity", ACTION, threading.Event())(intensity=30))
+    assert out["changed"] == {"intensity": 30} and core.calls.count("get_state_all") == 3
+    assert out["accepted"] is True                                  # the accepted reply keeps its shape
+    assert list(out)[-1] == "changed"                               # nothing else moved: no state_changed
+
+
+def test_a_read_back_gives_up_at_its_time_out_with_what_core_holds():
+    clock = [0.0]
+    core = SlowCore(lag=10**9)
+
+    class Ticking(SlowCore):
+        def dispatch(self, name, args):
+            clock[0] += 1
+            return core.dispatch(name, args)
+
+    assert ai.read_back(Ticking(), {"intensity": 30}, threading.Event(), _NoWait, clock=lambda: clock[0]) == {"intensity": 10}
+    assert ai.read_back(SlowCore(known=()), {"camera_exposure_time": 0.05}, threading.Event(), _NoWait) is None
+
+
+def test_every_result_ends_with_the_readout_keys_that_changed_since_the_last():
+    """Against the turn's readout first, then the previous result; a setter's own keys are not
+    repeated; a result that changed nothing ends as it always did."""
+    core, store = SlowCore(lag=0), ai.SessionStore()
+    store.begin("move x by 5", {"state": "idle", "position": {"x": -1.0}, "optics": {"intensity": 10},
+                                "etl": {"etl_l_offset": 2.3}})
+    trail = ai.StateTrail(core, store)
+    move = ai._tool_fn(core, "move_relative", ACTION, threading.Event(), trail=trail)
+    first = json.loads(move(deltas={"x": 5}))
+    assert first["state_changed"] == {"position.x": 5.0} and list(first)[-1] == "state_changed"   # -1 in the readout
+    assert json.loads(move(deltas={"x": 5}))["state_changed"] == {"position.x": 10.0}            # since the last result
+    setter = json.loads(ai._tool_fn(core, "set_etl", ACTION, threading.Event(), trail=trail)(etl_l_offset=2.5))
+    assert setter["changed"] == {"etl_l_offset": 2.5} and "state_changed" not in setter
+    read = json.loads(ai._tool_fn(core, "get_snapshot", READ, threading.Event(), trail=trail)())
+    assert "state_changed" not in read
 
 
 def test_a_run_returns_once_it_is_under_way_so_the_operator_can_type_stop():
