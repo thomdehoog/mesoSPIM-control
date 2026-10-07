@@ -50,6 +50,7 @@ from pathlib import Path
 
 from mesoSPIM.test.remote_control import conftest  # noqa: F401  (the Qt substitute: headless, synchronous)
 from mesoSPIM.src.ai_assistant import assistant as ai
+from mesoSPIM.src.ai_assistant.requests import Requests
 from mesoSPIM.src.remote_control import config as rc_config
 from mesoSPIM.src.remote_control import dispatcher as dispatcher
 from mesoSPIM.src.remote_control import servers as servers
@@ -63,6 +64,7 @@ STATE_PATHS = ("state", "position.x_pos", "position.y_pos", "position.z_pos", "p
 WAIT_CAP_S = 2.0   # a WAIT that no simulated signal ends (live) returns "still_running" after this
 TURN_S = 5.0       # simulated seconds a turn takes on a timed instrument: the operator and the model
 SCHEDULED_TURNS_MAX = 200
+CONTINUE_POLL_S = 5.0   # simulated seconds between the checks of a pending wait, as the tab's tick
 RETRY_WAIT_S = 20.0   # a provider error is mostly a per-minute rate limit: wait it out before retrying
 ASKING = ("?", "please specify", "please provide", "please clarify", "please tell", "let me know", "which axis",
           "how far", "how much", "what value", "need to know")   # a reply that asks, with or without a question mark
@@ -403,21 +405,32 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     gate = ai.ConfirmationGate(on_ask=lambda name, args: (asked.append(name), gate.answer(answer)))
     store = ai.SessionStore(scheduler.clock)
     eyes = ai.VisionSession(endpoint, model=vision_model, clock=scheduler.clock) if endpoint is not None and endpoint.vision else None
+    requests = Requests(scheduler.clock)
     agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, gate=gate, store=store,
-                           profile=case.get("profile") or profile, scheduler=scheduler, vision_session=eyes, axes=axes)
+                           profile=case.get("profile") or profile, scheduler=scheduler, vision_session=eyes, axes=axes,
+                           requests=requests)
     frames = setup.get("frames") or []                            # one frame per turn: the sample changes between them
-    history, tools, replies, served, error = [], [], [], [], None
+    history, tools, replies, served, error, prompts_run = [], [], [], [], None, []
     started = time.monotonic()
     saved = (ai.config.WAIT_CAP_S, ai.config.POLL_INTERVAL_S)
     ai.config.WAIT_CAP_S, ai.config.POLL_INTERVAL_S = WAIT_CAP_S, 0.0
     timed = getattr(core, "timed", False)
 
-    def turn(prompt):
+    def turn(prompt, request=None):
+        """A typed prompt, or with `request` a turn the machine wrote for it."""
         nonlocal history, served
         if timed:
             core.wait(TURN_S)                            # the operator types, the model answers
-        result = agent.run_sync(ai.with_state(acceptor, prompt, store, scheduler), message_history=history)
+        if request is None:
+            requests.typed(prompt)
+        else:
+            requests.machine(request)
+        origin = "operator" if request is None else "machine"
+        prompts_run.append(prompt)
+        result = agent.run_sync(ai.with_state(acceptor, prompt, store, scheduler, requests, origin),
+                                message_history=history)
         store.finish(result.new_messages(), result.output)
+        requests.finish_turn(result.output, ai.tokens_of(result.usage))
         history = result.all_messages()
         if case.get("memory"):                           # a short memory, so the store is what remembers
             history = ai.trim_history(history, case["memory"])
@@ -430,8 +443,10 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
             if frames:
                 core.frame_name = frames[min(index, len(frames) - 1)]
             turn(prompt)
-        if timed and setup.get("run_for_s"):
-            _run_schedules(core, scheduler, turn, core.clock() + setup["run_for_s"])
+        if timed:
+            _run_time(core, scheduler, requests, acceptor, turn, core.clock() + setup.get("run_for_s", 0))
+        else:
+            _continue_at_once(requests, acceptor, turn)
     except Exception as problem:
         error = _describe(problem)
     finally:
@@ -443,24 +458,47 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
         "id": case["id"], "category": case.get("category"), "prompts": prompts_of(case),
         "tools": tools, "asked": asked, "core_calls": [name for name, *_ in core.calls()],
         "state": _state_snapshot(core, expected_paths), "replies": replies, "served": served, "error": error,
-        "schedules": scheduler.listing(), "seconds": round(time.monotonic() - started, 2),
+        "schedules": scheduler.listing(), "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run,
+        "requests": [{"number": r.number, "turns": r.turns, "tokens": r.tokens, "plan": r.plan, "ended": r.ended}
+                     for r in requests._known.values()],
         **({"truth": core.truth()} if timed else {}),
     }
 
 
-def _run_schedules(core, scheduler, turn, end, most=SCHEDULED_TURNS_MAX):
-    """Let the simulated time run to `end`, firing each due schedule as a turn, as the tab's timer
-    does: one at a time, the instruction in the scheduled-turn wording."""
+def _run_time(core, scheduler, requests, acceptor, turn, end, most=SCHEDULED_TURNS_MAX):
+    """Let the simulated time run, as the tab's timer does: a wait that is over continues its
+    request, a due schedule fires as a turn of the request that set it, one at a time; to `end`,
+    and on while a wait is pending (its own limit ends it)."""
     for _ in range(most):
+        due = requests.due(acceptor.dispatch)
+        if due is not None:
+            request, result = due
+            turn(ai.config.CONTINUATION_TURN.format(number=request.number, result=result), request.number)
+            continue
         item = scheduler.pop_due()
         if item is not None:
-            turn(ai.config.SCHEDULED_TURN.format(name=item["name"], instruction=item["instruction"]))
+            turn(ai.config.SCHEDULED_TURN.format(name=item["name"], instruction=item["instruction"]),
+                 item.get("request") or 0)
             continue
         waits = [listed["due_in_s"] for listed in scheduler.listing()]
-        if not waits or core.clock() + min(waits) >= end:
-            core.wait(end - core.clock())
+        if requests.waiting is not None:
+            core.wait(min([CONTINUE_POLL_S] + [max(1, w) for w in waits]))
+        elif waits and core.clock() + min(waits) < end:
+            core.wait(max(1, min(waits)))
+        else:
+            core.wait(max(0.0, end - core.clock()))
             return
-        core.wait(max(1, min(waits)))
+
+
+def _continue_at_once(requests, acceptor, turn):
+    """On the instrument without a clock, operations end at once: a wait for them is over at once,
+    and a wait for time never ends."""
+    for _ in range(ai.config.CONTINUATIONS_MAX):
+        due = requests.due(acceptor.dispatch)
+        if due is None:
+            return
+        request, result = due
+        turn(ai.config.CONTINUATION_TURN.format(number=request.number, result=result), request.number)
 
 
 _NEGATION_BEFORE = re.compile(r"(?:\bnon[- ]|\bnot (?:an? |the )?|\bno |n't (?:an? |the )?)$")

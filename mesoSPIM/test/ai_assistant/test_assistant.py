@@ -95,6 +95,11 @@ class FakeResult:
     def __init__(self, output):
         self.output = output
 
+    @property
+    def usage(self):
+        from pydantic_ai.usage import RunUsage
+        return RunUsage(input_tokens=100, output_tokens=10)
+
     def all_messages(self):
         return ["history"]
 

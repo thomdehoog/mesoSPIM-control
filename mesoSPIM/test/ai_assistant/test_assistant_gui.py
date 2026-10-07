@@ -480,7 +480,8 @@ def test_confirmation_bar_is_hidden_until_asked_and_answers_the_gate():
 def test_clear_all_clears_the_transcript_and_the_worker_between_turns():
     gui = _gui()
     resets = []
-    gui._worker = type("_W", (), {"reset": lambda self: resets.append(True)})()
+    from mesoSPIM.src.ai_assistant.requests import Requests
+    gui._worker = type("_W", (), {"reset": lambda self: resets.append(True), "requests": Requests()})()
     gui._blocks.append(gui._user_block("old question"))
     gui._render()
     assert "old question" in gui.chat_window.output.toPlainText()
@@ -757,9 +758,11 @@ class _StoppableWorker:
     """What Disconnect touches on the worker and its thread, recorded."""
 
     def __init__(self):
+        from mesoSPIM.src.ai_assistant.requests import Requests
         self.interrupted = 0
         self.configured = []
         self.scheduler = None
+        self.requests = Requests()
 
     def configure(self, endpoint, vision=None, profile=None):
         self.configured.append(endpoint)
@@ -819,19 +822,21 @@ def test_the_coordinate_system_box_reaches_the_worker_and_takes_the_config_start
 
 def test_a_due_schedule_runs_as_a_turn_and_a_stop_clears_them(monkeypatch):
     """The tab's tick fires the first due schedule as a turn of its own, marked in the transcript,
-    never while a turn runs; Stop microscope and Disconnect clear every schedule."""
+    written by the machine for the request that set it, never while a turn runs; Stop microscope
+    and Disconnect clear every schedule."""
     from mesoSPIM.src.ai_assistant import config as config
     gui, core, worker, thread = _connected_gui(monkeypatch)
     clock = [1_000_000.0]
     gui.scheduler.clock = lambda: clock[0]
-    sent = []
-    gui.sig_run_turn.connect(sent.append)
-    gui.scheduler.add("snaps", "take a snap", every_seconds=180)
+    sent, typed = [], []
+    gui.sig_run_machine_turn.connect(lambda text, request: sent.append((text, request)))
+    gui.sig_run_turn.connect(typed.append)
+    gui.scheduler.add("snaps", "take a snap", every_seconds=180, request=4)
     gui.fire_due_schedule()
     assert sent == []                                               # not due yet
     clock[0] += 180
     gui.fire_due_schedule()
-    assert sent == [config.SCHEDULED_TURN.format(name="snaps", instruction="take a snap")]
+    assert sent == [(config.SCHEDULED_TURN.format(name="snaps", instruction="take a snap"), 4)] and typed == []
     shown = gui.chat_window.output.toPlainText()
     assert gui._running and "[scheduled" in shown and "take a snap" in shown
     clock[0] += 180
