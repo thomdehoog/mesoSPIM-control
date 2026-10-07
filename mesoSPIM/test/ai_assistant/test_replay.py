@@ -1,5 +1,5 @@
-"""The 158 cases and their 158 held-out twins as a regression suite: each is replayed from a
-recorded model run (evals/replay.py) through the real agent, tools, guard and dispatcher, and must
+"""The 158 cases, their 158 held-out twins and the 234 multi-step cases as a regression suite: each
+is replayed from a recorded model run (evals/replay.py) through the real agent, tools, guard and dispatcher, and must
 score as it did when recorded, with no more than GROWTH_ALLOWED more estimated tokens."""
 import pytest
 
@@ -9,7 +9,8 @@ from mesoSPIM.test.ai_assistant.test_evals import SCRIPTED, scripted
 
 pytest.importorskip("pydantic_ai")
 
-FILES = (harness.CASES_FILE, harness.CASES_FILE.with_name("cases_holdout.json"))
+FILES = tuple(harness.CASES_FILE.with_name(name) for name in
+              ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json"))
 
 
 def _recorded_cases():

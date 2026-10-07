@@ -314,10 +314,13 @@ class SimulatedAcceptor(servers.Acceptor):
     signal (acquisitions, previews, time lapses). Moves complete through position readback and
     a snap through its frame, as they do on the instrument."""
 
+    _serial = threading.Lock()   # one call at a time, as production's Acceptor runs them on the Core thread
+
     def dispatch(self, name, args):
         if getattr(self._core, "timed", False):
-            self._core.before_dispatch(name)               # the simulator's time and events, then the call
-            return super().dispatch(name, args)
+            with self._serial:
+                self._core.before_dispatch(name)           # the simulator's time and events, then the call
+                return super().dispatch(name, args)
         result = super().dispatch(name, args)
         cmd = COMMANDS.get(name)
         if cmd is not None and cmd.milestone in FINISH_AT_ONCE and (result.get("operation") or {}).get("status") == "processing":
