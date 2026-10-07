@@ -1144,6 +1144,45 @@ def test_the_schedule_tools_and_the_readout_clock():
     assert re.fullmatch(r"\d\d:\d\d:\d\d", block["clock"]) and block["schedules"][0]["name"] == "snaps"
 
 
+def test_one_clock_keeps_the_assistants_time():
+    """The scheduler's clock is the only time the assistant reads about the instrument and the
+    session: the readout clock, a turn's time, a frame's time for the eyes and the wait cap all
+    follow it, so a simulator that owns it decides when time passes."""
+    pytest.importorskip("pydantic_ai")
+    import base64
+    noon = time.mktime((2026, 10, 7, 12, 0, 0, 0, 0, -1))
+    clock = [noon]
+    scheduler = ai.Scheduler(clock=lambda: clock[0])
+    store = ai.SessionStore(scheduler.clock)
+    text = ai.with_state(FakeAcceptor(), "hello", store=store, scheduler=scheduler)
+    assert '"clock": "12:00:00"' in text and store.turns[-1]["time"] == "12:00:00"
+    seen = []
+    eyes = ai.VisionSession(Endpoint.from_preset("Gemini", api_key="k"), model=_counting_eyes_model(seen),
+                            clock=scheduler.clock)
+    clock[0] += 90
+    eyes.look({"format": "png", "base64": base64.b64encode(b"\x89PNG").decode()}, "centred?", {})
+    assert seen[0]["texts"][-1].startswith("Frame 1, 12:01:30.")
+
+    class Advancing(FakeAcceptor):           # every poll takes a simulated minute
+        def dispatch(self, name, args):
+            if name == "get_progress":
+                clock[0] += 60
+            return super().dispatch(name, args)
+
+    class Cfg:
+        POLL_INTERVAL_S = 0.0
+        WAIT_CAP_S = 120
+
+    acc = Advancing(flip_after=10**9)
+    out = dispatch_and_wait(acc, "move_absolute", {"targets": {"x": 1}}, WAIT, threading.Event(), Cfg,
+                            clock=scheduler.clock)
+    assert out["status"] == "still_running" and [c[0] for c in acc.calls].count("get_progress") == 2
+    worker = AssistantWorker(FakeAcceptor())
+    worker.scheduler = scheduler                                    # the tab sets it after making the worker
+    worker.configure(Endpoint.from_preset("Gemini", api_key="k"))
+    assert worker.store.clock() == worker.eyes.clock() == clock[0]
+
+
 def test_a_run_returns_once_it_is_under_way_so_the_operator_can_type_stop():
     """Waiting for an acquisition would hold the turn, and the input line with it, for as long
     as the run takes: nothing could be typed, not even "stop"."""

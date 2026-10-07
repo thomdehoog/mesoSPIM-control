@@ -378,8 +378,8 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     asked = []
     answer = case.get("answer", True)
     gate = ai.ConfirmationGate(on_ask=lambda name, args: (asked.append(name), gate.answer(answer)))
-    store = ai.SessionStore()
-    eyes = ai.VisionSession(endpoint, model=vision_model) if endpoint is not None and endpoint.vision else None
+    store = ai.SessionStore(scheduler.clock)
+    eyes = ai.VisionSession(endpoint, model=vision_model, clock=scheduler.clock) if endpoint is not None and endpoint.vision else None
     axes = dict(ai.config.DEFAULT_AXES, **((case.get("setup") or {}).get("axes") or {}))
     agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, gate=gate, store=store,
                            profile=case.get("profile") or profile, scheduler=scheduler, vision_session=eyes, axes=axes)

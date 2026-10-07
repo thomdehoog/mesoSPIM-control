@@ -823,7 +823,7 @@ def test_a_due_schedule_runs_as_a_turn_and_a_stop_clears_them(monkeypatch):
     from mesoSPIM.src.ai_assistant import config as config
     gui, core, worker, thread = _connected_gui(monkeypatch)
     clock = [1_000_000.0]
-    gui.scheduler._clock = lambda: clock[0]
+    gui.scheduler.clock = lambda: clock[0]
     sent = []
     gui.sig_run_turn.connect(sent.append)
     gui.scheduler.add("snaps", "take a snap", every_seconds=180)
