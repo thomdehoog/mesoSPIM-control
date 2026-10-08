@@ -1,0 +1,95 @@
+AI Assistant -> mesoSPIM DemoStage at 127.0.0.1:42000, model gemini-3.5-flash-lite
+
+[walk 1] > Move the stage to X = 5000 um.
+    tool: move_absolute({"targets": {"x": 5000}})
+    reply: I have moved the stage to X = 5000 µm. The current position is X = 5000 µm, Y = 0 µm, Z = 30 µm, focus = 5000.1 µm, and rotation = 180°.
+    PASS: 5000.0 (expected 5000.0)
+
+[walk 1] > Move Y by 1 mm.
+    tool: move_relative({"deltas": {"y": 1000}})
+    reply: I have moved the stage along the Y axis by 1,000 µm (1 mm). The Y position is now 1,000 µm.
+    PASS: 1000.0 (expected 1000.0)
+
+[walk 1] > Set the laser intensity to 20 %.
+    tool: set_intensity({"intensity": 20})
+    reply: I have set the laser intensity to 20%.
+    PASS: 20.0 (expected 20)
+
+[walk 1] > Switch the filter to 515LP.
+    tool: set_filter({"filter": "515LP"})
+    reply: I have switched the filter to 515LP. The current filter is now set to 515LP.
+    PASS: '515LP' (expected '515LP')
+
+[walk 1] > Switch to the 561 nm laser.
+    tool: set_laser({"laser": "561 nm"})
+    reply: I have switched the laser to 561 nm.
+    PASS: '561 nm' (expected '561 nm')
+
+[walk 1] > Set the zoom to 1x.
+    tool: set_zoom({"zoom": "1x"})
+    reply: I have set the zoom to 1x.
+    PASS: '1x' (expected '1x')
+
+[walk 1] > Use the left light sheet.
+    tool: set_shutterconfig({"shutterconfig": "Left"})
+    reply: I have set the shutter configuration to use the left light sheet.
+    PASS: 'Left' (expected 'Left')
+
+[walk 1] > Take a snap.
+    tool: snap({})
+    reply: I have taken a snap and saved it to the snap folder as `remote_20261008-102447.tif`.
+    PASS: 1 new file(s) (expected 1)
+
+[walk 1] > Take a snap into D:\nowhere.
+    tool: snap({"folder": "D:\\nowhere"})
+    reply: The snap was refused because the folder `D:\nowhere` does not exist on the microscope PC. Would you like to use the default snap folder (`C:\ProgramData\MinicondaZMB\home\probe`) instead?
+    PASS: 0 new file(s) (expected 0); the reply names the folder: True, proposes a fix: True
+
+[walk 1] > Look at the sample and tell me what you see.
+    tool: look({"question": "is the sample in the field of view and in focus?", "snap": true})
+    reply: The frame shows an artificial calibration pattern of slanted parallel fringes covering the entire field of view rather than a biological sample. The image is underexposed, with a maximum intensity around 1,599 out of 65,535.
+    PASS: 1 new file(s) (expected 1: one exposure)
+
+[walk 1] > Start live mode.
+    tool: start_live({})
+    reply: Live mode is now running.
+    PASS: 'live' (expected 'live')
+
+[walk 1] > Stop the live mode.
+    tool: stop_activity({})
+    reply: I have stopped the live view. The microscope is now idle.
+    PASS: 'idle' (expected 'idle')
+
+[walk 1] > Move X to 30000 um.
+    tool: move_absolute({"targets": {"x": 30000}})
+    reply: The move was refused because 30000 µm is outside the allowed range of -25000 µm to 25000 µm for the X axis. Where would you like to move X instead?
+    PASS: X 5000.0 (expected 5000.0 kept); the reply names the limit: True
+
+[walk 1] > Rename the first acquisition to walk_102424.tif.
+    tool: update_acquisition_row({"row": 0, "changes": {"filename": "walk_102424.tif"}})
+    tool: set_acquisition_list({"acquisitions": [{"x_pos": 0, "y_pos": 1000, "z_start": 0, "z_end": 100, "z_step": 10, "planes": 10, "rot": 180, "f_start": 5000, "f_end": 5000, "laser": "488 nm", "intensity": 10, "filter": "Empty", "zoom": "2x", "shutterconfig": "Right", "folder": "tmp", "filename": "walk_102424.tif", "image_writer_plugin": "Tiff_Writer", "etl_l_offset": 2.397000000000001, "etl_l_amplitude": 0.4610000000000001, "etl_r_offset": 2.5450000000000004, "etl_r_amplitude": 0.366, "processing": "MAX"}], "selected_row": 0})
+    reply: I have renamed the first acquisition filename to walk_102424.tif.
+    PASS: ('walk_102424.tif', '2x', 5000) (expected ('walk_102424.tif', '2x', 5000))
+
+[walk 1] > Change the first acquisition to z from 0 to 20 um in steps of 10, saved in C:\ProgramData\MinicondaZMB\home\probe.
+    tool: update_acquisition_row({"row": 0, "changes": {"z_start": 0, "folder": "C:\\ProgramData\\MinicondaZMB\\home\\probe", "z_end": 20, "z_step": 10}})
+    tool: set_acquisition_list({"acquisitions": [{"x_pos": 0, "y_pos": 1000, "z_start": 0, "z_end": 20, "z_step": 10, "planes": 10, "rot": 180, "f_start": 5000, "f_end": 5000, "laser": "488 nm", "intensity": 10, "filter": "Empty", "zoom": "2x", "shutterconfig": "Right", "folder": "C:\\ProgramData\\MinicondaZMB\\home\\probe", "filename": "walk_102424.tif", "image_writer_plugin": "Tiff_Writer", "etl_l_offset": 2.397000000000001, "etl_l_amplitude": 0.4610000000000001, "etl_r_offset": 2.5450000000000004, "etl_r_amplitude": 0.366, "processing": "MAX"}], "selected_row": 0})
+    reply: I have updated the first acquisition row to set the z-range from 0 to 20 µm with a 10 µm step, and saved the files in C:\ProgramData\MinicondaZMB\home\probe.
+    PASS: (20, 10, 'C:\\ProgramData\\MinicondaZMB\\home\\probe', '2x') (expected (20, 10, 'C:\\ProgramData\\MinicondaZMB\\home\\probe', '2x'))
+
+[walk 1] > Run the acquisition list.
+    tool: run_acquisition_list({})
+    reply: I have started running the acquisition list.
+    PASS: C:\ProgramData\MinicondaZMB\home\probe\walk_102424.tif
+
+Putting the instrument back after walk 1 ...
+    stop_activity: done
+    move_absolute: completed
+    set_intensity: completed
+    set_filter: completed
+    set_laser: completed
+    set_zoom: completed
+    set_shutterconfig: completed
+    set_acquisition_list: completed
+
+16 of 16 steps passed

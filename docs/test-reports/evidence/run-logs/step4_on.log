@@ -1,0 +1,53 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\configs\demo_config_measured.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+config C:\ProgramData\MinicondaZMB\home\configs\demo_config_measured.py; stage mesoSPIM_DemoStage
+
+== setup: Remote Control TCP, then the AI Assistant ==
+  PASS setup: TCP starts: TCP running on 127.0.0.1:42000
+  PASS setup: Connect while TCP runs is refused: Stop the Remote Control transport to use the AI Assistant.
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS setup: Gemini connects after TCP stops: connected: Gemini, gemini-3.5-flash-lite
+
+== m: measured values (E1), config says True ==
+  PASS m: setting read (True) and the prompt follows: worker.measured_values=True, paragraph in prompt True, prompt 11488 chars
+  snap folder: C:\ProgramData\MinicondaZMB\home\probe
+
+> Centre the sample.
+    request line: Request 1: 0 turns, 0 tokens
+Free disk C: space 1325.2 GB
+Free disk C: space 1325.1 GB
+Free disk C: space 1325.1 GB
+Free disk C: space 1325.1 GB
+INFO: x_pos = 7.2
+INFO: y_pos = -1.4
+Free disk C: space 1325.1 GB
+Free disk C: space 1325.1 GB
+Free disk C: space 1325.1 GB
+Free disk C: space 1325.1 GB
+    tool: look({"question": "is the sample in the field of view, and what is its centre_move_um?", "snap": true})
+    tool: move_relative({"deltas": {"y": -1.4, "x": 7.2}})
+    tool: look({"question": "is the sample centred now?", "snap": true})
+    reply: I took a look at the sample, measured a centring offset from the frame, and moved the stage by +7.2 µm on x (right) and -1.4 µm on y (down). After checking the new frame, a small remaining offset of +6.4 µm on x and -0.4 µm on y was computed.
+    request line: Request 1: 1 turns, 34,487 tokens
+  questions []
+  tools over the request ['look', 'move_relative', 'look']; moved {'x': 7.2, 'y': -1.4}
+  PASS m: centre the sample: nothing breaks: errors []; questions 0; moved {'x': 7.2, 'y': -1.4}; reply 'I took a look at the sample, measured a centring offset from the frame, and moved the stage by +7.2 µm on x (right) and -1.4 µm on y (down). After checking the new frame, a small remaining offset of +6.4 µm on x and -0.4 µm on y was computed.'
+
+== summary ==
+PASS  setup: TCP starts
+PASS  setup: Connect while TCP runs is refused
+PASS  setup: Gemini connects after TCP stops
+PASS  m: setting read (True) and the prompt follows
+PASS  m: centre the sample: nothing breaks
+5 of 5 checks passed

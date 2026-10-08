@@ -1,0 +1,41 @@
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+Starting control software
+Configuration file loaded: C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/mesoSPIM-dev/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Traceback (most recent call last):
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\mesoSPIM_Control.py", line 174, in <module>
+    run()
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\mesoSPIM_Control.py", line 170, in run
+    main(embed_console=args.console, demo_mode=args.demo)
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\mesoSPIM_Control.py", line 152, in main
+    ex = mesoSPIM_MainWindow(package_directory, cfg, "mesoSPIM Main Window, v. " + __version__)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\src\mesoSPIM_MainWindow.py", line 122, in __init__
+    self.open_webcam_window()
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\src\mesoSPIM_MainWindow.py", line 264, in open_webcam_window
+    self.webcam_window = WebcamWindow(self.cfg.ui_options['usb_webcam_ID'])
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\mesoSPIM-dev\mesoSPIM-control\mesoSPIM\src\WebcamWindow.py", line 29, in __init__
+    loadUi('gui/WebcamWindow.ui', self)
+  File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\PyQt5\uic\__init__.py", line 241, in loadUi
+    return DynamicUILoader(package).loadUi(uifile, baseinstance, resource_suffix)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\PyQt5\uic\Loader\loader.py", line 66, in loadUi
+    return self.parse(filename, resource_suffix)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\PyQt5\uic\uiparser.py", line 1020, in parse
+    document = parse(filename)
+               ^^^^^^^^^^^^^^^
+  File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\xml\etree\ElementTree.py", line 1204, in parse
+    tree.parse(source, parser)
+  File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\xml\etree\ElementTree.py", line 558, in parse
+    source = open(source, "rb")
+             ^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'gui/WebcamWindow.ui'

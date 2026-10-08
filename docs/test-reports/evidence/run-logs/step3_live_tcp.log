@@ -1,0 +1,4 @@
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+........                                                                 [100%]
+8 passed in 66.96s (0:01:06)

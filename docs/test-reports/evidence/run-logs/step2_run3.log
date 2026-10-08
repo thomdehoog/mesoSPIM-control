@@ -1,0 +1,105 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 2
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+config C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py; stage mesoSPIM_DemoStage
+
+== setup: Remote Control TCP, then the AI Assistant ==
+  PASS setup: TCP starts: TCP running on 127.0.0.1:42000
+  PASS setup: Connect while TCP runs is refused: Stop the Remote Control transport to use the AI Assistant.
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS setup: Gemini connects after TCP stops: connected: Gemini, gemini-3.5-flash-lite
+
+== e: what ends a request ==
+
+> Wait 30 seconds, then tell me the x position.
+    request line: Request 1: 0 turns, 0 tokens
+Free disk C: space 1325.8 GB
+    tool: schedule({"name": "tell_x_position", "instruction": "tell me the x position", "in_seconds": 30})
+    reply: I have scheduled to check and tell you the x position in 30 seconds.
+    request line: Request 1: 1 turns, 15,794 tokens
+
+> Use the wait tool to wait 30 seconds, then tell me the x position.
+Free disk C: space 1325.8 GB
+    request line: Request 2: 0 turns, 0 tokens
+    request line: Request 2: 0 turns, 0 tokens, waiting until 30.0
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 2: 1 turns, 17,093 tokens, waiting until 30.0
+  waiting: True, line: Request 2: 1 turns, 17,093 tokens, waiting until 30.0
+  PASS e: the request line's Cancel ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1325.8 GB
+    request line: Request 3: 0 turns, 0 tokens, waiting until 30.0
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 3: 1 turns, 18,339 tokens, waiting until 30.0
+  waiting: True, line: Request 3: 1 turns, 18,339 tokens, waiting until 30.0
+  PASS e: Stop microscope ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1325.8 GB
+    request line: Request 4: 0 turns, 0 tokens
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 4: 1 turns, 18,759 tokens, waiting until 30.0
+  waiting: True, line: Request 4: 1 turns, 18,759 tokens, waiting until 30.0
+  PASS e: Clear context ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1325.8 GB
+    request line: Request 1: 0 turns, 0 tokens
+    tool: schedule({"name": "tell_x_position", "instruction": "tell me the x position", "in_seconds": 30})
+    reply: I have scheduled a check of the x position in 30 seconds.
+    request line: Request 1: 1 turns, 15,794 tokens
+
+> Use the wait tool to wait 30 seconds, then tell me the x position.
+Free disk C: space 1325.8 GB
+    request line: Request 2: 0 turns, 0 tokens, waiting until 30.0
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 2: 1 turns, 17,089 tokens, waiting until 30.0
+  waiting: True, line: Request 2: 1 turns, 17,089 tokens, waiting until 30.0
+  PASS e: Disconnect ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+  status: connected: Gemini, gemini-3.5-flash-lite
+
+== f: a schedule ==
+  snap folder: C:\ProgramData\MinicondaZMB\home\probe
+
+> Take a snap every minute for three minutes.
+Free disk C: space 1325.8 GB
+    request line: Request 1: 0 turns, 0 tokens
+    tool: schedule({"name": "snap_every_minute", "instruction": "take a snap", "every_seconds": 60})
+    reply: I have scheduled a snap to be taken every minute for the next three minutes, starting in 60 seconds.
+    request line: Request 1: 1 turns, 15,804 tokens
+  schedules: [{'name': 'snap_every_minute', 'instruction': 'take a snap', 'every_seconds': 60, 'due_in_s': 59, 'due_at': '10:18:30'}]
+Free disk C: space 1325.8 GB
+Free disk C: space 1325.8 GB
+Free disk C: space 1325.8 GB
+Free disk C: space 1325.8 GB
+Free disk C: space 1325.7 GB
+Free disk C: space 1325.7 GB
+  PASS f: scheduled turns fire: 2 scheduled turns, 2 new snaps
+  PASS f: none after Stop microscope: scheduled turns 2 -> 2, schedules left []
+
+== summary ==
+PASS  setup: TCP starts
+PASS  setup: Connect while TCP runs is refused
+PASS  setup: Gemini connects after TCP stops
+PASS  e: the request line's Cancel ends the waiting request
+PASS  e: Stop microscope ends the waiting request
+PASS  e: Clear context ends the waiting request
+PASS  e: Disconnect ends the waiting request
+PASS  f: scheduled turns fire
+PASS  f: none after Stop microscope
+9 of 9 checks passed

@@ -1,0 +1,153 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+config C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py; stage mesoSPIM_DemoStage
+  snap folder: C:\ProgramData\MinicondaZMB\home\probe
+SERVING MCP: True, MCP running on 127.0.0.1:42100
+INFO: x_pos = 100.0
+INFO: x_pos = 0.0
+Free disk C: space 1325.3 GB
+INFO: x_pos = 100.0
+INFO: x_pos = 125.0
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+INFO: y_pos = -6000.0
+INFO: y_pos = 6000.0
+INFO: x_pos = 0.0
+INFO: z_pos = 0.0
+Free disk C: space 1325.2 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1325.1 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Free disk C: space 1325.0 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1325.0 GB
+Running time point 0 out of 0...
+Free disk C: space 1325.0 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0
+INFO: z_pos = 0
+INFO: theta_pos = 0
+Demo stage move (wait_until_done is True) complete
+Timer sequence finished
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1325.3 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = 1.0
+INFO: f_pos = 5000.1
+INFO: z_pos = 2.0
+INFO: z_pos = 3.0
+INFO: z_pos = 4.0
+INFO: z_pos = 5.0
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+Free disk C: space 1325.3 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1.0
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1325.3 GB
+Free disk C: space 1325.3 GB
+Free disk C: space 1325.3 GB
+Free disk C: space 1325.3 GB
+Free disk C: space 1325.3 GB
+Running time point 0 out of 1...
+Free disk C: space 1325.3 GB
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete
+INFO: z_pos = -1.0
+INFO: f_pos = 5000.1
+INFO: x_pos = 0.0
+INFO: y_pos = 0.0
+INFO: z_pos = 0.0
+INFO: theta_pos = 0.0
+Demo stage move (wait_until_done is True) complete

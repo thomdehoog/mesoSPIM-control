@@ -1,0 +1,206 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 2
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+config C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py; stage mesoSPIM_DemoStage
+
+== setup: Remote Control TCP, then the AI Assistant ==
+  PASS setup: TCP starts: TCP running on 127.0.0.1:42000
+  PASS setup: Connect while TCP runs is refused: Stop the Remote Control transport to use the AI Assistant.
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS setup: Gemini connects after TCP stops: connected: Gemini, gemini-3.5-flash-lite
+
+== a: a simple request ==
+
+> move x by 100 um
+    request line: Request 1: 0 turns, 0 tokens
+Free disk C: space 1326.2 GB
+INFO: x_pos = 100.0
+Free disk C: space 1326.2 GB
+    tool: move_relative({"deltas": {"x": 100}})
+    reply: I have moved the stage by +100 µm along the x-axis. The current x position is now 100 µm.
+    request line: Request 1: 1 turns, 15,859 tokens
+  PASS a: x moved by 100 um, no question: x 0 -> 100.0, display '100.0 µm', questions 0, tools ['move_relative']
+
+== b: a value the operator did not give ==
+
+> Make the laser a bit brighter.
+Free disk C: space 1326.2 GB
+    request line: Request 2: 0 turns, 0 tokens
+    reply: Which laser would you like to use, and what intensity setting would you prefer?
+    request line: Request 2: 1 turns, 17,412 tokens
+  FAIL b: Run / Cancel asked and Cancel refused it: questions [], intensity 10 -> 10, tools []
+
+== c: the coordinate system box ==
+  PASS c: the box is locked while connected: enabled=False
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS c: the worker holds the new axes and the prompt follows: worker x=left, prompt says 'toward the left': True
+
+> Without moving anything: in the image, which way does a positive x move carry the sample? Answer with one word.
+Free disk C: space 1326.2 GB
+    request line: Request 1: 0 turns, 0 tokens
+    reply: Left
+    request line: Request 1: 1 turns, 15,947 tokens
+  PASS c: the agent was rebuilt with them and the model answers by them: agent axes x=left, reply 'left'
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS c: put back: x=right
+
+== d: run the acquisition list and look once it is done ==
+  snap folder: D:/tmp/
+  PASS d: the list is one small row in the probe folder: 1 row(s); folder C:\ProgramData\MinicondaZMB\home\probe, filename step_d_100202.tif, z 0..20 step 10
+
+> Run the acquisition list and look once it is done.
+Free disk C: space 1326.2 GB
+Free disk C: space 1326.2 GB
+INFO: theta_pos = 180
+    request line: Request 1: 0 turns, 0 tokens
+Demo stage move (wait_until_done is True) complete
+INFO: x_pos = 0
+INFO: y_pos = 1000
+INFO: z_pos = 0
+INFO: theta_pos = 180
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1326.2 GB
+INFO: z_pos = 10
+INFO: f_pos = 5000.1
+INFO: z_pos = 20
+INFO: z_pos = 30
+    request line: Request 1: 0 turns, 0 tokens, waiting until done
+Free disk C: space 1326.1 GB
+INFO: x_pos = 0
+INFO: y_pos = 1000
+INFO: z_pos = 0
+INFO: theta_pos = 180
+    tool: run_acquisition_list({})
+    tool: wait({"until": "done"})
+    tool: look({"question": "Is the sample visible and in focus?", "snap": true})
+    reply: The acquisition finished, but the look failed because the snap folder 'D:/tmp/' does not exist on the microscope PC. Would you like to create that folder or change it to an existing one?
+    request line: Request 1: 1 turns, 32,358 tokens, waiting until done
+  PASS d: the request line shows turns, tokens and the wait: Request 1: 0 turns, 0 tokens || Request 1: 0 turns, 0 tokens, waiting until done || Request 1: 1 turns, 32,358 tokens, waiting until done
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1326.0 GB
+Free disk C: space 1326.0 GB
+Free disk C: space 1326.1 GB
+  PASS d: the continuation fired after the run ended: file step_d_100202.tif written True; continuation tools ['look']; reply 'The acquisition completed successfully, but the look failed because the snap folder 'D:/tmp/' does not exist. Would you like to create that folder or change it to an existing one?'
+  plan shown: False
+    request line: Request 1: 2 turns, 50,527 tokens
+
+== e: what ends a request ==
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1326.1 GB
+    request line: Request 2: 0 turns, 0 tokens
+    request line: Request 2: 0 turns, 0 tokens, waiting until 30.0
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 2: 1 turns, 19,707 tokens, waiting until 30.0
+  waiting: True, line: Request 2: 1 turns, 19,707 tokens, waiting until 30.0
+  PASS e: the request line's Cancel ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1326.1 GB
+    request line: Request 3: 0 turns, 0 tokens
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 3: 1 turns, 20,017 tokens, waiting until 30.0
+  waiting: True, line: Request 3: 1 turns, 20,017 tokens, waiting until 30.0
+  PASS e: Stop microscope ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1326.1 GB
+    request line: Request 4: 0 turns, 0 tokens, waiting until 30.0
+    tool: wait({"until": "30", "max_s": 30})
+    reply: I am waiting for 30 seconds.
+    request line: Request 4: 1 turns, 20,375 tokens, waiting until 30.0
+  waiting: True, line: Request 4: 1 turns, 20,375 tokens, waiting until 30.0
+  PASS e: Clear context ends the waiting request: waiting before True, line hidden after True, continuations after it 0
+
+> Wait 30 seconds, then tell me the x position.
+Free disk C: space 1326.1 GB
+    request line: Request 1: 0 turns, 0 tokens
+    tool: schedule({"name": "tell_x_position", "instruction": "tell me the x position", "in_seconds": 30})
+    reply: I have scheduled a task to tell you the x position in 30 seconds.
+    request line: Request 1: 1 turns, 15,994 tokens
+  waiting: False, line: Request 1: 1 turns, 15,994 tokens
+  FAIL e: Disconnect ends the waiting request: waiting before False, line hidden after False, continuations after it 0
+  status: connected: Gemini, gemini-3.5-flash-lite
+
+== f: a schedule ==
+  snap folder: D:/tmp/
+
+> Take a snap every minute for three minutes.
+Free disk C: space 1326.1 GB
+    request line: Request 1: 0 turns, 0 tokens
+    tool: schedule({"name": "snap_every_minute", "instruction": "take a snap", "every_seconds": 60})
+    reply: I have scheduled a snap to be taken every minute for the next three minutes under the name "snap_every_minute".
+    request line: Request 1: 1 turns, 15,982 tokens
+  schedules: [{'name': 'snap_every_minute', 'instruction': 'take a snap', 'every_seconds': 60, 'due_in_s': 59, 'due_at': '10:06:05'}]
+Free disk C: space 1326.1 GB
+Free disk C: space 1326.1 GB
+Free disk C: space 1326.0 GB
+Free disk C: space 1326.0 GB
+  PASS f: scheduled turns fire: 2 scheduled turns, 0 new snaps
+  PASS f: none after Stop microscope: scheduled turns 2 -> 2, schedules left []
+
+== g: combo boxes: a change Core makes is not sent back ==
+  start: {'zoom': '2x', 'filter': 'Empty', 'laser': '488 nm', 'shutterconfig': 'Right'}
+
+> Set the zoom to 1x.
+Free disk C: space 1326.0 GB
+    request line: Request 2: 0 turns, 0 tokens
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+Free disk C: space 1326.0 GB
+    tool: set_zoom({"zoom": "1x"})
+    reply: I have set the zoom to 1x.
+    request line: Request 2: 1 turns, 20,047 tokens
+  PASS g: a zoom change by the assistant is not sent back, one trip to the exchange position: zoom 1x, box '1x', requests from the window [], exchange trips 1
+
+> Switch the filter to 405-488-647-Tripleblock, the laser to 405 nm and the shutter configuration to Left.
+Free disk C: space 1326.0 GB
+Free disk C: space 1326.0 GB
+    request line: Request 3: 0 turns, 0 tokens
+Free disk C: space 1326.0 GB
+Free disk C: space 1326.0 GB
+    tool: set_filter({"filter": "405-488-647-Tripleblock"})
+    tool: set_laser({"laser": "405 nm"})
+    tool: set_shutterconfig({"shutterconfig": "Left"})
+    reply: I have switched the filter to 405-488-647-Tripleblock, the laser to 405 nm, and the shutter configuration to Left.
+    request line: Request 3: 1 turns, 41,470 tokens
+  FAIL g: filter, laser and shutter set by the assistant are not sent back: state ['405-488-647-Tripleblock', '405 nm', 'Left'], boxes ['405-488-647-Tripleblock', '405 nm', 'Right'], echoes []
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+  PASS g: the operator's own box changes are sent once each, one trip for the zoom: requests per box {'zoom': 1, 'filter': 1, 'laser': 1, 'shutterconfig': 1}, exchange trips 1, state back ['2x', 'Empty', '488 nm', 'Right']
+
+== summary ==
+PASS  setup: TCP starts
+PASS  setup: Connect while TCP runs is refused
+PASS  setup: Gemini connects after TCP stops
+PASS  a: x moved by 100 um, no question
+FAIL  b: Run / Cancel asked and Cancel refused it
+PASS  c: the box is locked while connected
+PASS  c: the worker holds the new axes and the prompt follows
+PASS  c: the agent was rebuilt with them and the model answers by them
+PASS  c: put back
+PASS  d: the list is one small row in the probe folder
+PASS  d: the request line shows turns, tokens and the wait
+PASS  d: the continuation fired after the run ended
+PASS  e: the request line's Cancel ends the waiting request
+PASS  e: Stop microscope ends the waiting request
+PASS  e: Clear context ends the waiting request
+FAIL  e: Disconnect ends the waiting request
+PASS  f: scheduled turns fire
+PASS  f: none after Stop microscope
+PASS  g: a zoom change by the assistant is not sent back, one trip to the exchange position
+FAIL  g: filter, laser and shutter set by the assistant are not sent back
+PASS  g: the operator's own box changes are sent once each, one trip for the zoom
+18 of 21 checks passed

@@ -1,0 +1,51 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+config C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py; stage mesoSPIM_DemoStage
+
+== setup: Remote Control TCP, then the AI Assistant ==
+  PASS setup: TCP starts: TCP running on 127.0.0.1:42000
+  PASS setup: Connect while TCP runs is refused: Stop the Remote Control transport to use the AI Assistant.
+  status: connected: Gemini, gemini-3.5-flash-lite
+  PASS setup: Gemini connects after TCP stops: connected: Gemini, gemini-3.5-flash-lite
+
+== m: measured values (E1), config says False ==
+  PASS m: setting read (False) and the prompt follows: worker.measured_values=False, paragraph in prompt False, prompt 10965 chars
+  snap folder: C:\ProgramData\MinicondaZMB\home\probe
+
+> Centre the sample.
+    request line: Request 1: 0 turns, 0 tokens
+Free disk C: space 1325.3 GB
+Free disk C: space 1325.2 GB
+Free disk C: space 1325.2 GB
+Free disk C: space 1325.2 GB
+    Run / Cancel: The assistant wants to run move_relative {"deltas": {"y": -1.4, "x": 7.2}}. Run it? -> Cancel
+Free disk C: space 1325.2 GB
+Free disk C: space 1325.2 GB
+Free disk C: space 1325.2 GB
+    tool: look({"question": "is the sample in the field of view, and what move would centre it?", "snap": true})
+    tool: move_relative({"deltas": {"y": -1.4, "x": 7.2}})
+    tool: look({"question": "is the sample now centred?", "snap": true})
+    reply: To centre the sample, how many micrometres would you like me to move on the x and y axes?
+    request line: Request 1: 1 turns, 33,602 tokens
+  questions ['The assistant wants to run move_relative {"deltas": {"y": -1.4, "x": 7.2}}. Run it?']
+  tools over the request ['look', 'move_relative', 'look']; moved {}
+  PASS m: centre the sample: nothing breaks: errors []; questions 1; moved nothing; reply 'To centre the sample, how many micrometres would you like me to move on the x and y axes?'
+
+== summary ==
+PASS  setup: TCP starts
+PASS  setup: Connect while TCP runs is refused
+PASS  setup: Gemini connects after TCP stops
+PASS  m: setting read (False) and the prompt follows
+PASS  m: centre the sample: nothing breaks
+5 of 5 checks passed

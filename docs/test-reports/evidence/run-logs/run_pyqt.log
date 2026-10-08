@@ -1,0 +1,38 @@
+REAL PYQT WARNING ROUTING PASS: a remote command's warning on its operation, no window; after disconnect one window on the GUI thread
+REAL PYQT SMOKE PASS: Qt 5.15.2, PyQt 5.15.11, commands=56, no transport bound
+REAL PYQT TCP BIND RULES PASS: localhost is loopback, no token or hostname refused, silent client dropped
+REAL PYQT MCP ASYNC MUTATION PASS
+REAL PYQT TCP ASYNC MUTATION PASS
+REAL PYQT TRANSPORT POLLING PASS: actions accepted first, polling responsive, movement target confirmed
+REAL PYQT TCP SOCKETS PASS: every client socket is created by PyQt, which tracks its deletion
+REAL PYQT TCP RECONNECT PER CALL PASS: 1000 connections from one client, every call answered
+REAL PYQT ASSISTANT SMOKE PASS: Qt 5.15.2, setup widths not measured: no fonts on this platform, run with QT_QPA_PLATFORM=windows
+REAL PYQT SCHEDULER SMOKE PASS: Qt 5.15.2, 2 scheduled turns fired by the tab's timer every 5 s through the worker and the Acceptor, none after Stop microscope
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+........                                                                 [100%]
+============================== warnings summary ===============================
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:64
+  C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'
+    prop = Group((name + Suppress("=") + comma_separated(value)) | oneOf(_CONSTANTS))
+
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85
+  C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+    parse = parser.parseString(pattern)
+
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+..\..\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89
+  C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\matplotlib\_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+    parser.resetCache()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+8 passed, 13 warnings in 7.87s

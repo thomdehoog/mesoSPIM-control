@@ -1,0 +1,90 @@
+AI Assistant -> mesoSPIM DemoStage at 127.0.0.1:42000, scripted tool calls
+
+[walk 1] > Move the stage to X = 5000 um.
+    tool: move_absolute({"targets": {"x": 5000}})
+    reply: Done.
+    PASS: 5000.0 (expected 5000.0)
+
+[walk 1] > Move Y by 1 mm.
+    tool: move_relative({"deltas": {"y": 1000}})
+    reply: Done.
+    PASS: 1000.0 (expected 1000.0)
+
+[walk 1] > Set the laser intensity to 20 %.
+    tool: set_intensity({"intensity": 20})
+    reply: Done.
+    PASS: 20.0 (expected 20)
+
+[walk 1] > Switch the filter to 515LP.
+    tool: set_filter({"filter": "515LP"})
+    reply: Done.
+    PASS: '515LP' (expected '515LP')
+
+[walk 1] > Switch to the 561 nm laser.
+    tool: set_laser({"laser": "561 nm"})
+    reply: Done.
+    PASS: '561 nm' (expected '561 nm')
+
+[walk 1] > Set the zoom to 1x.
+    tool: set_zoom({"zoom": "1x"})
+    reply: Done.
+    PASS: '1x' (expected '1x')
+
+[walk 1] > Use the left light sheet.
+    tool: set_shutterconfig({"shutterconfig": "Left"})
+    reply: Done.
+    PASS: 'Left' (expected 'Left')
+
+[walk 1] > Take a snap.
+    tool: snap({})
+    reply: Done.
+    PASS: 1 new file(s) (expected 1)
+
+[walk 1] > Take a snap into D:\nowhere.
+    tool: snap({"folder": "D:\\nowhere"})
+    reply: Done.
+    PASS: 0 new file(s) (expected 0); the reply names the folder: True, proposes a fix: True
+
+[walk 1] > Start live mode.
+    tool: start_live({})
+    reply: Done.
+    PASS: 'live' (expected 'live')
+
+[walk 1] > Stop the live mode.
+    tool: stop_activity({})
+    reply: Done.
+    PASS: 'idle' (expected 'idle')
+
+[walk 1] > Move X to 30000 um.
+    tool: move_absolute({"targets": {"x": 30000}})
+    reply: Done.
+    PASS: X 5000.0 (expected 5000.0 kept); the reply names the limit: True
+
+[walk 1] > Rename the first acquisition to walk_102302.tif.
+    tool: update_acquisition_row({"row": 0, "changes": {"filename": "walk_102302.tif"}})
+    tool: set_acquisition_list({"acquisitions": [{"x_pos": 0, "y_pos": 1000, "z_start": 0, "z_end": 100, "z_step": 10, "planes": 10, "rot": 180, "f_start": 5000, "f_end": 5000, "laser": "488 nm", "intensity": 10, "filter": "Empty", "zoom": "2x", "shutterconfig": "Right", "folder": "tmp", "filename": "walk_102302.tif", "image_writer_plugin": "Tiff_Writer", "etl_l_offset": 2.397000000000001, "etl_l_amplitude": 0.4610000000000001, "etl_r_offset": 2.5450000000000004, "etl_r_amplitude": 0.366, "processing": "MAX"}], "selected_row": 0})
+    reply: Done.
+    PASS: ('walk_102302.tif', '2x', 5000) (expected ('walk_102302.tif', '2x', 5000))
+
+[walk 1] > Change the first acquisition to z from 0 to 20 um in steps of 10, saved in C:\ProgramData\MinicondaZMB\home\probe.
+    tool: update_acquisition_row({"row": 0, "changes": {"z_start": 0, "z_end": 20, "z_step": 10, "folder": "C:\\ProgramData\\MinicondaZMB\\home\\probe"}})
+    tool: set_acquisition_list({"acquisitions": [{"x_pos": 0, "y_pos": 1000, "z_start": 0, "z_end": 20, "z_step": 10, "planes": 10, "rot": 180, "f_start": 5000, "f_end": 5000, "laser": "488 nm", "intensity": 10, "filter": "Empty", "zoom": "2x", "shutterconfig": "Right", "folder": "C:\\ProgramData\\MinicondaZMB\\home\\probe", "filename": "walk_102302.tif", "image_writer_plugin": "Tiff_Writer", "etl_l_offset": 2.397000000000001, "etl_l_amplitude": 0.4610000000000001, "etl_r_offset": 2.5450000000000004, "etl_r_amplitude": 0.366, "processing": "MAX"}], "selected_row": 0})
+    reply: Done.
+    PASS: (20, 10, 'C:\\ProgramData\\MinicondaZMB\\home\\probe', '2x') (expected (20, 10, 'C:\\ProgramData\\MinicondaZMB\\home\\probe', '2x'))
+
+[walk 1] > Run the acquisition list.
+    tool: run_acquisition_list({})
+    reply: Done.
+    PASS: C:\ProgramData\MinicondaZMB\home\probe\walk_102302.tif
+
+Putting the instrument back after walk 1 ...
+    stop_activity: done
+    move_absolute: completed
+    set_intensity: completed
+    set_filter: completed
+    set_laser: completed
+    set_zoom: completed
+    set_shutterconfig: completed
+    set_acquisition_list: completed
+
+15 of 15 steps passed
