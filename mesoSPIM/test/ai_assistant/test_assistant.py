@@ -272,7 +272,7 @@ def test_endpoint_prefers_the_typed_key_over_the_environment(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "from-env")
     typed = Endpoint.from_preset("Gemini", api_key="  typed  ")
     assert (typed.kind, typed.api_key, typed.model) == ("google", "typed", "gemini-3.5-flash-lite")
-    assert typed.fallback_model == ""                              # no silent stand-in (see the preset)
+    assert not hasattr(typed, "fallback_model")                    # no silent stand-in (see the preset)
     assert Endpoint.from_preset("Gemini").api_key == "from-env"
 
 
