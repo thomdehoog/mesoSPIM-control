@@ -1,0 +1,24 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+Qt 5.15.2, PyQt5, stage mesoSPIM_DemoStage
+start: Core shutterconfig='Right', box='Right'
+set_shutterconfig('Left') [processing]: Core='Left', box='Right', left ETL enabled=False, right ETL enabled=True -> STALE BOX
+set_filter('405-488-647-Tripleblock') [processing]: Core='405-488-647-Tripleblock', box='Empty' -> STALE BOX
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+set_zoom('1x') [processing]: Core='1x', box='1x' -> OK
+set_laser('405 nm') [processing]: Core='405 nm', box='405 nm' -> OK
+stale boxes: ['shutterconfig', 'filter']
+REPRODUCED: the shutter box does not follow Core
+exit=1

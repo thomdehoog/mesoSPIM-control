@@ -11,7 +11,7 @@ gemini-3.5-flash-lite. No hardware.
 
 | Folder | Finding | Kind | Reproduction |
 | --- | --- | --- | --- |
-| [01-shutter-box-not-refreshed](01-shutter-box-not-refreshed/) | The main window's shutter box keeps its old value after a remote shutter change | Bug, upstream Core/GUI | Script, no model |
+| [01-shutter-and-filter-boxes-not-refreshed](01-shutter-and-filter-boxes-not-refreshed/) | The main window's shutter and filter boxes keep their old value after a remote change | Bug, upstream Core/GUI | Script, no model |
 | [02-startup-from-repo-root](02-startup-from-repo-root/) | Starting from the repo root fails on a cwd-relative .ui path | Bug, upstream | Script, no model |
 | [03-live-suite-environment](03-live-suite-environment/) | `run.py live tcp/mcp` skips every test with only the two variables the brief names | Test brief / runner | Script, no demo needed |
 | [04-tcp-and-assistant-exclusive](04-tcp-and-assistant-exclusive/) | Connect is refused while a TCP/MCP transport runs | Test brief (by design) | Log; driver |
