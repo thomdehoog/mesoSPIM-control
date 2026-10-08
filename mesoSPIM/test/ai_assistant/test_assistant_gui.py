@@ -838,7 +838,7 @@ def test_a_due_schedule_runs_as_a_turn_and_a_stop_clears_them(monkeypatch):
     gui.fire_due_schedule()
     assert sent == [(config.SCHEDULED_TURN.format(name="snaps", instruction="take a snap"), 4)] and typed == []
     shown = gui.chat_window.output.toPlainText()
-    assert gui._running and "[scheduled" in shown and "take a snap" in shown
+    assert gui._running and "⏱ Scheduled: snaps · take a snap" in shown and "[scheduled" not in shown
     clock[0] += 180
     gui.fire_due_schedule()
     assert len(sent) == 1                                           # a turn runs: it waits
@@ -850,6 +850,48 @@ def test_a_due_schedule_runs_as_a_turn_and_a_stop_clears_them(monkeypatch):
     gui.scheduler.add("snaps", "take a snap", every_seconds=180)
     gui.on_disconnect()
     assert gui.scheduler.listing() == []
+
+
+def test_each_schedule_has_a_row_that_counts_down_and_cancels_it(monkeypatch):
+    """A row per schedule, in firing order, with how often and the time to its next firing; a due
+    one waits for the running turn; its Cancel ends that schedule only; Stop removes every row."""
+    gui, core, worker, thread = _connected_gui(monkeypatch)
+    clock = [1_000_000.0]
+    gui.scheduler.clock = lambda: clock[0]
+    rows = lambda: gui.chat_window.schedule_rows                  # noqa: E731  (rebuilt when the schedules change)
+    gui.fire_due_schedule()
+    assert rows() == {}                                               # nothing scheduled: no row
+    gui.scheduler.add("snap_every_minute", "take a snap", every_seconds=60)
+    gui.scheduler.add("focus", "check the focus", in_seconds=3725)
+    clock[0] += 18
+    gui._show_schedules()
+    assert list(rows()) == ["snap_every_minute", "focus"]
+    assert rows()["snap_every_minute"][1].text() == "⏱ snap every minute · every 1 min · next in 0:42"
+    assert rows()["focus"][1].text() == "⏱ focus · once · next in 1:01:47"
+    clock[0] += 42
+    gui._running = True                                             # a turn runs: the due one waits for it
+    gui._show_schedules()
+    assert rows()["snap_every_minute"][1].text().endswith("due, after this turn")
+    gui._running = False
+    gui.on_cancel_schedule("snap_every_minute")
+    assert [item["name"] for item in gui.scheduler.listing()] == ["focus"] and list(rows()) == ["focus"]
+    assert "[schedule cancelled: snap every minute]" in gui.chat_window.output.toPlainText()
+    gui.on_stop_microscope()
+    assert rows() == {}
+
+
+def test_a_continuation_is_shown_as_the_machine_s_turn_and_sent_as_written(monkeypatch):
+    """The model gets the bracketed continuation; the transcript shows a muted line, not the
+    operator's panel."""
+    from mesoSPIM.src.ai_assistant import config as config
+    gui, core, worker, thread = _connected_gui(monkeypatch)
+    sent = []
+    gui.sig_run_machine_turn.connect(lambda text, request: sent.append((text, request)))
+    text = config.CONTINUATION_TURN.format(number=3, result="waited 30 s; until done: met")
+    gui._on_continue(text, 3)
+    assert sent == [(text, 3)]
+    shown = gui.chat_window.output.toPlainText()
+    assert "↻ Request 3 continues: waited 30 s; until done: met" in shown and "[continuation" not in shown
 
 
 def test_an_openai_style_model_sees_only_when_the_box_says_so(monkeypatch):

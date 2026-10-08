@@ -99,6 +99,10 @@ if not hasattr(QtWidgets.QLineEdit, "clear"):
 if not hasattr(QtWidgets.QWidget, "setVisible"):
     QtWidgets.QWidget.setVisible = lambda self, visible: setattr(self, "_visible", bool(visible))
     QtWidgets.QWidget.isVisible = lambda self: getattr(self, "_visible", True)
+if not hasattr(QtWidgets.QWidget, "deleteLater"):
+    QtWidgets.QWidget.deleteLater = lambda self: None
+if not hasattr(QtWidgets.QVBoxLayout, "removeWidget"):
+    QtWidgets.QVBoxLayout.removeWidget = lambda self, widget: None
 
 
 class _Signal:

@@ -294,7 +294,7 @@ def step_d(d):
     seen_wait = any("waiting until done" in t for t in d.requests_seen)
     record("d: the request line shows turns, tokens and the wait", seen_wait and any("tokens" in t for t in d.requests_seen),
            " || ".join(t.replace("\n", " | ") for t in d.requests_seen[-3:]))
-    fired = wait_until(lambda: "[continuation of request" in d.transcript(), 300)
+    fired = wait_until(lambda: "continues:" in d.transcript(), 300)
     if fired:
         wait_until(lambda: d.tab._running, 10)
         wait_until(lambda: not d.tab._running, 240)
@@ -340,7 +340,7 @@ def step_e(d):
         gone = requests.open() is None and not shown
         blocks = len(d.tab._blocks)
         pump(40)
-        late = [b for b in d.tab._blocks[blocks:] if isinstance(b, str) and "[continuation of request" in b]
+        late = [b for b in d.tab._blocks[blocks:] if isinstance(b, str) and "continues:" in b]
         record(f"e: {label} ends the waiting request", waiting and gone and not late,
                f"waiting before {waiting}, line hidden after {gone}, continuations after it {len(late)}")
     if d.tab._state != "ready":
@@ -355,7 +355,7 @@ def step_f(d):
     turn, asked = d.ask("Take a snap every minute for three minutes.")
     listing = d.tab.scheduler.listing()
     say(f"  schedules: {listing}")
-    fired = lambda: d.transcript().count("[scheduled ")  # noqa: E731
+    fired = lambda: d.transcript().count("Scheduled: ")  # noqa: E731
     two = wait_until(lambda: fired() >= 2 and not d.tab._running, 150)
     record("f: scheduled turns fire", two, f"{fired()} scheduled turns, {snaps() - before} new snaps")
     d.chat.stop_button.click()
@@ -430,7 +430,7 @@ def step_m(d):
     prepare_probe(d)
     start = {axis: d.pos(axis) for axis in ("x", "y", "z", "f")}
     turn, asked = d.ask("Centre the sample.", timeout=300)
-    if d.tab._worker.requests.waiting is not None or "[continuation" in d.transcript():
+    if d.tab._worker.requests.waiting is not None or "continues:" in d.transcript():
         wait_until(lambda: not d.tab._running and d.tab._worker.requests.open() is None, 240)
     end = {axis: d.pos(axis) for axis in ("x", "y", "z", "f")}
     tools = [n for b in d.tab._blocks if isinstance(b, dict) for n, _ in b["tools"]]
