@@ -1,0 +1,19 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+demo mesoSPIM up: Qt 5.15.2, stage mesoSPIM_DemoStage
+connected=True; axis boxes enabled while connected: {'x': False, 'y': False, 'z': False}
+after Disconnect, axis boxes enabled: True
+x changed 'right' -> 'left'; after Connect: worker.axes['x']='left', prompt says 'toward the left of the image': True
+AS DOCUMENTED: locked while connected; a change made while disconnected reaches the worker and the prompt
+exit=0
