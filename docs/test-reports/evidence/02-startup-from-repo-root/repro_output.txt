@@ -1,0 +1,18 @@
+cwd-relative loadUi calls in mesoSPIM/src:
+  mesoSPIM\src\mesoSPIM_CameraWindow.py:69: loadUi('../gui/mesoSPIM_CameraWindow.ui', self)
+  mesoSPIM\src\mesoSPIM_Optimizer.py:66: loadUi('gui/mesoSPIM_Optimizer.ui', self)
+  mesoSPIM\src\mesoSPIM_Optimizer.py:243: self.results_window = loadUi('gui/mesoSPIM_Optimizer_Results.ui')
+  mesoSPIM\src\mesoSPIM_TileViewWindow.py:32: loadUi('../gui/mesoSPIM_Tile_Overview.ui', self)
+  mesoSPIM\src\WebcamWindow.py:29: loadUi('gui/WebcamWindow.ui', self)
+
+starting from the repository root: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control
+last lines of its output:
+    File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\xml\etree\ElementTree.py", line 1204, in parse
+      tree.parse(source, parser)
+    File "C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\xml\etree\ElementTree.py", line 558, in parse
+      source = open(source, "rb")
+               ^^^^^^^^^^^^^^^^^^
+  FileNotFoundError: [Errno 2] No such file or directory: 'gui/WebcamWindow.ui'
+
+REPRODUCED: startup from the repository root fails: FileNotFoundError: [Errno 2] No such file or directory: 'gui/WebcamWindow.ui'
+exit=1
