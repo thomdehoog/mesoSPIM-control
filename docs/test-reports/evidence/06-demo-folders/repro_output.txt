@@ -1,0 +1,20 @@
+Configuration file loaded: C:\ProgramData\MinicondaZMB\home\mesoSPIM-control\mesoSPIM\config\demo_config.py
+'npy2bdv' already importable.
+C:\ProgramData\MinicondaZMB\envs\mesospim\Lib\site-packages\numcodecs\__init__.py:106: DeprecationWarning: crc32c usage is deprecated since numcodecs v0.16.4. It is recommended to install google_crc32c instead.
+  from numcodecs.checksum32 import CRC32, Adler32, JenkinsLookup3
+'zarr' already importable.
+'zarr' already importable.
+root=WindowsPath('C:/ProgramData/MinicondaZMB/home/mesoSPIM-control/mesoSPIM/src')
+'torch' already importable.
+'torch' already importable.
+Objective exchange in f-position 2000 ('f_objective_exchange' in stage parameters of the config file).
+Webcams found: 1
+Demo stage move (wait_until_done is True) complete
+Demo stage move (wait_until_done is True) complete
+demo mesoSPIM up: Qt 5.15.2, stage mesoSPIM_DemoStage
+demo_config startup: folder='D:/tmp/' exists=False, snap_folder='D:/tmp/' exists=False
+default acquisition list: 1 row(s); first row folder='tmp'
+after sig_state_request({'snap_folder': 'C:\\ProgramData\\MinicondaZMB\\home\\tmp'}): Core snap_folder='D:/tmp/' -> NOT taken
+after setting it as choose_snap_folder does: Core snap_folder='C:\\ProgramData\\MinicondaZMB\\home\\tmp' -> taken
+REPRODUCED: the demo folders do not exist on this machine
+exit=1
