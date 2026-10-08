@@ -1,0 +1,8 @@
+cache files after the first run: ['test_where.cpython-312-pytest-9.1.1.pyc', 'where_mod.cpython-312.pyc']
+pytest, before the move: SKIPPED [1] test_where.py:4: where am I
+pytest, after the move:  SKIPPED [1] ..\first_place\test_where.py:4: where am I
+python import, before:   C:\ProgramData\MinicondaZMB\home\tmp\moved_clone_qpgfwgo6\first_place\where_mod.py
+python import, after:    C:\ProgramData\MinicondaZMB\home\tmp\moved_clone_qpgfwgo6\second_place\where_mod.py
+REPRODUCED: pytest reports the old path after the move
+control: python import reports the new path
+exit=1
