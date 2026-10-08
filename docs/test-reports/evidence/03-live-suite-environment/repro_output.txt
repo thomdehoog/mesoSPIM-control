@@ -1,0 +1,14 @@
+environment: only MESOSPIM_ALLOW_DEVICE_CHANGE=1 and MESOSPIM_OPERATOR_PRESENT=1
+
+1. run.py live tcp (exit 0):
+   2 skipped in 0.10s
+   6 skipped in 0.09s
+
+2. the same selection with pytest -rs (exit 0):
+   SKIPPED [1] live/test_valid.py:60: set MESOSPIM_LIVE_TCP_TOKEN for the live TCP server
+   SKIPPED [7] mesoSPIM\test\remote_control\support\live_session.py:40: set MESOSPIM_CONFIRM_DEMO_MODE=1 to permit the DemoStage test
+   8 skipped in 0.12s
+
+variables named in the skip reasons: MESOSPIM_CONFIRM_DEMO_MODE, MESOSPIM_LIVE_TCP_TOKEN
+REPRODUCED: every live test skipped
+exit=1
