@@ -20,6 +20,7 @@ import time
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 4))
 PACKAGE = os.path.join(REPO, "mesoSPIM")
 sys.path.insert(0, REPO)
+CALLER_CWD = os.getcwd()   # a relative --config or --probe is the caller's, not mesoSPIM's
 os.chdir(PACKAGE)          # mesoSPIM loads gui/*.ui relative to the working directory
 
 from PyQt5 import QtCore, QtWidgets  # noqa: E402
@@ -455,6 +456,8 @@ def main():
     parser.add_argument("--keep-open", action="store_true", help="leave the window open at the end")
     parser.add_argument("--serve", choices=("TCP", "MCP"), help="no steps: start this transport and keep running")
     arguments = parser.parse_args()
+    arguments.config = os.path.join(CALLER_CWD, arguments.config)
+    arguments.probe = os.path.join(CALLER_CWD, arguments.probe)
     if not arguments.serve and not os.environ.get("GEMINI_API_KEY"):
         raise SystemExit("GEMINI_API_KEY is not set")
 

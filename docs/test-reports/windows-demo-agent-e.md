@@ -112,7 +112,32 @@ Driving the real GUI from a script made step 2 repeatable and caught the shutter
 
 Open decisions:
 
-- [ ] Fix the shutter and filter boxes (bug 1) on agent/demo-fixes, or leave it for upstream
-- [ ] Fix the cwd-relative .ui paths (bug 2), or correct AGENTS.md line 37
-- [ ] Add the missing live-suite variables to the brief, or make run.py report them
+- [x] Fix the shutter and filter boxes (bug 1): `fix/combobox-follow-core`, a separate upstream PR
+- [x] Fix the cwd-relative .ui paths (bug 2): `fix/ui-paths-from-package`, a separate upstream PR
+- [x] Make run.py report the missing live-suite variables: on `agent/f-pr`
 - [ ] Rotate the Gemini key
+
+## Rerun on a second machine, 8 October 2026
+
+The same test on a Windows 11 Pro workstation (Python 3.12.13, PyQt5 5.15.11, the same model), from
+a fresh clone of agent/demo-fixes: every result matches the table above. 1258 passed, 11 skipped
+offline; run.py pyqt 10/10; step 2 20/21 with only 2g failing (bug 1); walkthroughs 15/15 and 16/16,
+the start state put back; live TCP and live MCP 8/8 each; step 4 off and on 5/5 each. Bugs 1 and 2
+and findings 03, 05 and 07 reproduce; 04 behaves as documented. D:/tmp/ exists on that machine, so
+finding 06 applies only in its snap_folder half.
+
+New there:
+
+- **The model reported a move it did not make.** Step 4, measured values on: the reply named three
+  moves (x +7.2, +6.4, +5.3 um); the tools show two `move_relative` calls (x moved 13.6). The +5.3 was
+  the offset the last look measured. A case for the evaluation.
+- **drive_gui.py took a relative `--config` from mesoSPIM/**, the folder it changes to; it now takes
+  it from the caller's folder.
+
+Follow-up branches, each checked in demo mode:
+
+| Branch | Based on | What |
+| --- | --- | --- |
+| `fix/combobox-follow-core` | upstream release/candidate-py312 | Bug 1: Core refreshes the window after a filter or shutter change; a test in test_combobox_state_requests.py |
+| `fix/ui-paths-from-package` | upstream release/candidate-py312 | Bug 2: WebcamWindow and the Optimizer load their .ui files from the package |
+| `agent/f-pr` | agent/e-pr | Schedules count down in the chat window with a Cancel each; scheduled and continued turns no longer look typed; run.py live names missing variables |
