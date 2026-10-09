@@ -57,7 +57,7 @@ DEFAULT_PROVIDER = "Gemini"
 # 4,096-token window unless told otherwise and refuses every request here outright. These are the
 # words llama.cpp and Ollama refuse with; the help is what the tab shows in front of them.
 CONTEXT_TOO_SMALL_SIGNS = ("exceed_context_size", "exceeds the available context size")
-CONTEXT_TOO_SMALL_HELP = ("The model server's context window is smaller than one request (about 8,000 tokens). "
+CONTEXT_TOO_SMALL_HELP = ("The model server's context window is smaller than one request (about 6,000 tokens). "
                           "Give it 32,768 or more: for Ollama, OLLAMA_CONTEXT_LENGTH=32768 on the server, or a "
                           "copy of the model made with PARAMETER num_ctx 32768")
 
@@ -96,11 +96,7 @@ TOOL_DESCRIPTIONS = {
     # the stage and leaves live running.
     "stop": "Stops the stage only; live or an acquisition runs on (stop_activity ends it).",
     "stop_activity": "Ends live, an acquisition or a time lapse.",
-    "update_acquisition_row": "Change named keys of one acquisition row; the rest stays. To rename or edit "
-                              "a row use this, never set_acquisition_list.",
-    "snap": "Save one frame to the snap folder, without looking at it. To see the sample, call look, "
-            "which takes and saves its own snap; never snap and then look. 'Take a snap and tell me / "
-            "check / is it ...' is one look call, not a snap.",
+    "update_acquisition_row": "Change named keys of one acquisition row; the rest stays.",
     # The wire schema gives the range (0.001 to 5) and no unit, and the GUI shows milliseconds.
     "set_camera": "Camera settings. camera_exposure_time is in SECONDS: 50 ms is 0.05, 500 microseconds is 0.0005.",
 }
