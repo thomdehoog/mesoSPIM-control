@@ -84,7 +84,7 @@ def test_build_tools_covers_commands_except_prompt_only():
     tools = build_tools(FakeAcceptor(), threading.Event())
     names = {t.name for t in tools}
     assert len([n for n in names if n in COMMANDS]) == len(COMMANDS) - len(_PROMPT_ONLY)
-    assert names - set(COMMANDS) == {"update_acquisition_row"}   # the assistant's own, over set_acquisition_list
+    assert names <= set(COMMANDS)                                # every tool is a registered call
     assert "get_manual" not in names                            # in the system prompt, not a tool
     assert "move_absolute" in names
 

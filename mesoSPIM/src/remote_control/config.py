@@ -278,6 +278,17 @@ ACQUISITION_AXIS_FIELDS = {
     "rot": "theta",
 }
 ACQUISITION_STRING_FIELDS = ("folder", "filename", "image_writer_plugin", "processing")
+# mark_acquisition_rows: the row keys each "mark current" button of the acquisition manager takes
+# from the instrument's state ("all" is every group).
+ROW_MARKS = {
+    "xy": ("x_pos", "y_pos"),
+    "rotation": ("rot",),
+    "focus": ("f_start", "f_end"),
+    "etl": ("etl_l_offset", "etl_l_amplitude", "etl_r_offset", "etl_r_amplitude"),
+    "state": ("filter", "zoom", "laser", "intensity", "shutterconfig"),
+}
+# build_tiling_list refuses a grid larger than this many rows (tiles x channels x sides).
+MAX_TILING_ROWS = 2000
 
 ETL_READBACK_KEYS = (
     "ETL_cfg_file",

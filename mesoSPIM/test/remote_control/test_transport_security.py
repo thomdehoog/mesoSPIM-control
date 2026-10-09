@@ -475,7 +475,7 @@ def test_tools_list_over_wire():
     reply = _h.mcp.rpc("tools/list")
     tools = reply["result"]["tools"]
     assert {t["name"] for t in tools} == set(dispatcher.COMMANDS)
-    assert len(tools) == 56
+    assert len(tools) == 67
     for tool in tools:
         assert tool["inputSchema"] == dispatcher.COMMANDS[tool["name"]].schema
         assert tool["inputSchema"]["additionalProperties"] is False

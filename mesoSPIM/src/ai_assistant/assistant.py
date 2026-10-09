@@ -734,44 +734,6 @@ class SessionStore:
             self.turns[-1]["tools"] = turn_trace(messages)
             self.turns[-1]["reply"] = reply
 
-_ROW_UPDATE_SCHEMA = {
-    "type": "object",
-    "properties": {"row": {"type": "integer", "minimum": 0},
-                   "changes": {"type": "object", "additionalProperties": True, "description": "row key: new value"}},
-    "required": ["row", "changes"],
-    "additionalProperties": False,
-}
-
-
-def _row_update_tool(acceptor, install, on_call):
-    """Change the named keys of one row and hand the whole list to set_acquisition_list, so the
-    rest of the row is the instrument's, never retyped. `install` is the tool body of
-    set_acquisition_list, so its checks and the advice all apply."""
-    from pydantic_ai import Tool
-    known = set(COMMANDS["set_acquisition_list"].schema["properties"]["acquisitions"]["items"]["properties"])
-
-    def refused(message):
-        return json.dumps(with_advice("update_acquisition_row", {"error": {"code": "validation", "message": message}}))
-
-    def update_acquisition_row(row=0, changes=None) -> str:
-        if on_call is not None:
-            on_call("update_acquisition_row", json.dumps({"row": row, "changes": changes}))
-        rows = acceptor.dispatch("get_acquisition_list", {}).get("acquisitions") or []
-        if not isinstance(changes, dict) or not changes:
-            return refused("changes must name at least one row key and its new value")
-        if not isinstance(row, int) or not 0 <= row < len(rows):
-            return refused(f"row {row} is not in the acquisition list, which has {len(rows)} rows")
-        unknown = sorted(set(changes) - known)
-        if unknown:
-            return refused(f"unknown row key(s): {', '.join(unknown)}; the keys are {', '.join(sorted(known))}")
-        new = [dict(existing) for existing in rows]
-        new[row].update(changes)
-        return install(acquisitions=new, selected_row=row)
-
-    return Tool.from_schema(update_acquisition_row, name="update_acquisition_row", json_schema=_ROW_UPDATE_SCHEMA,
-                            description=config.TOOL_DESCRIPTIONS["update_acquisition_row"], sequential=True)
-
-
 def _rows_by_reference(schema):
     """A copy of a schema whose acquisition rows are described by reference to set_acquisition_list
     instead of spelling every row key out again: the checks take the same rows, and repeating the
@@ -811,12 +773,10 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
     history = store.frames if store is not None else None
     axes = axes or dict(config.DEFAULT_AXES)
     tools = []
-    installs = {}
     for cmd in offered_commands():
         fn = _tool_fn(acceptor, cmd.name, cmd.kind, cancel, on_call, clock, trail, on_started)
         if cmd.name == "snap" and history is not None:
             fn = _keeping_snaps(fn, acceptor, history, axes)
-        installs[cmd.name] = fn
         schema = cmd.schema
         if cmd.name in config.CODE_ONLY_ARGS:
             schema = dict(schema, properties={k: v for k, v in schema["properties"].items()
@@ -828,8 +788,6 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
             fn = _original_keys(fn, renamed)
         description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name)
         tools.append(Tool.from_schema(fn, name=cmd.name, description=description, json_schema=schema, sequential=True))
-    if "set_acquisition_list" in installs:
-        tools.append(_row_update_tool(acceptor, installs["set_acquisition_list"], on_call))
     if endpoint is not None:
         eyes = vision_endpoint or endpoint  # a dedicated reader, or the main model when it can see
 

@@ -1,4 +1,12 @@
 """One reviewed valid example and dispatch classification for every API command."""
+import os
+import tempfile
+
+# The files and folders the table and folder calls name: a folder that exists, a list saved in it.
+FOLDER = tempfile.mkdtemp(prefix="mesospim_contracts_")
+SAVED_LIST = os.path.join(FOLDER, "saved.csv")
+with open(SAVED_LIST, "w", newline="") as _file:
+    _file.write("z_start,z_end,z_step,planes\n0,0,1,1\n")
 
 VALID_CASES = {
     "hello": {},
@@ -81,7 +89,28 @@ VALID_CASES = {
     "check_motion_limits": {},
     "time_lapse_start": {"timepoints": 1, "interval_sec": 0},
     "time_lapse_stop": {},
+    "update_acquisition_row": {"row": 0, "changes": {"z_end": 10}},
+    "add_acquisition_rows": {"rows": [{"z_start": 0, "z_end": 0, "z_step": 1}]},
+    "delete_acquisition_rows": {"rows": [1]},
+    "move_acquisition_row": {"row": 0, "to": 0},
+    "mark_acquisition_rows": {"rows": [0], "marks": ["state"]},
+    "save_acquisition_list": {"path": os.path.join(FOLDER, "list.csv"), "overwrite": True},
+    "load_acquisition_list": {"path": SAVED_LIST},
+    "name_acquisition_rows": {"writer": "Tiff_Writer", "description": "sample"},
+    "track_focus": {"z_1": 0, "f_1": 1000, "z_2": 100, "f_2": 1100},   # f within the fake's 0..98000
+    "build_tiling_list": {"x_start": 0, "x_end": 1000, "y_start": 0, "y_end": 0, "z_start": 0, "z_end": 20,
+                          "z_step": 10, "channels": [{"laser": "488 nm", "intensity": 10, "filter": "Empty"}],
+                          "folder": FOLDER, "writer": "Tiff_Writer"},
+    "set_snap_folder": {"folder": FOLDER},
 }
+
+# What a call's valid example needs installed first: delete keeps at least one row.
+SETUP = {"delete_acquisition_rows": lambda core: core.state.__setitem__("acq_list", [{}, {}])}
+
+# The calls that edit the acquisition table: each installs through set_acquisition_list, no Core call.
+TABLE_CALLS = {"update_acquisition_row", "add_acquisition_rows", "delete_acquisition_rows", "move_acquisition_row",
+               "mark_acquisition_rows", "save_acquisition_list", "load_acquisition_list", "name_acquisition_rows",
+               "track_focus", "build_tiling_list", "set_snap_folder"}
 
 EXPECTED_CORE_CALL = {
     "move_absolute": "move_absolute",
@@ -146,10 +175,10 @@ READ_ONLY_WITHOUT_CORE_CALL = {
 OPERATIONAL_COMMANDS = set(EXPECTED_CORE_CALL) | {
     "set_acquisition_list",
     "stop_activity",
-}
+} | TABLE_CALLS
 
-assert len(VALID_CASES) == 56
-assert len(OPERATIONAL_COMMANDS) == 38
+assert len(VALID_CASES) == 67
+assert len(OPERATIONAL_COMMANDS) == 49
 
 # A universal negative case for every exact command name. Command-specific wrong types, unsafe
 # values, malformed envelopes, boundary breaches and races live in the adversarial suites; this

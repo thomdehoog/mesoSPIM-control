@@ -10,10 +10,15 @@ from mesoSPIM.test.remote_control.support.contracts import (
     VALID_CASES,
     EXPECTED_CORE_CALL,
     READ_ONLY_WITHOUT_CORE_CALL,
+    SETUP,
+    TABLE_CALLS,
 )
+from mesoSPIM.test.remote_control.support.writers import use_tiff_writer
+
+use_tiff_writer()   # the table calls that name rows need a writer
 
 READ, ACTION, WAIT, EMERGENCY = dispatcher.READ, dispatcher.ACTION, dispatcher.WAIT, dispatcher.EMERGENCY
-_SPECIAL = {"set_acquisition_list", "acquire_finish"}  # neither contract table; ordinary ACTIONs
+_SPECIAL = {"set_acquisition_list", "acquire_finish"} | TABLE_CALLS  # neither contract table; ordinary ACTIONs
 _INLINE_FAKE_TIMER = {
     "snap",
     "move_absolute",
@@ -59,6 +64,7 @@ def _expected_status(name):
 @pytest.mark.parametrize("name", sorted(VALID_CASES))
 def test_command_over_both_lanes(transport, name):
     _harness.reset()
+    SETUP.get(name, lambda core: None)(_harness.core)
 
     ok, payload = _harness.invoke(transport, name, VALID_CASES[name])
     assert ok, (transport, name, payload)
@@ -87,8 +93,8 @@ def test_command_over_both_lanes(transport, name):
 
 
 def test_contract_tables_partition_the_vocabulary():
-    """Completeness guard: the three buckets exactly cover the 56 commands, once each."""
+    """Completeness guard: the three buckets exactly cover the 67 commands, once each."""
     classified = set(EXPECTED_CORE_CALL) | READ_ONLY_WITHOUT_CORE_CALL | _SPECIAL
     assert classified == set(VALID_CASES)
     assert set(VALID_CASES) == set(dispatcher.COMMANDS)
-    assert len(VALID_CASES) == 56
+    assert len(VALID_CASES) == 67
