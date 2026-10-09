@@ -551,12 +551,23 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   flow; WP5 decides whether focusing becomes code), the camera window's levels and overlays and
   the contrast window (display, not control), the script editor (code execution), the PSF and
   field-curvature tools (separate processes), the webcam, cascade windows.
-- [ ] **3.6. Cases and live suites.** A tiling case on the simulator (rows and counts checked, the
+- [x] **3.6. Cases and live suites.** A tiling case on the simulator (rows and counts checked, the
   first row's position and filename), a table round trip (add, mark, save, load, delete), both
   through the tab and in `mesoSPIM/test/remote_control/live/test_all_commands.py` for TCP and MCP.
   `harness.check_cases` (617-618) learns the new names.
+  *Done 9 October 2026, cb51afe and 276d1e0:* the live sweep gives each table call a fresh
+  two-row table and reads it back; on the demo (Linux offscreen, the three Windows-only imports
+  stubbed in a scratch launcher, Core's `statvfs('')` mapped to `/`) 67 of 67 over TCP and over
+  MCP, state restored. Cases `tiling-list-by-call` and `table-round-trip-by-calls` with holdout
+  twins: 12 of 12 on flash-lite after one fix their first runs found: a writer refusal named no
+  choices, so `get_config` now lists `image_writers` and the writer calls are option commands.
+  The round trip accepts `update_acquisition_row` for the mark (the same table results).
+  The save and load round trip is in the live sweep, not in a case (a case has no folder).
 - [ ] **3.7. Verification.** Offline suite; the live suites in demo mode on Windows; on the
   microscope, one tiling list built by tool and run.
+  *Partly done 9 October 2026:* offline suite and the live suites on the Linux demo pass; Windows
+  demo and the microscope are the owner's. Found on the way, not fixed (upstream Core):
+  `get_free_disk_space` calls `os.statvfs('')` off Windows, so a time lapse cannot start there.
 
 ### WP4. Skills
 
@@ -701,7 +712,7 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
   manual clause and 2.6's first recording corrected. WP3 gains the control inventory with a
   coverage test (3.0) and the gaps it found (3.4b, section 9), after the owner asked whether the
   calls are comprehensive and checked through the same layer.
-- **2.5, 9 October 2026.** WP2.1, 2.4 and 2.5 ticked (on `agent/lean-21`, merged into `agent/lean` with 2.6). WP3.0 to 3.4 done and ticked, with what turned out different (three
+- **2.5, 9 October 2026.** WP3.6 done; 3.7 partly. WP2.1, 2.4 and 2.5 ticked (on `agent/lean-21`, merged into `agent/lean` with 2.6). WP3.0 to 3.4 done and ticked, with what turned out different (three
   tiling functions, marks without a GUI bridge, 39 calls from the windows). 3.4b corrected: the
   ETL file has a call. The 3.2 open question is closed by the lift.
 - **2.2, 9 October 2026.** WP1 done and ticked. Corrected: `agent/demo-fixes` was already merged
