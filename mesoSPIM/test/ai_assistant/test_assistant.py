@@ -834,6 +834,34 @@ def test_compact_history_keeps_the_newest_turns_whole_and_shrinks_the_older_ones
     assert ai.compact_history([], 2) == []
 
 
+def test_a_change_in_the_memory_costs_the_thinking_after_it_and_nothing_else():
+    """Anthropic signs a thinking block for all that came before it and refuses the request when
+    any of that changed: with Haiku 5.5 a session died on the fourth message, when the first turn
+    was compacted, and the same when a turn is trimmed off. From the first changed message on,
+    the replies lose their thinking and keep their text and calls; before it, and when nothing
+    changed, the thinking stays."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ThinkingPart, ToolCallPart, ToolReturnPart, UserPromptPart
+    state = json.dumps({"state": "idle", "position": {"x": 1.0}, "optics": {"intensity": 10}})
+
+    def turn(n, big=False):
+        return [ModelRequest(parts=[UserPromptPart(content=f"turn {n}\n\n<microscope_state>\n{state}\n</microscope_state>")]),
+                ModelResponse(parts=[ThinkingPart(content="", signature=f"s{n}a"), ToolCallPart(tool_name="get_config", args={}, tool_call_id=f"c{n}")]),
+                ModelRequest(parts=[ToolReturnPart(tool_name="get_config", content="x" * (900 if big else 9), tool_call_id=f"c{n}")]),
+                ModelResponse(parts=[ThinkingPart(content="", signature=f"s{n}b"), TextPart(f"reply {n}")])]
+    history = turn(0) + turn(1, big=True) + turn(2) + turn(3)
+    compact = ai.compact_history(history, full_turns=2)
+    kinds = [[type(p).__name__ for p in m.parts] for m in compact]
+    assert kinds[1] == ["ToolCallPart"] and kinds[3] == ["TextPart"]                # after turn 0's compacted prompt
+    assert all("ThinkingPart" not in k for k in kinds[1:]) and compact[-1].parts[0].content == "reply 3"
+    again = ai.compact_history(compact, full_turns=2)
+    assert again == compact                                                         # stable: nothing changes twice
+    assert ai.compact_history(history[8:], full_turns=2) == history[8:]             # nothing to change: thinking stays
+    trimmed = ai.trim_history(history, 2)                                           # a dropped turn is a change too
+    assert len(trimmed) == 8 and all("ThinkingPart" not in [type(p).__name__ for p in m.parts] for m in trimmed)
+    assert ai.trim_history(history, 4) == history
+
+
 def test_the_agent_compacts_the_history_before_each_model_request():
     """Older turns reach the model compacted whatever history was handed in, mid-turn requests
     included, while the stored history stays complete."""
