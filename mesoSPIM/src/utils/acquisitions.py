@@ -5,6 +5,7 @@ acquisitions.py
 Helper classes for mesoSPIM acquisitions
 '''
 from pathlib import Path
+import csv
 import indexed
 import os.path
 import logging
@@ -267,6 +268,37 @@ class AcquisitionList(list):
         Here, a list of capitalized keys is returned for usage as a table header
         '''
         return self[0].get_keylist()
+
+    def to_csv(self, filename):
+        ''' Saves the acquisition table as a CSV file '''
+        keys = self.get_keylist()
+        with open(filename, 'w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=keys)
+            writer.writeheader()
+            for acq in self:
+                writer.writerow(dict(acq))
+
+    @classmethod
+    def from_csv(cls, filename):
+        ''' Reads an acquisition table from a CSV file, each value as the type of its default '''
+        ref = Acquisition()
+        type_map = {key: type(ref[key]) for key in ref.keys()}
+        new_table = cls([])
+        with open(filename, 'r', newline='') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                acq = Acquisition()
+                for key, value in row.items():
+                    expected_type = type_map.get(key, str)
+                    try:
+                        acq[key] = expected_type(value)
+                    except (ValueError, TypeError):
+                        try:
+                            acq[key] = float(value)
+                        except (ValueError, TypeError):
+                            acq[key] = value
+                new_table.append(acq)
+        return new_table
 
     def get_acquisition_time(self, framerate):
         '''
