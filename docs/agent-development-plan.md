@@ -461,7 +461,7 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   (about 6,000 characters) is WP4's, after the procedures move out; here it only loses the removed
   rules.
 - [x] **2.6 (9 October 2026, 12d996e on `agent/lean`, 2254bbf on `agent/lean-21`, merged as
-  6470618; Haiku open: it needs an Anthropic key). Re-record, twice.** After 2.2 and 2.3: `evals.run --record` on flash-lite for all
+  6470618; Haiku run once the same day, in docs/pr/lean.md). Re-record, twice.** After 2.2 and 2.3: `evals.run --record` on flash-lite for all
   five files (`cases_unattended.json` exists until 2.1 removes it; prune the recordings of
   removed cases first), then `pytest test_replay.py`; after 2.1 and 2.4: again, and once on Haiku
   (`cases_multistep.json` and `cases_generated.json` at least). Put both result tables in
