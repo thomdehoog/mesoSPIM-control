@@ -63,8 +63,6 @@ IDEAL = {   # the right calls for the cases whose outcome is a state of the inst
     "live-start": [("start_live", {})],
     "stop": [("stop", {})],
     "time-lapse-stop": [("time_lapse_stop", {})],
-    "load-sample-confirmed": [("load_sample", {})],
-    "unload-sample-confirmed": [("unload_sample", {})],
     "french-move": [("move_absolute", {"targets": {"y": 8000}})],
 }
 

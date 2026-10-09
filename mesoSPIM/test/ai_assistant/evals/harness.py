@@ -9,10 +9,9 @@ model and this prompt, do what an operator expects, including on refusals, limit
 A case:
     {"id": ..., "category": ..., "prompt": ... | "prompts": [...],
      "setup": {"state": "live", "timelapse_active": true, "frames": [one per turn],
-               "axes": {"x": "left"}, ...}, "answer": true|false (the Run / Cancel
-     answer), "expect": {...}}
+               "axes": {"x": "left"}, ...}, "expect": {...}}
 "true_axes" (with a sample) is how the stage really moves the sample when "axes", what the
-assistant is told, is wrong; "measured" switches on measured values (E1). Setup keys are state
+assistant is told, is wrong. Setup keys are state
 keys of the simulated instrument (state, intensity, snap_folder, ...);
 timelapse_active is the Core attribute a GUI time lapse sets; frame chooses a synthetic camera
 frame ("spots", "ring") whose content only a model that looks at the picture can report.
@@ -29,7 +28,6 @@ Expectations:
     core_calls     methods the instrument must have seen (e.g. "start")
     core_calls_not methods it must not have seen
     core_call_counts {method: [low, high]}: how often the instrument saw it (runs in a time lapse)
-    confirm        the confirm-first command the operator was asked about
     asks           the reply asks for what is missing (a question, "please specify ...") and nothing
                    was changed
     no_mutations   only reads were called
@@ -387,7 +385,7 @@ def _run_once(case, model, endpoint, vision_model=None):
             for name in value:
                 synthetic_frame(name)
             core.frame_name = value[0]
-        elif key in ("axes", "true_axes", "sample", "measured"):
+        elif key in ("axes", "true_axes", "sample"):
             pass                                      # read below
         elif key == "position":
             core.state["position"].update(value)
@@ -397,13 +395,10 @@ def _run_once(case, model, endpoint, vision_model=None):
     if "sample" in setup:
         core.place_sample(setup["sample"])
     acceptor = SimulatedAcceptor(core)
-    asked = []
-    answer = case.get("answer", True)
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: (asked.append(name), gate.answer(answer)))
     store = ai.SessionStore(clock)
     eyes = ai.VisionSession(endpoint, model=vision_model, clock=clock) if endpoint is not None and endpoint.vision else None
-    agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, gate=gate, store=store,
-                           vision_session=eyes, axes=axes, measured=bool(setup.get("measured")), clock=clock)
+    agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, store=store,
+                           vision_session=eyes, axes=axes, clock=clock)
     frames = setup.get("frames") or []                            # one frame per turn: the sample changes between them
     history, tools, replies, served, error, prompts_run = [], [], [], [], None, []
     started = time.monotonic()
@@ -437,7 +432,7 @@ def _run_once(case, model, endpoint, vision_model=None):
     expected_paths = list((case.get("expect") or {}).get("state", {}))
     return {
         "id": case["id"], "category": case.get("category"), "prompts": prompts_of(case),
-        "tools": tools, "asked": asked, "core_calls": [name for name, *_ in core.calls()],
+        "tools": tools, "core_calls": [name for name, *_ in core.calls()],
         "state": _state_snapshot(core, expected_paths), "replies": replies, "served": served, "error": error,
         "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run,
         **({"truth": core.truth()} if timed else {}),
@@ -461,7 +456,7 @@ def _stated(text, replies):
 
 def _mutations(tools):
     """The calls that changed something: a look or a non-read command whose result is not an
-    error. A call the guard or the operator refused, or the instrument rejected, changed nothing."""
+    error. A call the dispatcher refused changed nothing."""
     def changed(t):
         try:
             result = json.loads(t.get("result") or "{}")
@@ -514,8 +509,6 @@ def score(case, trace):
         seen = trace["core_calls"].count(name)
         if not low <= seen <= high:
             failures.append(f"the instrument saw {name} {seen} times, expected {low} to {high}")
-    if "confirm" in expect and expect["confirm"] not in trace["asked"]:
-        failures.append(f"the operator was not asked to confirm {expect['confirm']}")
     if expect.get("asks"):
         if not any(phrase in replies for phrase in ASKING):
             failures.append("expected a question back")
@@ -547,7 +540,7 @@ def score(case, trace):
 def check_cases(cases):
     """Problems in the case file itself: duplicate ids, unknown tools, unknown expectation keys."""
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
-             "core_calls_not", "confirm", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
+             "core_calls_not", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
              "truth", "core_call_counts"}
     tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate", "update_acquisition_row"}
     problems, seen = [], set()
@@ -562,8 +555,6 @@ def check_cases(cases):
             problems.append(f"{case['id']}: unknown expectation {key}")
         named = [*expect.get("calls", []), *expect.get("calls_any", []), *expect.get("not_calls", []),
                  *expect.get("max_calls", {}), *expect.get("min_calls", {}), *expect.get("args", {})]
-        if "confirm" in expect:
-            named.append(expect["confirm"])
         for name in named:
             if name not in tools:
                 problems.append(f"{case['id']}: unknown tool {name}")

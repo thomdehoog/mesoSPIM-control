@@ -110,40 +110,11 @@ ROWS_BY_REFERENCE = ("get_disk_space", "check_motion_limits", "acquire_start")
 # Arguments the assistant's own code uses and the model never needs, withheld from the tools.
 CODE_ONLY_ARGS = {"get_frame": ("array_side",)}
 
-# Commands the tab asks the operator about before they run (Run / Cancel), whatever the model was
-# told: the stage moves that cross the full range and can collide faster than anyone can react.
-# Long runs are not gated in code; the model summarises and asks only when something looks off
-# (see manual.md), and Stop microscope ends them.
-CONFIRM_FIRST = ("load_sample", "unload_sample", "preview_acquisition", "calibrate")
-
-# What TurnGuard holds a turn to (see assistant.py). The moves and the argument that maps
-# axis to number; the commands that end a running activity; and the words by which the dispatcher's
-# refusals are told apart. These words must match the refusals in remote_control/: a change of
-# wording there silently disarms the guard.
+# The moves and the argument that maps axis to number; the words by which the dispatcher's limit
+# refusal is told apart (_advice); the arguments of a setter that are not values (the read-back).
 MOVE_ARGS = {"move_absolute": "targets", "move_relative": "deltas"}
-STOP_COMMANDS = ("stop", "stop_activity", "time_lapse_stop")
-# How often the light on the sample may change within LIGHT_WINDOW_S before the next change waits
-# for the operator's Run: twice covers "set it to 30, snap, put it back"; a third is an escalation.
-LIGHT_CHANGES_PER_WINDOW = {"set_intensity": 2, "set_camera": 2}
-LIGHT_WINDOW_S = 600
 LIMIT_REFUSAL = "outside the allowed range"
-# The fourth rule: a value a turn sends is the operator's. It counts as theirs when it is in their
-# words (this turn or an earlier one, in um or mm, s or ms or us, digits or number words), or made
-# from a readout value by an operation they named (double, halve, back to what it was, an amount
-# further). Any other value waits for their Run. These commands carry such values; their booleans
-# and the arguments below are not values.
-VALUE_COMMANDS = ("move_absolute", "move_relative", "set_intensity", "set_camera", "set_etl", "set_galvo",
-                  "set_laser_timing", "time_lapse_start", "set_filter", "set_zoom", "set_laser",
-                  "set_shutterconfig", "update_etl_from_laser", "update_etl_from_zoom")
 NOT_VALUES = ("wait", "update_etl")
-UNIT_FACTORS = (1, 1000, 0.001, 0.000001)
-DOUBLING_WORDS = ("double", "twice", "verdoppel", "verdubbel")
-HALVING_WORDS = ("half", "halve", "halb", "helft")
-EARLIER_WORDS = ("back", "before", "previous", "was", "undo", "restore", "zurück", "vorher", "terug")
-NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
-                "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30,
-                "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
-                "half": 0.5, "quarter": 0.25}
 # Said with every failure that has no advice of its own: the operator asked for a way forward, not
 # only the error. It rides on the failure because the manual has no room left for a local model.
 FAILURE_ADVICE = ("Tell the operator the cause and propose one fix as a question; do not carry it out until "
@@ -200,6 +171,9 @@ RUNS_ON_ITS_OWN_NOTE = ("{what} is under way. Do not poll get_progress. End the 
 # worker every DONE_CHECK_MS whether it has ended and, when it has, writes one grey line in the
 # chat (DONE_NOTICE) with no model turn. The only timer left, and it never runs a turn.
 DONE_CHECK_MS = 2000
+# A look within this many seconds of a snap, at the same place and settings, reads that frame
+# instead of exposing the sample a second time.
+SNAP_REUSE_S = 30
 DONE_NOTICE = "{what} {status} {time}"
 RUN_LABELS = {"run_acquisition_list": "Acquisition list", "run_selected_acquisition": "Acquisition",
               "preview_acquisition": "Preview", "acquire_start": "Acquisition", "time_lapse_start": "Time lapse"}
@@ -207,22 +181,6 @@ RUN_LABELS = {"run_acquisition_list": "Acquisition list", "run_selected_acquisit
 # limit; 0 is no spacing. The microscope config may set it with the attribute named here, and a
 # provider preset may carry "request_interval_s".
 REQUEST_INTERVAL_CONFIG_KEY = "ai_assistant_request_interval_s"
-# Measured values through the turn guard (measured.py): off unless the microscope config sets the
-# attribute named here to True, after a check on the instrument with an operator present.
-MEASURED_VALUES_CONFIG_KEY = "ai_assistant_measured_values"
-MEASURED_TOLERANCE = 0.2
-MEASURED_SLACK_UM = 5.0     # how much one image direction's offset may grow while the whole shrinks
-MEASURED_MOVES_MAX = 8
-MEASURED_FOCUS_STEP_UM = 100
-MEASURED_FOCUS_RANGE_UM = 300
-MEASURED_LIGHT_FACTOR = 2
-MEASURED_SECTION = (
-    "\n\n# Measured values\n\nOn this microscope a value that follows from a fresh measurement goes "
-    "through without the operator's Run: a centring move equal to the newest frame's centre_move_um, while "
-    "each next offset is smaller; a focus move to the map's best focus, or a search step of at most 100 um "
-    "within 300 um of where the request began; an intensity or exposure within a factor of two of the "
-    "frame's. Fresh means the frame was taken after the last move or setting, so look after each one. "
-    "Anything else still waits for Run.")
 # The coordinate system, as the operator sees it: what a positive move on each axis does to the
 # sample in the image, so that "up", "left" and "closer" mean one thing. Chosen in the tab's
 # Coordinate system box; the microscope config may set the start-up choice with the attribute

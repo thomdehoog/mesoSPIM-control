@@ -59,20 +59,8 @@ def test_asking_back_passes_only_without_a_change():
     asks = scripted("Which axis, and how far?")
     assert harness.score(case("ambiguous-move-asks"), harness.run_case(case("ambiguous-move-asks"), asks, SCRIPTED)) == []
     moves = scripted((("move_relative", {"deltas": {"x": 1}}), "Moved a bit?"))
-    allowed = {**case("ambiguous-move-asks"), "answer": True}       # the operator lets the guard's question through
-    failures = harness.score(case("ambiguous-move-asks"), harness.run_case(allowed, moves, SCRIPTED))
+    failures = harness.score(case("ambiguous-move-asks"), harness.run_case(case("ambiguous-move-asks"), moves, SCRIPTED))
     assert any("no change" in f for f in failures)
-
-
-def test_the_confirmation_answer_is_scripted_per_case():
-    def loads():
-        return scripted((("load_sample", {}), "Loaded."))            # a script plays once
-    declined = harness.run_case(case("load-sample-declined"), loads(), SCRIPTED)
-    assert declined["asked"] == ["load_sample"] and declined["state"]["position.y_pos"] == 0.0
-    assert "refused" in declined["tools"][0]["result"]
-    confirmed = harness.run_case(case("load-sample-confirmed"), loads(), SCRIPTED)
-    assert confirmed["state"]["position.y_pos"] == 1000.0
-    assert harness.score(case("load-sample-confirmed"), confirmed) == []
 
 
 def test_the_simulated_instrument_finishes_an_acquisition_at_once():
@@ -249,15 +237,6 @@ def test_the_scoreboard_reads_saved_runs_when_there_are_any():
         pytest.skip("no run files in the repository")               # they live outside the pull request
     board = scoreboard.summarise(scoreboard.load_traces(runs))
     assert board and all(row["runs"] > 0 for row in board.values())
-
-
-def test_a_call_the_guard_refused_is_no_change_before_a_question():
-    """"Move it a bit": the model sends x by 1, the guard refuses it (the operator declines), the
-    model asks. Nothing changed at the instrument, so the case passes."""
-    tries = scripted((("move_relative", {"deltas": {"x": 1}}), "Which axis, and how far?"))
-    trace = harness.run_case(case("ambiguous-move-asks"), tries, SCRIPTED)
-    assert "refused" in trace["tools"][0]["result"] and trace["state"]["position.x_pos"] == 24999.0
-    assert harness.score(case("ambiguous-move-asks"), trace) == []
 
 
 def test_a_throttled_model_spaces_its_requests():
