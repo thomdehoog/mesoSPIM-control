@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.4, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.5, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -297,7 +297,7 @@ main window 0. One pull request. Two recordings (2.6).
 Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record; then 2.1 and 2.4
 (behaviour rules change), record again. That attributes any regression.
 
-- [ ] **2.1. No guard, no confirmation.**
+- [x] **2.1 (9 October 2026, c951e5a, branch `agent/lean-21`). No guard, no confirmation.**
   Remove from `assistant.py`: `ConfirmationGate` 264-292; the number helpers and `TurnGuard`
   293-485; `_operation_id` 486-489; the guard and gate block in `_tool_fn` 565-584 and `guard.after`
   at 604; look's hooks at 1417-1430 (re-home one behaviour: `look` with `snap=True` reuses a snap
@@ -439,7 +439,7 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   unattended cases whose recordings called `wait` re-record in 2.6. `acquisition-with-checks`
   and `must-stop-partway` stay as groups.
   Docs: `index.md` 134, 144-162, 254-258; `architecture.md` 104-108.
-- [ ] **2.4. The plan is the model's.** Manual, replacing 104-107: "If the request needs more than
+- [x] **2.4 (9 October 2026, 8d4fb37, with a harness check that fails a one-call case opening with a numbered plan). The plan is the model's.** Manual, replacing 104-107: "If the request needs more than
   one tool call, or the next step depends on what a look shows, start your reply with a short
   numbered plan (at most five lines), then make the calls. For work that repeats until a target is
   met, say the target and stop after three rounds if it is not met, and report what remained.
@@ -448,7 +448,7 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   both models keep). Harness: for a case whose `expect.calls` has one entry, fail if the first
   reply text starts with a numbered list; for multi-step cases record the number of look-adjust
   rounds in the trace (informational, not scored). Docs: `index.md` 154-162.
-- [ ] **2.5. Docs follow.** `index.md`, `architecture.md`, `CHANGELOG.md`, retire `tool-sets.md`,
+- [x] **2.5 (9 October 2026, 19e50bd). Docs follow.** `index.md`, `architecture.md`, `CHANGELOG.md`, retire `tool-sets.md`,
   `docs/source/remote_control/` unchanged (`time_lapse_stop` stays). The manual's size target
   (about 6,000 characters) is WP4's, after the procedures move out; here it only loses the removed
   rules.
@@ -476,7 +476,7 @@ take them one by one. Decisions 6 and 9 rule: Core first, readers with appliers,
 and every new command registered like the 56 (the count in `test_commands.py` and
 `docs/source/remote_control/calls.md` moves with it).
 
-- [ ] **3.0. The inventory and its test, first.** The window has 99 controls in
+- [x] **3.0. The inventory and its test, first.** The window has 99 controls in
   `mesoSPIM_MainWindow.ui` (37 buttons, 49 value fields, 3 check boxes among them, 11 menu
   entries) and 25 in `mesoSPIM_AcquisitionManagerWindow.ui` (24 buttons). Most already have a call:
   the value fields are the `set_*` keys; 28 of the 37 buttons are 17 of the 56 calls (ten jog
@@ -487,7 +487,10 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   same control: comprehensive and without redundancy, checked rather than promised. Buttons that
   differ by a parameter are one command (the six "mark current" buttons are
   `mark_acquisition_rows(rows, keys)`).
-- [ ] **3.1. `build_tiling_list`.** A shared-layer command (`remote_control/commands.py`, kind
+  *Done 9 October 2026, e45e0e9:* `test_window_coverage.py`, the table beside the test (one dict
+  entry per control, so no control can have two). Both windows reach 39 distinct calls; six
+  controls are left for the owner (3.4b).
+- [x] **3.1. `build_tiling_list`.** A shared-layer command (`remote_control/commands.py`, kind
   ACTION, mutation through the existing list install). Arguments: the builder's dict (fact 6)
   with `overlap_percent` or `x_offset`/`y_offset`, `channels` as a list of objects, `folder`,
   and `name` (the filename rule of 3.3; required, or the rows have no extension). Lift the
@@ -496,7 +499,11 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   moved; the wizard calls it). `theta_pos` from `core.state`. The list goes through the same
   validation and install as `set_acquisition_list` (commands.py:2005-2016). Returns tile counts
   (x, y, z planes, rows) and the first rows shortened by `ROWS_MAX`. The wizard's GUI is untouched.
-- [ ] **3.2. Table operations, for all three clients.** Promote `update_acquisition_row`
+  *Done 9 October 2026, 2a515af (lift) and e45e0e9:* the lift is three functions
+  (`field_of_view_um`, `tile_offsets`, `image_counts`), not one `tiling_dict`; names come from
+  `writer` and `description` (3.3's rule); a grid above `MAX_TILING_ROWS` (2000) is refused.
+  Returns count, tiles and the first row.
+- [x] **3.2. Table operations, for all three clients.** Promote `update_acquisition_row`
   (`assistant.py:1301-1327`) to a shared command (TCP and MCP get row edits; the tab's tool
   becomes the passthrough). Add `add_acquisition_rows(rows, at)`, `delete_acquisition_rows(rows)`,
   `move_acquisition_row(row, to)` (shared layer, on `core.state['acq_list']`, then install).
@@ -509,24 +516,35 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   and installs through `set_acquisition_list`'s path, so it returns the parsed rows. Folders per
   row are `update_acquisition_row`. Reader: `get_acquisition_list` (exists; check it returns the
   row index and every column).
-- [ ] **3.3. The wizards' rules as functions.** `calculate_f_pos` (`focus_tracking_wizard.py:60`)
+  *Done 9 October 2026, 0c8b479, 5aa401a (lifts) and e45e0e9:* every edit builds the whole new
+  list and runs `set_acquisition_list`'s accept and install (decision 9). `mark_acquisition_rows`
+  takes `marks` (xy, rotation, focus, etl, state, all; `ROW_MARKS` in `remote_control/config.py`)
+  and needs no GUI bridge: the model's `setDataFromState` now wraps `value_from_state` in
+  `utils/acquisitions.py`, so the window and the call share one implementation, rounding included.
+  Deleting every row is refused. The tab's own row tool is gone; the registered call replaces it.
+- [x] **3.3. The wizards' rules as functions.** `calculate_f_pos` (`focus_tracking_wizard.py:60`)
   to module level (6 lines); `generate_filename_list` (`filename_wizard.py:88-237`) to a function
   over (list, file_names, description) (about 60 lines moved; the wizard calls it). Commands:
   `name_acquisition_rows(rows, pattern)` and `track_focus(rows, f_at_first, f_at_last)` (or as
   arguments of 3.1). Readers: the rows themselves.
-- [ ] **3.4. Window-only settings.** `set_snap_folder(path)` writes `core.state['snap_folder']`
+  *Done 9 October 2026, e938ccf, 843ab4a (lifts) and e45e0e9:* `focus_at` and
+  `AcquisitionList.filenames`, the latter checked equal to the wizard's output over 256
+  combinations; the calls are `name_acquisition_rows{writer, description}` and
+  `track_focus{z_1, f_1, z_2, f_2, rows, laser, filter}`.
+- [x] **3.4. Window-only settings.** `set_snap_folder(path)` writes `core.state['snap_folder']`
   (the window does the same at 1358; Core's handler has no key for it, 0 Core lines); it is read
   in the readout (check `get_snapshot`, commands.py:1067-1093, lists `snap_folder` and
   `ETL_cfg_file`; add them if not). The ETL increment and the zero toggles: only if a skill in WP4
   needs them.
+  *Done 9 October 2026, e45e0e9:* `set_snap_folder{folder}`; `get_snapshot` already lists
+  `snap_folder` and `etl_config_path`.
 - [ ] **3.4b. Gaps the inventory found, the owner decides each** (section 9): auto illumination
   (Left/Right per tile from its x against the median; a pure function over the rows, lift it into
   `utils/` and make it a command, or leave it to a skill over `update_acquisition_row`); the image
   processing wizard (the processor chain, `processor_chain.json`; a `set_processor_chain` command
   with its reader); "Save to config" (writes the Parameters tab into the config file; a command
-  that writes a file on the instrument, or not exposed); choosing the ETL file (`ETL_cfg_file` is
-  in Core's handler but not in `SETTABLE_STATE_KEYS`; one key added to `set_etl` with a check that
-  the file exists, or a `load_etl_config(path)`); the zero-ETL and freeze-galvo toggles (3.4). Not
+  that writes a file on the instrument, or not exposed); the zero-ETL and freeze-galvo toggles
+  (3.4). Corrected in 2.5: choosing the ETL file is not a gap, `reload_etl_config` takes `path`. Not
   calls: the three group toggles (they sort the table; row moves do the same), set folders
   (`update_acquisition_row`).
 - [ ] **3.5. Not now, listed with the reason:** the optimizer (a GUI-thread window with its own
@@ -628,10 +646,7 @@ Items in his modules, each proposed in the pull request that needs it, as a sepa
 - 2.7: the session log on disk, yes or no?
 - 2.2: the ceiling values per preset (set in 2.2; see its tick); change them if the lab's use says so.
 - 3.4b: which of the gaps become commands: auto illumination, the processor chain, Save to
-  config, the ETL file, the zero-ETL and freeze-galvo toggles.
-- 3.2: `mark_acquisition_rows` through the GUI bridge (0 upstream lines, needs the window open)
-  or computed in the shared layer from the readout (duplicates the model's rounding)? The plan
-  says the bridge.
+  config, the zero-ETL and freeze-galvo toggles.
 - 4.1: are lab skills committed to the lab's own config repository, so they are versioned with
   the hardware file?
 
@@ -686,6 +701,9 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
   manual clause and 2.6's first recording corrected. WP3 gains the control inventory with a
   coverage test (3.0) and the gaps it found (3.4b, section 9), after the owner asked whether the
   calls are comprehensive and checked through the same layer.
+- **2.5, 9 October 2026.** WP2.1, 2.4 and 2.5 ticked (on `agent/lean-21`, merged into `agent/lean` with 2.6). WP3.0 to 3.4 done and ticked, with what turned out different (three
+  tiling functions, marks without a GUI bridge, 39 calls from the windows). 3.4b corrected: the
+  ETL file has a call. The 3.2 open question is closed by the lift.
 - **2.2, 9 October 2026.** WP1 done and ticked. Corrected: `agent/demo-fixes` was already merged
   (section 1, 7, 10.1); the environment steps and the three Windows-only imports behind the
   combo-box test (section 4); the `-pr` branch carries the upstream test file and the separate
