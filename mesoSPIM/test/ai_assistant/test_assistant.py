@@ -664,19 +664,22 @@ def test_tools_publish_each_commands_schema():
     pytest.importorskip("pydantic_ai")
     from mesoSPIM.src.ai_assistant.assistant import build_tools
     from mesoSPIM.src.remote_control.dispatcher import COMMANDS
+
+    def safe(schema):                                                    # "camera_delay_%" offered as "camera_delay_pct"
+        return ai._safe_keys(schema)[0]
     for tool in build_tools(FakeAcceptor(), threading.Event(), profile="Full"):
         if tool.name not in COMMANDS:                                    # the assistant's own tools
             continue
         if tool.name in ai.config.ROWS_BY_REFERENCE:                 # rows by reference to set_acquisition_list
-            assert tool.function_schema.json_schema == ai._rows_by_reference(COMMANDS[tool.name].schema)
+            assert tool.function_schema.json_schema == safe(ai._rows_by_reference(COMMANDS[tool.name].schema))
         elif tool.name in ai.config.CODE_ONLY_ARGS:                  # less what only the assistant's code uses
             wire = COMMANDS[tool.name].schema
             hidden = ai.config.CODE_ONLY_ARGS[tool.name]
-            assert tool.function_schema.json_schema == dict(wire, properties={
-                k: v for k, v in wire["properties"].items() if k not in hidden})
+            assert tool.function_schema.json_schema == safe(dict(wire, properties={
+                k: v for k, v in wire["properties"].items() if k not in hidden}))
             assert set(hidden) <= set(wire["properties"])
         else:
-            assert tool.function_schema.json_schema == COMMANDS[tool.name].schema
+            assert tool.function_schema.json_schema == safe(COMMANDS[tool.name].schema)
 
 
 def test_a_free_object_argument_says_it_takes_any_keys():
@@ -972,7 +975,8 @@ def test_regular_set_etl_sets_the_voltages_only():
     regular = {t.name: t for t in build_tools(FakeAcceptor(), threading.Event(), profile="Regular")}["set_etl"]
     full = {t.name: t for t in build_tools(FakeAcceptor(), threading.Event(), profile="Full")}["set_etl"]
     assert sorted(regular.function_schema.json_schema["properties"]) == sorted(ETL_VOLTAGES)
-    assert set(full.function_schema.json_schema["properties"]) == set(rc_config.SETTING_GROUPS["set_etl"])
+    assert set(full.function_schema.json_schema["properties"]) == {
+        key.replace("%", "pct") for key in rc_config.SETTING_GROUPS["set_etl"]}
     acc = FakeAcceptor(flip_after=1)
     narrowed = {t.name: t for t in build_tools(acc, threading.Event(), profile="Regular")}["set_etl"]
     for timing in ("etl_l_delay_%", "etl_r_ramp_rising_%"):
@@ -982,6 +986,33 @@ def test_regular_set_etl_sets_the_voltages_only():
     assert acc.calls == []
     json.loads(narrowed.function(etl_l_offset=2.5))
     assert acc.calls[0] == ("set_etl", {"etl_l_offset": 2.5})
+
+
+def test_every_argument_name_is_one_anthropic_accepts_and_reaches_core_as_its_own():
+    """Anthropic refuses a property name outside ^[a-zA-Z0-9_.-]{1,64}$, so with Haiku 5.5 every
+    turn in the Full tool set failed on "camera_delay_%". The model sees "camera_delay_pct";
+    the command gets "camera_delay_%", also inside set_state's settings."""
+    pytest.importorskip("pydantic_ai")
+    import re
+    from mesoSPIM.src.ai_assistant.assistant import build_tools
+    allowed = re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
+
+    def names(schema):
+        for key, value in (schema.get("properties") or {}).items():
+            yield key
+            if isinstance(value, dict):
+                yield from names(value)
+        for key in ("items", "additionalProperties"):
+            if isinstance(schema.get(key), dict):
+                yield from names(schema[key])
+    acc = FakeAcceptor(flip_after=1)
+    tools = {t.name: t for t in build_tools(acc, threading.Event(), profile="Full")}
+    assert [n for t in tools.values() for n in names(t.function_schema.json_schema) if not allowed.match(n)] == []
+    assert "camera_delay_pct" in tools["set_camera"].function_schema.json_schema["properties"]
+    tools["set_camera"].function(camera_delay_pct=10)
+    tools["set_state"].function(settings={"camera_pulse_pct": 90})
+    assert acc.calls[0] == ("set_camera", {"camera_delay_%": 10})
+    assert [c for c in acc.calls if c[0] == "set_state"][0][1] == {"settings": {"camera_pulse_%": 90}}
 
 
 def test_every_other_regular_tool_is_the_full_tool():
