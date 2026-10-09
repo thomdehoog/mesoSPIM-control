@@ -1481,6 +1481,27 @@ def test_the_agent_samples_deterministically_and_retries_a_malformed_call():
     assert agent._max_tool_retries == ai.config.TOOL_CALL_RETRIES == 2
 
 
+def test_a_model_that_refuses_temperature_zero_is_sent_none():
+    """Haiku 5.5 answers temperature 0 with a 400 ("`temperature` is deprecated for this
+    model"): the first message would fail. Its agent and eyes send no temperature; others send 0."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.models.function import FunctionModel
+    from pydantic_ai.messages import ModelResponse, TextPart
+    seen = {}
+
+    for name in ("claude-haiku-5-5", "gemini-3.5-flash-lite"):
+        def model_function(messages, info, name=name):
+            seen.setdefault(name, []).append((info.model_settings or {}).get("temperature"))
+            return ModelResponse(parts=[TextPart("ok")])
+        endpoint = ai.Endpoint(provider="any", kind="anthropic", model=name)
+        ai.build_agent(FakeAcceptor(), threading.Event(), model=FunctionModel(model_function), endpoint=endpoint).run_sync("hi")
+        eyes = ai.VisionSession(endpoint, model=FunctionModel(model_function))
+        eyes.frames = 1                                                   # as after a look
+        eyes.ask("?")
+    assert set(seen["claude-haiku-5-5"]) == {None} and set(seen["gemini-3.5-flash-lite"]) == {0.0}
+    assert len(seen["claude-haiku-5-5"]) >= 2
+
+
 # --- a way forward after a failure, said where the model reads it next ---
 
 def test_a_failed_command_tells_the_model_to_propose_one_fix_and_not_to_act_on_it():
