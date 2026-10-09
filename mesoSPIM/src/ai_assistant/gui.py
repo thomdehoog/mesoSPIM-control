@@ -236,24 +236,6 @@ class AssistantWindow(QtWidgets.QWidget):
         self.status.setVisible(False)                             # shown only while a turn runs
         layout.addWidget(self.status)
 
-        # The confirm-first bar: hidden until the assistant wants to run a command the operator
-        # must approve; Run or Cancel answers the worker's gate.
-        confirm = QtWidgets.QHBoxLayout()
-        self.confirm_label = QtWidgets.QLabel(self)
-        self.confirm_label.setFont(font)
-        self.confirm_run = QtWidgets.QPushButton("Run", self)
-        self.confirm_cancel = QtWidgets.QPushButton("Cancel", self)
-        for widget in (self.confirm_run, self.confirm_cancel):
-            widget.setFont(font)
-        self.confirm_run.clicked.connect(lambda: tab._answer_confirmation(True))
-        self.confirm_cancel.clicked.connect(lambda: tab._answer_confirmation(False))
-        confirm.addWidget(self.confirm_label, 1)
-        confirm.addWidget(self.confirm_run)
-        confirm.addWidget(self.confirm_cancel)
-        for widget in (self.confirm_label, self.confirm_run, self.confirm_cancel):
-            widget.setVisible(False)
-        layout.addLayout(confirm)
-
         # The token meter: what the last request of the session cost in input tokens. The history
         # is append-only, so it grows with every turn; past the model's warning it says so, and
         # past its ceiling no turn starts until Clear context.
@@ -324,7 +306,6 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._endpoints = {}                    # "language" and, when it is its own, "vision"
         self._running = False                   # a turn is in flight
         self._run_turn_slot = None
-        self._pending_confirmation = None
         self._blocks = []                       # oldest first: HTML, or a finished answer's turn dict
         self._active = None                     # the running turn: {"tools", "reply", "error"}
         self._tokens = 0                        # the input tokens of the session's last request
@@ -369,13 +350,10 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker.sig_usage.connect(self._on_usage)
         self._worker.sig_reply.connect(self._on_reply)
         self._worker.sig_tool.connect(self._on_tool)
-        self._worker.sig_confirm.connect(self._on_confirm)
         self._worker.sig_served.connect(self._on_served)
         self._worker.sig_error.connect(self._on_error)
         self._worker.sig_done.connect(self._on_done)
         self._apply_options()
-        self._worker.measured_values = bool(getattr(getattr(self.core, "cfg", None), config.MEASURED_VALUES_CONFIG_KEY,
-                                                    False))
         self._thread.start()
         return True
 
@@ -556,7 +534,6 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._state == "idle":
             return
         self._release_session()
-        self._show_confirmation(False)
         if self._running:
             self._set_running(False)
         self._blocks, self._active = [], None
@@ -745,7 +722,6 @@ class AiAssistantGUI(QtWidgets.QWidget):
             return                                  # nothing is running
         if self._worker is not None:
             self._worker.interrupt()
-        self._show_confirmation(False)
         self._blocks.append(self._note_block("[cancelled]"))
         self._render()
 
@@ -758,7 +734,6 @@ class AiAssistantGUI(QtWidgets.QWidget):
             self._worker.interrupt()
         self.main_window.stop_acquisition_and_timelapse()
         self.main_window.sig_stop_movement.emit()
-        self._show_confirmation(False)
         self._blocks.append(self._note_block("[stop microscope]"))
         self._render()
 
@@ -771,25 +746,6 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._worker is not None:
             self._worker.reset()
         self._show_tokens(0)
-        self._render()
-
-    # --- confirm-first commands ---
-    def _show_confirmation(self, visible):
-        for widget in (self.chat_window.confirm_label, self.chat_window.confirm_run, self.chat_window.confirm_cancel):
-            widget.setVisible(visible)
-
-    def _on_confirm(self, name, args):
-        self._pending_confirmation = name
-        self.chat_window.confirm_label.setText(f"The assistant wants to run {name} {args}. Run it?")
-        self._show_confirmation(True)
-
-    def _answer_confirmation(self, allowed):
-        name = self._pending_confirmation
-        self._show_confirmation(False)
-        if self._worker is not None:
-            self._worker.gate.answer(allowed)
-        verdict = "confirmed" if allowed else "cancelled"
-        self._blocks.append(self._note_block(f"[{verdict} {name}]"))
         self._render()
 
     def _set_running(self, running):
