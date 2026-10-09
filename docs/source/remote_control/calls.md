@@ -19,7 +19,7 @@ For connection details, arguments, polling, and errors, see the
 | `get_state` | Read the main microscope settings. |
 | `get_position` | Read the current stage position. |
 | `get_state_all` | Read selected or all state fields. |
-| `get_config` | Read configured lasers, filters, zooms, axes, and camera size. |
+| `get_config` | Read configured lasers, filters, zooms, axes, camera size, and image writers. |
 | `get_info` | Read detailed microscope and Remote Control information. |
 | `get_limits` | Read the limits currently enforced by Remote Control. |
 | `get_capabilities` | Read the available calls, axes, the states Core can report, and fields. |

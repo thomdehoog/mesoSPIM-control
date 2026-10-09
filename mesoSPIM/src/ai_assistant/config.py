@@ -118,7 +118,8 @@ FAILURE_ADVICE = ("Tell the operator the cause and propose one fix as a question
 # A refusal of a command that names the instrument's options carries the lists, and may be corrected
 # from them once; for any other (a folder, a limit) the lists are noise, and the fix is the operator's.
 OPTION_COMMANDS = ("set_filter", "set_zoom", "set_laser", "set_shutterconfig", "set_state", "set_acquisition_list",
-                   "acquire_start")
+                   "acquire_start", "build_tiling_list", "name_acquisition_rows", "add_acquisition_rows",
+                   "update_acquisition_row", "track_focus")
 OPTIONS_ADVICE = ("configured_options lists the instrument's own values. Correct and retry once only when one of them "
                   "is the same value spelled differently (\"561 nm\" for \"561\"). A different value, even the nearest, "
                   "is not what was asked: tell the operator the cause and propose it as a question; do not set it.")
