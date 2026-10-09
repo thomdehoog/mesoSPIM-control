@@ -5,6 +5,10 @@ a server), and the operator types the API key into the tab. The key lives in mem
 session only, never in this file, the microscope config, or a log. An empty key field falls back
 to the environment variable named here.
 
+The assistant is built for cloud models (gemini-3.5-flash-lite, claude-haiku-5-5): the history is
+append-only until Clear context, every command is offered, and nothing here exists to fit a small
+or local model. A local model can still be served through the OpenAI-style preset.
+
 Maintainer (2026):
     Thom de Hoog
     Center for Microscopy and Image Analysis
@@ -19,7 +23,12 @@ from ..remote_control import config as rc_config
 # vision: the model can be shown a camera frame; the `look` tool sends it one in a side call.
 # kind: which Pydantic AI model class is built. "OpenAI-style" is any server speaking the OpenAI
 # chat API (Ollama >= 0.22, vLLM, LM Studio, a company gateway) and needs a base URL; a key only
-# if that server asks for one. Local model files served by mesoSPIM itself use that same kind.
+# if that server asks for one.
+# context_warn_tokens, context_max_tokens: the history is append-only, so each request carries
+# the whole session; the tab shows the last request's input tokens, warns above the first value
+# and refuses to start a turn above the second ("Clear context to continue"). Gemini 3.5 and
+# Haiku 5.5 take a million tokens; Haiku's price per token rises fivefold on a request above
+# 100,000, which is where its warning sits. An OpenAI-style server has no known window.
 PROVIDERS = {
     "Gemini": {
         "kind": "google",
@@ -29,9 +38,13 @@ PROVIDERS = {
         # can see and retry.
         "key_env": "GEMINI_API_KEY",
         "vision": True,
+        "context_warn_tokens": 500_000,
+        "context_max_tokens": 900_000,
     },
-    "OpenAI": {"kind": "openai", "model": "gpt-5-mini", "key_env": "OPENAI_API_KEY", "vision": True},
-    "Anthropic": {"kind": "anthropic", "model": "claude-sonnet-5", "key_env": "ANTHROPIC_API_KEY", "vision": True},
+    "OpenAI": {"kind": "openai", "model": "gpt-5-mini", "key_env": "OPENAI_API_KEY", "vision": True,
+               "context_warn_tokens": 200_000, "context_max_tokens": 360_000},
+    "Anthropic": {"kind": "anthropic", "model": "claude-haiku-5-5", "key_env": "ANTHROPIC_API_KEY", "vision": True,
+                  "context_warn_tokens": 100_000, "context_max_tokens": 900_000},
     "OpenAI-style": {
         "kind": "openai-compatible",
         "model": "gemma4:31b",  # ~20 GB VRAM; mis-shapes nested args on smaller models
@@ -40,46 +53,30 @@ PROVIDERS = {
 }
 DEFAULT_PROVIDER = "Gemini"
 
-# Local mode: model files in a folder, served by mesoSPIM itself (see local.py).
-MODELS_FOLDER_CONFIG_KEY = "ai_assistant_models_folder"  # optional attribute of the microscope config
-MODEL_SUFFIXES = (".gguf",)
-LOCAL_SERVER_POLL_MS = 500
-# The context window the local server is started with. llama-cpp-python's own default is 2,048
-# tokens, less than one request here (about 5,700 tokens of instructions, tools and readout).
-# 32K holds a request, twenty turns as compaction keeps them, tool results and a margin; the
-# microscope config may set the attribute named in CONTEXT_CONFIG_KEY to another size.
-LOCAL_CONTEXT_TOKENS = 32768
-CONTEXT_CONFIG_KEY = "ai_assistant_context_tokens"
 # A server the operator runs themselves may not be so generous: Ollama loads a GGUF model with a
 # 4,096-token window unless told otherwise and refuses every request here outright. These are the
 # words llama.cpp and Ollama refuse with; the help is what the tab shows in front of them.
 CONTEXT_TOO_SMALL_SIGNS = ("exceed_context_size", "exceeds the available context size")
-CONTEXT_TOO_SMALL_HELP = ("The model server's context window is smaller than one request (about 7,000 tokens). "
-                          "Give it 16,384 or more: for Ollama, OLLAMA_CONTEXT_LENGTH=16384 on the server, or a "
-                          "copy of the model made with PARAMETER num_ctx 16384")
-LOCAL_BATCH_TOKENS = 2048      # prompt batches: the ~5,700-token prefix is processed in fewer passes than at 512
-LOCAL_FLASH_ATTENTION = True   # smaller KV cache and faster attention where the build supports it
+CONTEXT_TOO_SMALL_HELP = ("The model server's context window is smaller than one request (about 8,000 tokens). "
+                          "Give it 32,768 or more: for Ollama, OLLAMA_CONTEXT_LENGTH=32768 on the server, or a "
+                          "copy of the model made with PARAMETER num_ctx 32768")
 
-# Sampling and retries for every model, cloud or local: an agent that drives an instrument
-# wants the most likely tool call, not a creative one, and a small model's malformed call is
-# handed back to it a couple of times before the turn fails.
+# What the meter says past a model's warning and past its ceiling (PROVIDERS).
+CONTEXT_LARGE = "the session is large: each request costs more; Clear context when the work allows"
+CONTEXT_FULL = "the session is as large as this model takes: Clear context to continue"
+
+# Sampling and retries for every model: an agent that drives an instrument wants the most likely
+# tool call, not a creative one, and a malformed call is handed back to the model a couple of
+# times before the turn fails.
 MODEL_TEMPERATURE = 0.0
 # Models that refuse a temperature of 0 ("`temperature` is deprecated for this model"): they get
 # their own default instead. Matched anywhere in the model name.
 MODELS_WITHOUT_TEMPERATURE = ("claude-haiku-5-5",)
 TOOL_CALL_RETRIES = 2
-# A reply at the end of a turn that called no tool goes back to the model once with this text
-# (see _challenge_a_reply_that_called_nothing); empty switches the check off.
-CALLED_NOTHING_CHALLENGE = (
-    "No tool was called in this turn, so nothing at the microscope has changed. If your reply says or implies that "
-    "you did, set, moved, stopped, opened or closed anything, that is not true yet: call the tool now. If your "
-    "reply only answers, asks the operator a question, or declines, answer with the single word SAME and your "
-    "reply goes to the operator as it is.")
 # A reply with no letter or digit in it (a model can answer a refusal with "_") goes
 # back to the model once with this text; a second such reply reaches the operator as the fallback.
 EMPTY_REPLY_CHALLENGE = "Your reply is empty: tell the operator in a sentence what happened in this turn."
 EMPTY_REPLY_FALLBACK = "The model gave no answer for this turn."
-LOCAL_SERVER_TIMEOUT_S = 300  # a 12B file can take minutes to load from a slow disk
 
 # The frame handed to a vision model, binned n x n (one of the Remote Control's FRAME_BINS): 2 keeps
 # a 2048-pixel camera frame at 1024 pixels, enough for "is it centred" or "is it saturated".
@@ -92,34 +89,6 @@ FOCUS_METRIC = "laplacian"
 # Whether the chat lists the commands each answer ran; the Configure box switches it.
 SHOW_TOOL_CALLS = False
 
-# Which commands the assistant offers the model. "Regular" is for a user setting up a sample on a
-# configured microscope: the sample, the session and the ETL voltages, without the camera, the ETL,
-# galvo and laser timing, the generic setting call or the alignment modes. "Full" is everything. A
-# command in both sets is the same tool in both, except as REGULAR_ARGS narrows it. TCP and MCP
-# always serve every command; this is the assistant only.
-# A command not in the set is not offered at all, so the model never sees it. The microscope
-# config may choose the start-up profile with the attribute named in TOOLS_CONFIG_KEY.
-TOOL_PROFILES = {
-    "Regular": {
-        # reads and checks
-        "hello", "ping", "get_state", "get_state_all", "get_position", "get_config", "get_info",
-        "get_limits", "get_capabilities", "get_progress", "get_snapshot", "get_frame", "self_test",
-        "get_acquisition_list", "stat_files", "get_disk_space", "check_motion_limits",
-        # sample and stage
-        "move_absolute", "move_relative", "load_sample", "unload_sample", "center_sample", "zero", "unzero",
-        # optics for the session
-        "set_laser", "set_intensity", "set_filter", "set_zoom", "set_shutterconfig",
-        "open_shutters", "close_shutters",
-        # the ETL
-        "set_etl", "reload_etl_config", "update_etl_from_laser", "update_etl_from_zoom", "save_etl_config",
-        # seeing
-        "snap", "start_live", "stop_activity", "stop", "clear_stuck_operation",
-        # acquiring
-        "set_acquisition_list", "run_acquisition_list", "run_selected_acquisition",
-        "preview_acquisition", "acquire_start", "acquire_finish", "time_lapse_start", "time_lapse_stop",
-    },
-    "Full": None,  # every command
-}
 # What the assistant tells the model a command is for, where the wire hint is not enough. The
 # hint stays as it is for TCP and MCP clients; this is the assistant's tool description only.
 TOOL_DESCRIPTIONS = {
@@ -127,7 +96,6 @@ TOOL_DESCRIPTIONS = {
     # the stage and leaves live running.
     "stop": "Stops the stage only; live or an acquisition runs on (stop_activity ends it).",
     "stop_activity": "Ends live, an acquisition or a time lapse.",
-    "wait": "End this turn; the request goes on in a new turn when the wait is over, with the result.",
     "update_acquisition_row": "Change named keys of one acquisition row; the rest stays. To rename or edit "
                               "a row use this, never set_acquisition_list.",
     "snap": "Save one frame to the snap folder, without looking at it. To see the sample, call look, "
@@ -139,12 +107,8 @@ TOOL_DESCRIPTIONS = {
 # The checks that take acquisition rows describe them by reference to set_acquisition_list instead
 # of repeating the row schema; the dispatcher validates the rows the same either way.
 ROWS_BY_REFERENCE = ("get_disk_space", "check_motion_limits", "acquire_start")
-# In Regular, the ETL is set by its voltages only; its delay and ramps are the machine's timing.
-REGULAR_ARGS = {"set_etl": ("etl_l_amplitude", "etl_l_offset", "etl_r_amplitude", "etl_r_offset")}
-# Arguments the assistant's own code uses and the model never needs, withheld in every tool set.
+# Arguments the assistant's own code uses and the model never needs, withheld from the tools.
 CODE_ONLY_ARGS = {"get_frame": ("array_side",)}
-DEFAULT_TOOL_PROFILE = "Regular"
-TOOLS_CONFIG_KEY = "ai_assistant_tools"  # optional attribute of the microscope config: "Regular" or "Full"
 
 # Commands the tab asks the operator about before they run (Run / Cancel), whatever the model was
 # told: the stage moves that cross the full range and can collide faster than anyone can react.
@@ -205,20 +169,15 @@ READ_BACK_S = rc_config.READ_BACK_S
 # saw them (the turn's readout, then each result), as "state_changed"; these parts are compared.
 TRAIL_KEYS = ("state", "position", "optics", "camera", "etl", "zeroed_axes", "time_lapse",
               "acquisition_list.rows", "acquisition_list.selected_row")
-# Nothing of the chat is written to disk: the conversation lives in memory until Clear all or
-# Disconnect. A tool result kept for recall_turn is cut to this many characters, an image's base64
-# replaced by its size.
+# Nothing of the chat is written to disk: the conversation lives in memory until Clear context or
+# Disconnect, and the model's history is append-only until then. The session store keeps every
+# turn's trace beside it (for the readout trail and the frames); a tool result kept there is cut
+# to this many characters, an image's base64 replaced by its size.
 RECALL_RESULT_CHARS = 2000
-MAX_HISTORY_TURNS = 50  # older turns (and their tool results) are dropped from what the model sees; compaction keeps them cheap
-# Within the memory, the newest turns are kept in full; older ones keep a one-line readout instead
-# of the whole state block and have long tool results shortened. Twenty readouts of 500 tokens
-# would otherwise outweigh the system prompt on a small model.
-HISTORY_FULL_TURNS = 3
-HISTORY_RESULT_CHARS = 300
-HISTORY_READOUT_KEYS = ("state", "position", "optics")
 # A tool result longer than this is shortened before the model sees it (shorten_result): the
 # acquisition list keeps every row with these keys only; any other result keeps the top-level
-# keys that fit and names the rest, which the model can ask for.
+# keys that fit and names the rest, which the model can ask for. Kept for the cloud models too:
+# a 60-row list is thousands of tokens on every later request of an append-only history.
 RESULT_CHARS = 3000
 ROWS_MAX = 60
 ROW_SUMMARY_KEYS = ("filename", "folder", "x_pos", "y_pos", "z_start", "z_end", "z_step", "planes",
@@ -234,25 +193,16 @@ RUNS_UNTIL_STOPPED = ("start_live", "start_visual_mode", "start_lightsheet_align
 # the run is under way; the operator sees it in the main window, stop_activity ends it early.
 RUNS_ON_ITS_OWN = ("run_acquisition_list", "run_selected_acquisition", "preview_acquisition", "acquire_start",
                    "time_lapse_start")
-RUNS_ON_ITS_OWN_NOTE = ("{what} is under way and ends by itself; get_progress reports on it, stop_activity ends it "
-                        "early, and settings and moves are refused until it ends.")
-# Scheduled actions: "take a snap every three minutes", "at 15:00 start the list". The model has
-# no clock; the tab's timer has one, and fires each due instruction as a turn of its own, through
-# the same tools, gate and refusals as anything typed. Stop microscope and Disconnect clear them.
-SCHEDULE_MIN_SECONDS = 5
-SCHEDULES_MAX = 10
-SCHEDULED_TURN = "[scheduled '{name}'] {instruction}"
-# What the transcript shows for a turn the machine wrote: the model reads the bracketed text above,
-# the operator a muted line that does not look typed.
-SCHEDULED_SHOWN = "⏱ Scheduled: {name} · {instruction}"
-CONTINUATION_SHOWN = "↻ Request {number} continues: {result}"
-# A request (requests.py): a wait leaves one continuation pending, at most WAIT_MAX_S, at most
-# CONTINUATIONS_MAX per request; its turn starts with CONTINUATION_TURN. A plan keeps PLAN_STEPS_MAX.
-WAIT_MAX_S = 4 * 3600
-CONTINUATIONS_MAX = 30
-CONTINUATION_TURN = "[continuation of request {number}] {result}"
-WAIT_NOTE = "End this turn now with one short sentence; the request continues when the wait is over."
-PLAN_STEPS_MAX = 12
+RUNS_ON_ITS_OWN_NOTE = ("{what} is under way. Do not poll get_progress. End the turn and report; the next message "
+                        "from the operator carries its state. stop_activity ends it early, and settings and moves "
+                        "are refused until it ends.")
+# The passive done notice: while a run the assistant started is under way, the tab asks the
+# worker every DONE_CHECK_MS whether it has ended and, when it has, writes one grey line in the
+# chat (DONE_NOTICE) with no model turn. The only timer left, and it never runs a turn.
+DONE_CHECK_MS = 2000
+DONE_NOTICE = "{what} {status} {time}"
+RUN_LABELS = {"run_acquisition_list": "Acquisition list", "run_selected_acquisition": "Acquisition",
+              "preview_acquisition": "Preview", "acquire_start": "Acquisition", "time_lapse_start": "Time lapse"}
 # At least this many seconds between requests to the model, for a host with a tight per-minute
 # limit; 0 is no spacing. The microscope config may set it with the attribute named here, and a
 # provider preset may carry "request_interval_s".
