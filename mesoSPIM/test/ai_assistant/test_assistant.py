@@ -437,6 +437,21 @@ def test_the_eyes_see_the_frames_a_look_attaches_and_keep_only_text():
     assert eyes.frames == 0 and "look first" in eyes.ask("and now?")
 
 
+def test_an_answer_loses_its_thinking_with_its_frame():
+    """Anthropic signs a thinking block for the turn it saw: with the frame taken out of that turn,
+    Haiku 5.5 refused every later request of the eyes ("bound to a different conversation"). The
+    thinking goes with the frame; the answer's text stays, and the newest turn keeps both."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart, ThinkingPart, UserPromptPart
+
+    def turn(n):
+        return [ModelRequest(parts=[UserPromptPart(content=[f"Frame {n}", BinaryContent(data=b"png", media_type="image/png")])]),
+                ModelResponse(parts=[ThinkingPart(content="hm", signature="sig"), TextPart(f"answer {n}")])]
+    messages = ai.detach_old_frames(turn(1) + turn(2), 1)
+    assert [type(p).__name__ for p in messages[1].parts] == ["TextPart"]
+    assert [type(p).__name__ for p in messages[3].parts] == ["ThinkingPart", "TextPart"]
+
+
 def test_a_failed_vision_call_leaves_the_numbers_and_does_not_count_a_frame():
     """The eyes' model fails (a rate limit, an outage): look still returns the numbers, with the
     error named, and the eyes have not seen that frame, so the next one is frame 1 and a
