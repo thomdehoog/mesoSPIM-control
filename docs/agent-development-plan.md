@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.2, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.3, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -74,6 +74,13 @@ These are settled. A session implements them; it does not reopen them.
    in the shared layer (his stated preference, section 11).
 8. **Skills carry the procedures.** Tool descriptions stay factual; how to chain tools, in which
    order, and when it is good enough, lives in skills the model loads on demand.
+9. **One way in.** Every call that reaches the microscope, from any client, is a command registered
+   in `remote_control/commands.py` with its `accept` (types, ranges, options, unknown arguments)
+   and its `execute` on Core's thread behind the busy gate, and every registered command is
+   reachable over TCP, over MCP and from the AI Assistant tab alike. The window's features (WP3)
+   join that registry; nothing is built beside it, and the tab validates nothing itself. The
+   tab's own tools (look, ask_eyes, calibrate, load_skill) read a frame or a file and touch no
+   hardware; they are the only tools outside the registry.
 
 ## 3. Rules of work for a session
 
@@ -284,7 +291,9 @@ upstream b152c91. Still the owner's: the Windows test file, the driver's step r,
 
 ### WP2. Lean, for cloud models
 
-Branch `agent/lean`. Footprint: Core 0, main window 0. One pull request. Two recordings (2.6).
+Branch `agent/lean`, from `agent/refresh` (the dev branch keeps upstream's src until WP1's pull
+request is merged, and section 7 wants WP2's demo checks to see WP1's state). Footprint: Core 0,
+main window 0. One pull request. Two recordings (2.6).
 Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record; then 2.1 and 2.4
 (behaviour rules change), record again. That attributes any regression.
 
@@ -444,7 +453,9 @@ Size: about 1,600 of the 4,305 ai_assistant lines and about 130 of its 231 non-e
 
 Branch `agent/gui`. Footprint: Core 0, main window 0; about 110 lines moved (not added) in
 `utils/` and `mesoSPIM_AcquisitionManagerWindow.py`, each lift a separate commit so Nikita can
-take them one by one. Decision 6 rules: Core first, readers with appliers, no duplication.
+take them one by one. Decisions 6 and 9 rule: Core first, readers with appliers, no duplication,
+and every new command registered like the 56 (the count in `test_commands.py` and
+`docs/source/remote_control/calls.md` moves with it).
 
 - [ ] **3.1. `build_tiling_list`.** A shared-layer command (`remote_control/commands.py`, kind
   ACTION, mutation through the existing list install). Arguments: the builder's dict (fact 6)
@@ -626,6 +637,8 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
 - **2.1, 9 October 2026.** This plan: the 2.0 roadmap made actionable after three reviews, with
   the code facts, the decisions, the line references, the tests and cases per item, and the
   handoff material for a new session.
+- **2.3, 9 October 2026.** Decision 9, one way in: the window's features join the command registry
+  with the same validation and reach all three clients. `agent/lean` starts from `agent/refresh`.
 - **2.2, 9 October 2026.** WP1 done and ticked. Corrected: `agent/demo-fixes` was already merged
   (section 1, 7, 10.1); the environment steps and the three Windows-only imports behind the
   combo-box test (section 4); the `-pr` branch carries the upstream test file and the separate
