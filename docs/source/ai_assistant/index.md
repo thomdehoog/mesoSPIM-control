@@ -112,9 +112,10 @@ sent until Clear context. On Anthropic models the request is cached: the tools a
 for an hour, the conversation for five minutes, so each request pays in full only for what is
 new. Gemini and OpenAI cache such a prefix on their own.
 
-**Plans.** A request that needs more than one call starts its reply with a short numbered plan;
-work that repeats until a target is met says the target and stops after three rounds if it is not
-met. A single call gets no plan.
+**Unclear requests and plans.** When a request is unclear, the assistant suggests what it would
+do and asks before doing it; when it does not know, it asks. For several steps it says its plan in
+a line or two first. The manual stays short and general: each tool's own description says what it
+takes, and repeatable workflows belong in skills.
 
 **Frames and the map.** Every frame a look, a snap or live delivers is kept for the session as a
 small copy with its number, time, position and settings, and code adds its measures: focus, peak,

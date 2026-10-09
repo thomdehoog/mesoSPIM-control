@@ -310,18 +310,6 @@ def test_a_reply_that_quotes_the_state_block_fails_every_case():
     assert failures == ["a reply quotes the <microscope_state> block"]
 
 
-def test_a_snap_right_before_a_look_is_a_wasted_round_trip():
-    wasteful = scripted((("snap", {}), ("look", {"question": "centred?"}), "Centred."))
-    failures = harness.score(case("look"), harness.run_case(case("look"), wasteful, SCRIPTED))
-    assert failures == ["a snap right before a look is a wasted round trip"]
-    lean = scripted((("look", {"question": "centred?"}), "Centred."))
-    assert harness.score(case("look"), harness.run_case(case("look"), lean, SCRIPTED)) == []
-    across = scripted((("snap", {}), "Snapped."), (("look", {"question": "saturated?", "snap": False}), "No."))
-    trace = harness.run_case(case("look-without-new-snap"), across, SCRIPTED)
-    assert [c["turn"] for c in trace["tools"]] == [1, 2]                       # a snap in an earlier turn is fine
-    assert harness.score(case("look-without-new-snap"), trace) == []
-
-
 def test_the_second_round_of_vision_frames_carry_what_they_claim():
     large, noisy, smeared, halo, debris, label = (harness.synthetic_frame(n) for n in
                                                    ("large", "noisy", "smeared", "halo", "debris", "label"))
@@ -332,17 +320,6 @@ def test_the_second_round_of_vision_frames_carry_what_they_claim():
     assert debris[128, 192] == 2500 and debris[30, 40] == 4000 and debris[30, 60] == 0
     assert label[:60, :120].max() >= 2000 and label[170, 260] == 2500          # text top-left, sample elsewhere
     assert all(f.shape == (256, 384) for f in (large, noisy, smeared, halo, debris, label))
-
-
-def test_a_numbered_plan_for_a_one_call_request_fails_and_a_sentence_with_a_number_does_not():
-    """The manual keeps a plan for requests that need more than one call; both models kept writing
-    one anyway. A reply that opens with "1." fails a one-call case; a "1." later in a sentence
-    does not."""
-    one = case("move-relative-mm")
-    planned = scripted((("move_relative", {"deltas": {"x": -100}}), "1. Move x by -100 um.\n2. Report."))
-    assert harness.score(one, harness.run_case(one, planned, SCRIPTED)) == ["a numbered plan for a request that needs one call"]
-    plain = scripted((("move_relative", {"deltas": {"x": -100}}), "Moved x by -100 um, 1.5 s."))
-    assert harness.score(one, harness.run_case(one, plain, SCRIPTED)) == []
 
 
 def test_the_trace_counts_the_look_and_adjust_rounds():

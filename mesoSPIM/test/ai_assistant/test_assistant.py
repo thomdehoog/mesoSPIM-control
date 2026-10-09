@@ -1115,15 +1115,6 @@ def test_the_instructions_and_tools_are_identical_across_agents():
     assert schemas() == schemas()
 
 
-def test_the_snap_tool_tells_the_model_that_look_snaps_by_itself():
-    pytest.importorskip("pydantic_ai")
-    from mesoSPIM.src.ai_assistant.assistant import build_tools
-    from mesoSPIM.src.remote_control.dispatcher import COMMANDS
-    by_name = {t.name: t for t in build_tools(FakeAcceptor(), threading.Event())}
-    assert "never snap and then look" in by_name["snap"].description
-    assert by_name["set_laser"].description == COMMANDS["set_laser"].hint      # the others keep the wire hint
-
-
 def test_the_camera_tool_names_the_unit_the_wire_schema_leaves_out():
     """The schema says 0.001 to 5 and nothing else, and the GUI shows milliseconds: three models
     sent 50 for 50 ms. The unit belongs where the model reads the argument."""

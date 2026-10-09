@@ -860,7 +860,9 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
             _look, name="look", json_schema=_LOOK_SCHEMA, sequential=True,
             description="Takes a snap and describes it: exposure, focus, where the signal is and the move that would "
                         "centre it, and, when the model can see, an answer to `question`. Frames are numbered and kept; "
-                        "`frames` shows recorded ones too and compares them.",
+                        "`frames` shows recorded ones too and compares them. Judge exposure from the numbers, not the "
+                        "picture, which is stretched for display. centre_move_um is nominal until calibrate has run "
+                        "at this zoom.",
         ))
         if history is not None and history.calibration is not None:
             def _calibrate_now(step_um):
