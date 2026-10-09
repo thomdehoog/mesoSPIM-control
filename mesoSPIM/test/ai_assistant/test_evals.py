@@ -332,3 +332,19 @@ def test_the_second_round_of_vision_frames_carry_what_they_claim():
     assert debris[128, 192] == 2500 and debris[30, 40] == 4000 and debris[30, 60] == 0
     assert label[:60, :120].max() >= 2000 and label[170, 260] == 2500          # text top-left, sample elsewhere
     assert all(f.shape == (256, 384) for f in (large, noisy, smeared, halo, debris, label))
+
+
+def test_a_numbered_plan_for_a_one_call_request_fails_and_a_sentence_with_a_number_does_not():
+    """The manual keeps a plan for requests that need more than one call; both models kept writing
+    one anyway. A reply that opens with "1." fails a one-call case; a "1." later in a sentence
+    does not."""
+    one = case("move-relative-mm")
+    planned = scripted((("move_relative", {"deltas": {"x": -100}}), "1. Move x by -100 um.\n2. Report."))
+    assert harness.score(one, harness.run_case(one, planned, SCRIPTED)) == ["a numbered plan for a request that needs one call"]
+    plain = scripted((("move_relative", {"deltas": {"x": -100}}), "Moved x by -100 um, 1.5 s."))
+    assert harness.score(one, harness.run_case(one, plain, SCRIPTED)) == []
+
+
+def test_the_trace_counts_the_look_and_adjust_rounds():
+    tools = [{"tool": name} for name in ("look", "move_relative", "look", "set_intensity", "look", "get_state")]
+    assert harness.rounds(tools) == 2

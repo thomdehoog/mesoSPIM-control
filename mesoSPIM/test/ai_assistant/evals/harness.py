@@ -36,7 +36,10 @@ Expectations:
     truth          {name_max|name_min: bound}: the simulator's truth afterwards (sim.py), by size:
                    off_centre_um_max, focus_error_um_max, saturated_fraction_max, peak_fraction_min
 Every case also fails when a reply quotes the <microscope_state> block, which the manual forbids,
-or when a snap is called right before a look, which snaps by itself: a wasted round trip.
+or when a snap is called right before a look, which snaps by itself: a wasted round trip; and a
+case that expects one call fails when the first reply starts with a numbered plan, which the
+manual keeps for requests that need more than one. The trace counts the look-and-adjust rounds of
+a multi-step case (rounds: a look followed by a setting or a move), for reading, not scoring.
 """
 from __future__ import annotations
 
@@ -434,7 +437,7 @@ def _run_once(case, model, endpoint, vision_model=None):
         "id": case["id"], "category": case.get("category"), "prompts": prompts_of(case),
         "tools": tools, "core_calls": [name for name, *_ in core.calls()],
         "state": _state_snapshot(core, expected_paths), "replies": replies, "served": served, "error": error,
-        "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run,
+        "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run, "rounds": rounds(tools),
         **({"truth": core.truth()} if timed else {}),
     }
 
@@ -534,7 +537,18 @@ def score(case, trace):
     calls = [(c["tool"], c.get("turn")) for c in trace["tools"]]
     if any(a == ("snap", turn) and b == ("look", turn) for (a, b) in zip(calls, calls[1:]) for turn in [a[1]]):
         failures.append("a snap right before a look is a wasted round trip")   # look snaps by itself
+    if len(expect.get("calls", [])) == 1 and _PLAN.match((trace.get("replies") or [""])[0] or ""):
+        failures.append("a numbered plan for a request that needs one call")
     return failures
+
+
+_PLAN = re.compile(r"\s*1[.)]\s")    # a reply that opens with "1. " or "1) "; a "1." inside a sentence is not one
+
+
+def rounds(tools):
+    """How many times a look was followed by a setting or a move: the look-and-adjust rounds."""
+    names = [t["tool"] for t in tools]
+    return sum(1 for a, b in zip(names, names[1:]) if a == "look" and b in COMMANDS and COMMANDS[b].kind != READ)
 
 
 def check_cases(cases):
