@@ -446,7 +446,7 @@ def test_tcp_framing_and_pipelining():
     assert not replies[0].startswith(config.OK_MARKER)
     assert not replies[1].startswith(config.OK_MARKER)
     assert replies[2].startswith(config.OK_MARKER)
-    assert [c[0] for c in _h.core.calls()] == ["set_intensity"]
+    assert [c[0] for c in _h.core.calls()] == ["set_intensity", "sig_update_gui_from_state"]   # the setter, its window refresh
 
 
 def test_mcp_bind_serve_stop():

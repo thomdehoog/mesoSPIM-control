@@ -572,6 +572,51 @@ def _deferred(core):
     return pending
 
 
+REFRESHED = ("sig_update_gui_from_state", (), {})
+
+
+def test_a_setter_refreshes_the_window_once_core_holds_the_value():
+    """A zoom, laser, intensity or camera setting made remotely left the main window's widgets on
+    their old value: Core refreshes the window itself only after a filter, a shutter or an ETL file
+    change. Every setter now refreshes it, once the state holds the value (the camera worker writes
+    its keys later, on its own thread), so the refresh never shows the value before it."""
+    core = RecordingCore()
+    pending = _deferred(core)
+    dispatcher.run(core, "set_intensity", {"intensity": 30})
+    pending.pop(0)()                                                  # the scheduled setter
+    assert core.calls()[-1][0] == "set_intensity" and len(pending) == 1
+    pending.pop(0)()                                                  # the first check: not applied yet
+    assert REFRESHED not in core.calls() and len(pending) == 1
+    core.state["intensity"] = 30                                      # the waveformer wrote it
+    pending.pop(0)()
+    assert core.calls()[-1] == REFRESHED and pending == []
+
+
+def test_a_value_core_never_holds_still_refreshes_the_window_after_the_cap():
+    core = RecordingCore()
+    pending = _deferred(core)
+    dispatcher.run(core, "set_camera", {"camera_exposure_time": 0.02})
+    steps = 0
+    while pending:
+        pending.pop(0)()
+        steps += 1
+    assert core.calls().count(REFRESHED) == 1
+    polls = config.READ_BACK_S * 1000 / config.READ_BACK_POLL_INTERVAL_MS
+    assert steps == 2 + polls                                         # the setter, the first check, then one per interval
+
+
+def test_scale_with_zoom_is_written_by_the_shared_layer_and_shown():
+    """Core forwards galvo_amp_scale_w_zoom and nobody applies it (the window writes it itself
+    from its check box), so a remote set_state of it was a silent no-op."""
+    core = RecordingCore()
+    pending = _deferred(core)
+    dispatcher.run(core, "set_state", {"settings": {"galvo_amp_scale_w_zoom": True}})
+    pending.pop(0)()
+    assert core.state["galvo_amp_scale_w_zoom"] is True
+    pending.pop(0)()                                                  # the first check reads it: no poll
+    assert core.calls()[-1] == REFRESHED and pending == []
+
+
 def _snap_saving(tmp_path):
     """A remote snap whose exposure is taken and whose save is the one callback left."""
     core = RecordingCore()

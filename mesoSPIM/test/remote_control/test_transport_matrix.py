@@ -27,7 +27,8 @@ _INLINE_FAKE_TIMER = {
 # non-actuating READS. Every other recorded call moves hardware, so filtering them out lets the
 # matrix assert the expected call is the ONLY actuation — catching a handler that also fires a stray,
 # safety-relevant Core call on the happy path.
-_NON_MUTATING_RECORDED = {"get_free_disk_space", "get_required_disk_space", "check_motion_limits", "write_snap_image"}
+_NON_MUTATING_RECORDED = {"get_free_disk_space", "get_required_disk_space", "check_motion_limits", "write_snap_image",
+                          "sig_update_gui_from_state"}   # a setter's window refresh is not an actuation
 
 _harness = Harness()
 

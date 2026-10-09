@@ -14,6 +14,8 @@ Maintainer (2026):
 
 from pathlib import Path
 
+from ..remote_control import config as rc_config
+
 # vision: the model can be shown a camera frame; the `look` tool sends it one in a side call.
 # kind: which Pydantic AI model class is built. "OpenAI-style" is any server speaking the OpenAI
 # chat API (Ollama >= 0.22, vLLM, LM Studio, a company gateway) and needs a base URL; a key only
@@ -194,10 +196,11 @@ BUSY_FROM_GUI = "from the GUI"
 POLL_INTERVAL_S = 0.15
 # A setter answers {} as soon as Core accepts it, and Core applies the value later, on other threads.
 # So the assistant reads the keys a setter set until they read as asked or READ_BACK_S passes, and
-# the result carries what they read as "changed".
+# the result carries what they read as "changed". The cap is the Remote Control's: it is the one the
+# main window's refresh waits for.
 SETTERS = ("set_laser", "set_intensity", "set_filter", "set_zoom", "set_shutterconfig", "set_camera", "set_etl",
            "set_galvo", "set_laser_timing", "set_state")
-READ_BACK_S = 3.0
+READ_BACK_S = rc_config.READ_BACK_S
 # Every result of an instrument tool ends with the readout keys that changed since the model last
 # saw them (the turn's readout, then each result), as "state_changed"; these parts are compared.
 TRAIL_KEYS = ("state", "position", "optics", "camera", "etl", "zeroed_axes", "time_lapse",
