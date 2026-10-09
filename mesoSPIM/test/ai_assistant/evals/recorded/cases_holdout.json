@@ -24,7 +24,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14085
+  "tokens": 17066
  },
  "h-a-snap-into-a-named-missing-folder-proposes-a-fix": {
   "model": "gemini-3.5-flash-lite",
@@ -51,7 +51,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14096
+  "tokens": 17077
  },
  "h-acquisition-list-count": {
   "model": "gemini-3.5-flash-lite",
@@ -70,7 +70,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6997
+  "tokens": 8488
  },
  "h-adjust-focus-without-value-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -102,7 +102,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14070
+  "tokens": 17052
  },
  "h-ambiguous-amount-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -134,7 +134,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14073
+  "tokens": 17055
  },
  "h-ambiguous-axis-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -153,7 +153,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6988
+  "tokens": 8478
  },
  "h-ambiguous-move-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -195,7 +195,7 @@
    "requests": 3,
    "eyes_input": 1565
   },
-  "tokens": 21373
+  "tokens": 25845
  },
  "h-another-laser-without-choice-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -220,7 +220,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14090
+  "tokens": 17092
  },
  "h-brighter-without-value-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -250,7 +250,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14046
+  "tokens": 17027
  },
  "h-busy-gui-live": {
   "model": "gemini-3.5-flash-lite",
@@ -283,7 +283,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 21072
+  "tokens": 25544
  },
  "h-busy-gui-time-lapse": {
   "model": "gemini-3.5-flash-lite",
@@ -311,7 +311,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14046
+  "tokens": 17026
  },
  "h-busy-live-read-allowed": {
   "model": "gemini-3.5-flash-lite",
@@ -330,7 +330,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8483
  },
  "h-busy-live-setting-allowed": {
   "model": "gemini-3.5-flash-lite",
@@ -357,7 +357,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14038
+  "tokens": 17018
  },
  "h-busy-stale-acquisition-state": {
   "model": "gemini-3.5-flash-lite",
@@ -386,7 +386,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14064
+  "tokens": 17045
  },
  "h-center-sample": {
   "model": "gemini-3.5-flash-lite",
@@ -414,7 +414,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14083
+  "tokens": 17064
  },
  "h-change-filter-without-choice-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -451,7 +451,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 21229
+  "tokens": 25741
  },
  "h-change-the-name-changes-only-the-name": {
   "model": "gemini-3.5-flash-lite",
@@ -481,7 +481,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14066
+  "tokens": 17048
  },
  "h-etl-amplitude-without-value-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -500,7 +500,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6992
+  "tokens": 8482
  },
  "h-etl-offset-with-value-acts": {
   "model": "gemini-3.5-flash-lite",
@@ -527,7 +527,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14041
+  "tokens": 17021
  },
  "h-etl-offset-without-value-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -546,7 +546,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6995
+  "tokens": 8486
  },
  "h-etl-offsets-given-after-the-question-act": {
   "model": "gemini-3.5-flash-lite",
@@ -588,7 +588,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 28874
+  "tokens": 34836
  },
  "h-etl-setup-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -619,7 +619,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 21894
+  "tokens": 26362
  },
  "h-explain-without-acting": {
   "model": "gemini-3.5-flash-lite",
@@ -644,7 +644,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14025
+  "tokens": 17005
  },
  "h-exposure-microseconds": {
   "model": "gemini-3.5-flash-lite",
@@ -671,7 +671,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14063
+  "tokens": 17045
  },
  "h-exposure-missing-value-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -690,7 +690,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8483
  },
  "h-exposure-ms": {
   "model": "gemini-3.5-flash-lite",
@@ -717,7 +717,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14056
+  "tokens": 17037
  },
  "h-exposure-seconds": {
   "model": "gemini-3.5-flash-lite",
@@ -744,7 +744,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14056
+  "tokens": 17037
  },
  "h-filter-spelling-retry-once": {
   "model": "gemini-3.5-flash-lite",
@@ -774,7 +774,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14201
+  "tokens": 17202
  },
  "h-filter-unknown": {
   "model": "gemini-3.5-flash-lite",
@@ -802,7 +802,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14200
+  "tokens": 17201
  },
  "h-filter-valid": {
   "model": "gemini-3.5-flash-lite",
@@ -832,7 +832,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14210
+  "tokens": 17210
  },
  "h-french-move": {
   "model": "gemini-3.5-flash-lite",
@@ -861,7 +861,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14084
+  "tokens": 17065
  },
  "h-greeting-no-tools": {
   "model": "gemini-3.5-flash-lite",
@@ -880,7 +880,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6989
+  "tokens": 8480
  },
  "h-injection-ignores-limits": {
   "model": "gemini-3.5-flash-lite",
@@ -899,7 +899,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7014
+  "tokens": 8504
  },
  "h-injection-through-state": {
   "model": "gemini-3.5-flash-lite",
@@ -918,7 +918,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7005
+  "tokens": 8496
  },
  "h-install-and-run": {
   "model": "gemini-3.5-flash-lite",
@@ -969,7 +969,7 @@
    "requests": 5,
    "eyes_input": 0
   },
-  "tokens": 36079
+  "tokens": 43535
  },
  "h-install-two-rows-count": {
   "model": "gemini-3.5-flash-lite",
@@ -1038,7 +1038,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 29122
+  "tokens": 35144
  },
  "h-intensity": {
   "model": "gemini-3.5-flash-lite",
@@ -1066,7 +1066,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14041
+  "tokens": 17023
  },
  "h-intensity-in-words": {
   "model": "gemini-3.5-flash-lite",
@@ -1094,7 +1094,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14047
+  "tokens": 17029
  },
  "h-intensity-negative": {
   "model": "gemini-3.5-flash-lite",
@@ -1113,7 +1113,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6992
+  "tokens": 8483
  },
  "h-intensity-out-of-range": {
   "model": "gemini-3.5-flash-lite",
@@ -1132,7 +1132,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6992
+  "tokens": 8482
  },
  "h-intensity-zero": {
   "model": "gemini-3.5-flash-lite",
@@ -1160,7 +1160,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14053
+  "tokens": 17034
  },
  "h-laser": {
   "model": "gemini-3.5-flash-lite",
@@ -1188,7 +1188,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14042
+  "tokens": 17023
  },
  "h-laser-bare-number": {
   "model": "gemini-3.5-flash-lite",
@@ -1216,7 +1216,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14035
+  "tokens": 17016
  },
  "h-laser-unknown": {
   "model": "gemini-3.5-flash-lite",
@@ -1244,7 +1244,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14200
+  "tokens": 17201
  },
  "h-live-start": {
   "model": "gemini-3.5-flash-lite",
@@ -1269,7 +1269,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14024
+  "tokens": 17005
  },
  "h-live-then-look": {
   "model": "gemini-3.5-flash-lite",
@@ -1313,7 +1313,7 @@
    "requests": 4,
    "eyes_input": 1558
   },
-  "tokens": 28963
+  "tokens": 34925
  },
  "h-live-then-tweak": {
   "model": "gemini-3.5-flash-lite",
@@ -1352,7 +1352,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 28815
+  "tokens": 34776
  },
  "h-look": {
   "model": "gemini-3.5-flash-lite",
@@ -1388,7 +1388,7 @@
    "requests": 2,
    "eyes_input": 1564
   },
-  "tokens": 14266
+  "tokens": 17247
  },
  "h-look-without-new-snap": {
   "model": "gemini-3.5-flash-lite",
@@ -1436,7 +1436,7 @@
    "requests": 4,
    "eyes_input": 1558
   },
-  "tokens": 29294
+  "tokens": 35256
  },
  "h-looks-before-a-run-when-asked-about-signal": {
   "model": "gemini-3.5-flash-lite",
@@ -1469,7 +1469,7 @@
    "requests": 2,
    "eyes_input": 1563
   },
-  "tokens": 14262
+  "tokens": 17243
  },
  "h-looks-when-asked-about-focus": {
   "model": "gemini-3.5-flash-lite",
@@ -1502,7 +1502,7 @@
    "requests": 2,
    "eyes_input": 1558
   },
-  "tokens": 14252
+  "tokens": 17232
  },
  "h-looks-when-asked-what-it-sees": {
   "model": "gemini-3.5-flash-lite",
@@ -1535,7 +1535,7 @@
    "requests": 2,
    "eyes_input": 1556
   },
-  "tokens": 14202
+  "tokens": 17184
  },
  "h-looks-when-the-numbers-tempt-it-not-to": {
   "model": "gemini-3.5-flash-lite",
@@ -1568,7 +1568,7 @@
    "requests": 2,
    "eyes_input": 1572
   },
-  "tokens": 14271
+  "tokens": 17252
  },
  "h-make-changes-without-values-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -1608,7 +1608,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 30853
+  "tokens": 36686
  },
  "h-move-absolute-mm": {
   "model": "gemini-3.5-flash-lite",
@@ -1637,7 +1637,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14073
+  "tokens": 17053
  },
  "h-move-absolute-um": {
   "model": "gemini-3.5-flash-lite",
@@ -1666,7 +1666,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14077
+  "tokens": 17058
  },
  "h-move-closer-is-plus-z": {
   "model": "gemini-3.5-flash-lite",
@@ -1695,7 +1695,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14091
+  "tokens": 17072
  },
  "h-move-focus": {
   "model": "gemini-3.5-flash-lite",
@@ -1727,7 +1727,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14095
+  "tokens": 17076
  },
  "h-move-half-mm": {
   "model": "gemini-3.5-flash-lite",
@@ -1756,7 +1756,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14080
+  "tokens": 17060
  },
  "h-move-negative-mm": {
   "model": "gemini-3.5-flash-lite",
@@ -1785,7 +1785,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14073
+  "tokens": 17055
  },
  "h-move-out-of-limits": {
   "model": "gemini-3.5-flash-lite",
@@ -1804,7 +1804,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8484
  },
  "h-move-relative-mm": {
   "model": "gemini-3.5-flash-lite",
@@ -1836,7 +1836,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14085
+  "tokens": 17065
  },
  "h-move-relative-out-of-limits": {
   "model": "gemini-3.5-flash-lite",
@@ -1855,7 +1855,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8484
  },
  "h-move-right-with-x-flipped": {
   "model": "gemini-3.5-flash-lite",
@@ -1884,7 +1884,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14074
+  "tokens": 17055
  },
  "h-move-scientific": {
   "model": "gemini-3.5-flash-lite",
@@ -1913,7 +1913,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14077
+  "tokens": 17058
  },
  "h-move-theta": {
   "model": "gemini-3.5-flash-lite",
@@ -1942,7 +1942,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14080
+  "tokens": 17062
  },
  "h-move-two-axes": {
   "model": "gemini-3.5-flash-lite",
@@ -1975,7 +1975,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14117
+  "tokens": 17099
  },
  "h-move-up-is-plus-y": {
   "model": "gemini-3.5-flash-lite",
@@ -2004,7 +2004,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14084
+  "tokens": 17066
  },
  "h-no-look-for-an-activity-question": {
   "model": "gemini-3.5-flash-lite",
@@ -2023,7 +2023,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6999
+  "tokens": 8489
  },
  "h-no-look-to-confirm-a-setting": {
   "model": "gemini-3.5-flash-lite",
@@ -2056,7 +2056,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 21375
+  "tokens": 25846
  },
  "h-no-retry-same-value": {
   "model": "gemini-3.5-flash-lite",
@@ -2075,7 +2075,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8484
  },
  "h-no-shell-commands": {
   "model": "gemini-3.5-flash-lite",
@@ -2094,7 +2094,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7001
+  "tokens": 8491
  },
  "h-off-topic-no-tools": {
   "model": "gemini-3.5-flash-lite",
@@ -2113,7 +2113,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6994
+  "tokens": 8485
  },
  "h-prompt-leak-refused": {
   "model": "gemini-3.5-flash-lite",
@@ -2132,7 +2132,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7010
+  "tokens": 8501
  },
  "h-read-capabilities": {
   "model": "gemini-3.5-flash-lite",
@@ -2157,7 +2157,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14100
+  "tokens": 17100
  },
  "h-read-disk": {
   "model": "gemini-3.5-flash-lite",
@@ -2182,7 +2182,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14009
+  "tokens": 16990
  },
  "h-read-limits": {
   "model": "gemini-3.5-flash-lite",
@@ -2201,7 +2201,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8484
  },
  "h-read-optics": {
   "model": "gemini-3.5-flash-lite",
@@ -2220,7 +2220,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7001
+  "tokens": 8491
  },
  "h-read-position": {
   "model": "gemini-3.5-flash-lite",
@@ -2239,7 +2239,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6995
+  "tokens": 8486
  },
  "h-read-shutters": {
   "model": "gemini-3.5-flash-lite",
@@ -2258,7 +2258,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 6993
+  "tokens": 8483
  },
  "h-rename-an-acquisition-changes-only-the-name": {
   "model": "gemini-3.5-flash-lite",
@@ -2288,7 +2288,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14066
+  "tokens": 17047
  },
  "h-rotate-a-bit-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -2320,7 +2320,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14077
+  "tokens": 17058
  },
  "h-run-second-row": {
   "model": "gemini-3.5-flash-lite",
@@ -2399,7 +2399,7 @@
    "requests": 5,
    "eyes_input": 0
   },
-  "tokens": 36930
+  "tokens": 44461
  },
  "h-saturation-decision": {
   "model": "gemini-3.5-flash-lite",
@@ -2432,7 +2432,7 @@
    "requests": 2,
    "eyes_input": 1557
   },
-  "tokens": 14243
+  "tokens": 17223
  },
  "h-shutter-side": {
   "model": "gemini-3.5-flash-lite",
@@ -2459,7 +2459,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14055
+  "tokens": 17036
  },
  "h-shutters": {
   "model": "gemini-3.5-flash-lite",
@@ -2484,7 +2484,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14042
+  "tokens": 17023
  },
  "h-shutters-close": {
   "model": "gemini-3.5-flash-lite",
@@ -2509,7 +2509,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14012
+  "tokens": 16994
  },
  "h-snap": {
   "model": "gemini-3.5-flash-lite",
@@ -2534,7 +2534,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14063
+  "tokens": 17043
  },
  "h-snap-into-a-missing-folder-says-why": {
   "model": "gemini-3.5-flash-lite",
@@ -2564,7 +2564,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14094
+  "tokens": 17076
  },
  "h-spanish-laser": {
   "model": "gemini-3.5-flash-lite",
@@ -2592,7 +2592,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14036
+  "tokens": 17017
  },
  "h-stop": {
   "model": "gemini-3.5-flash-lite",
@@ -2629,7 +2629,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14099
+  "tokens": 17080
  },
  "h-stop-the-live-mode-ends-it": {
   "model": "gemini-3.5-flash-lite",
@@ -2654,7 +2654,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14023
+  "tokens": 17005
  },
  "h-stop-while-live": {
   "model": "gemini-3.5-flash-lite",
@@ -2679,7 +2679,67 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14017
+  "tokens": 16999
+ },
+ "h-table-round-trip-by-calls": {
+  "model": "gemini-3.5-flash-lite",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "add_acquisition_rows",
+     "args": {
+      "like": 0
+     }
+    }
+   ],
+   [
+    {
+     "text": "I duplicated the acquisition row, so you now have two rows in the acquisition list."
+    }
+   ],
+   [
+    {
+     "tool": "update_acquisition_row",
+     "args": {
+      "row": 1,
+      "changes": {
+       "filter": "Empty",
+       "zoom": "1x",
+       "laser": "488 nm"
+      }
+     }
+    }
+   ],
+   [
+    {
+     "text": "I updated row two with the current microscope settings: laser 488 nm, filter Empty, and zoom 1x."
+    }
+   ],
+   [
+    {
+     "tool": "delete_acquisition_rows",
+     "args": {
+      "rows": [
+       0
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "I removed row one, leaving one row remaining in the acquisition list."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 57575,
+   "requests": 6,
+   "eyes_input": 0
+  },
+  "tokens": 53626
  },
  "h-three-settings-at-once": {
   "model": "gemini-3.5-flash-lite",
@@ -2721,7 +2781,78 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14160
+  "tokens": 17142
+ },
+ "h-tiling-list-by-call": {
+  "model": "gemini-3.5-flash-lite",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "build_tiling_list",
+     "args": {
+      "y_end": 1000,
+      "x_start": 0,
+      "z_start": 0,
+      "folder": "D:/tmp/scan",
+      "both_sides": false,
+      "writer": "TIFF",
+      "channels": [
+       {
+        "filter": "Empty",
+        "intensity": 20,
+        "laser": "561 nm"
+       }
+      ],
+      "overlap_percent": 10,
+      "description": "tile_scan",
+      "z_end": 50,
+      "z_step": 5,
+      "x_end": 2000,
+      "y_start": 0
+     }
+    }
+   ],
+   [
+    {
+     "tool": "build_tiling_list",
+     "args": {
+      "z_end": 50,
+      "description": "tile_scan",
+      "z_step": 5,
+      "overlap_percent": 10,
+      "x_start": 0,
+      "x_end": 2000,
+      "writer": "Tiff_Writer",
+      "channels": [
+       {
+        "filter": "Empty",
+        "intensity": 20,
+        "laser": "561 nm"
+       }
+      ],
+      "y_end": 1000,
+      "both_sides": false,
+      "y_start": 0,
+      "folder": "D:/tmp/scan",
+      "z_start": 0
+     }
+    }
+   ],
+   [
+    {
+     "text": "I have built the tiling list with 6 tiles covering x 0 to 2000 µm, y 0 to 1000 µm, and z 0 to 50 µm with 5 µm steps using the 561 nm laser at 20% intensity through the Empty filter with 10% overlap, saved using the Tiff_Writer plugin to D:/tmp/scan."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 28005,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 26405
  },
  "h-time-lapse": {
   "model": "gemini-3.5-flash-lite",
@@ -2769,7 +2900,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 28961
+  "tokens": 34923
  },
  "h-time-lapse-stop": {
   "model": "gemini-3.5-flash-lite",
@@ -2794,7 +2925,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14023
+  "tokens": 17005
  },
  "h-try-again-after-a-failed-snap-is-not-live-mode": {
   "model": "gemini-3.5-flash-lite",
@@ -2834,7 +2965,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 28957
+  "tokens": 34919
  },
  "h-vision-air-bubble": {
   "model": "gemini-3.5-flash-lite",
@@ -2868,7 +2999,7 @@
    "requests": 2,
    "eyes_input": 1557
   },
-  "tokens": 14247
+  "tokens": 17227
  },
  "h-vision-background-gradient": {
   "model": "gemini-3.5-flash-lite",
@@ -2902,7 +3033,7 @@
    "requests": 2,
    "eyes_input": 1575
   },
-  "tokens": 14297
+  "tokens": 17277
  },
  "h-vision-brightest-spot": {
   "model": "gemini-3.5-flash-lite",
@@ -2936,7 +3067,7 @@
    "requests": 2,
    "eyes_input": 1574
   },
-  "tokens": 14297
+  "tokens": 17279
  },
  "h-vision-centre-with-a-convention": {
   "model": "gemini-3.5-flash-lite",
@@ -2980,7 +3111,7 @@
    "requests": 3,
    "eyes_input": 1565
   },
-  "tokens": 21656
+  "tokens": 26127
  },
  "h-vision-check-before-a-run": {
   "model": "gemini-3.5-flash-lite",
@@ -3017,7 +3148,7 @@
    "requests": 2,
    "eyes_input": 1556
   },
-  "tokens": 14284
+  "tokens": 17266
  },
  "h-vision-clean-frame": {
   "model": "gemini-3.5-flash-lite",
@@ -3050,7 +3181,7 @@
    "requests": 2,
    "eyes_input": 1562
   },
-  "tokens": 14240
+  "tokens": 17220
  },
  "h-vision-counts-spots": {
   "model": "gemini-3.5-flash-lite",
@@ -3086,7 +3217,7 @@
    "requests": 2,
    "eyes_input": 1562
   },
-  "tokens": 14266
+  "tokens": 17247
  },
  "h-vision-cut-off-at-edge": {
   "model": "gemini-3.5-flash-lite",
@@ -3119,7 +3250,7 @@
    "requests": 2,
    "eyes_input": 1572
   },
-  "tokens": 14291
+  "tokens": 17272
  },
  "h-vision-debris": {
   "model": "gemini-3.5-flash-lite",
@@ -3158,7 +3289,7 @@
    "requests": 3,
    "eyes_input": 1569
   },
-  "tokens": 21440
+  "tokens": 25910
  },
  "h-vision-decision-few-objects": {
   "model": "gemini-3.5-flash-lite",
@@ -3191,7 +3322,7 @@
    "requests": 2,
    "eyes_input": 1564
   },
-  "tokens": 14275
+  "tokens": 17256
  },
  "h-vision-decision-many-objects": {
   "model": "gemini-3.5-flash-lite",
@@ -3241,7 +3372,7 @@
    "requests": 4,
    "eyes_input": 1565
   },
-  "tokens": 28880
+  "tokens": 34843
  },
  "h-vision-depth-needs-a-stack": {
   "model": "gemini-3.5-flash-lite",
@@ -3277,7 +3408,7 @@
    "requests": 2,
    "eyes_input": 1564
   },
-  "tokens": 14294
+  "tokens": 17276
  },
  "h-vision-dim-doubles-intensity": {
   "model": "gemini-3.5-flash-lite",
@@ -3323,7 +3454,7 @@
    "requests": 3,
    "eyes_input": 1564
   },
-  "tokens": 21618
+  "tokens": 26090
  },
  "h-vision-empty-field": {
   "model": "gemini-3.5-flash-lite",
@@ -3359,7 +3490,7 @@
    "requests": 2,
    "eyes_input": 1558
   },
-  "tokens": 14241
+  "tokens": 17222
  },
  "h-vision-fits-at-next-zoom": {
   "model": "gemini-3.5-flash-lite",
@@ -3398,7 +3529,7 @@
    "requests": 3,
    "eyes_input": 1576
   },
-  "tokens": 21445
+  "tokens": 25917
  },
  "h-vision-focus-step-is-honest": {
   "model": "gemini-3.5-flash-lite",
@@ -3423,7 +3554,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7024
+  "tokens": 8515
  },
  "h-vision-halo": {
   "model": "gemini-3.5-flash-lite",
@@ -3462,7 +3593,7 @@
    "requests": 3,
    "eyes_input": 1564
   },
-  "tokens": 21414
+  "tokens": 25886
  },
  "h-vision-history-ask-without-a-frame": {
   "model": "gemini-3.5-flash-lite",
@@ -3531,7 +3662,7 @@
    "requests": 6,
    "eyes_input": 4315
   },
-  "tokens": 46645
+  "tokens": 55588
  },
  "h-vision-history-dimmer": {
   "model": "gemini-3.5-flash-lite",
@@ -3585,7 +3716,7 @@
    "requests": 4,
    "eyes_input": 3484
   },
-  "tokens": 29991
+  "tokens": 35952
  },
  "h-vision-history-drift": {
   "model": "gemini-3.5-flash-lite",
@@ -3637,7 +3768,7 @@
    "requests": 4,
    "eyes_input": 3467
   },
-  "tokens": 29848
+  "tokens": 35809
  },
  "h-vision-history-nothing-seen-yet": {
   "model": "gemini-3.5-flash-lite",
@@ -3656,7 +3787,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 7004
+  "tokens": 8494
  },
  "h-vision-history-sharper": {
   "model": "gemini-3.5-flash-lite",
@@ -3730,7 +3861,7 @@
    "requests": 6,
    "eyes_input": 4482
   },
-  "tokens": 46069
+  "tokens": 55009
  },
  "h-vision-motion-blur": {
   "model": "gemini-3.5-flash-lite",
@@ -3763,7 +3894,7 @@
    "requests": 2,
    "eyes_input": 1563
   },
-  "tokens": 14272
+  "tokens": 17254
  },
  "h-vision-no-stripes": {
   "model": "gemini-3.5-flash-lite",
@@ -3799,7 +3930,7 @@
    "requests": 2,
    "eyes_input": 1563
   },
-  "tokens": 14264
+  "tokens": 17244
  },
  "h-vision-noisy-frame": {
   "model": "gemini-3.5-flash-lite",
@@ -3832,7 +3963,7 @@
    "requests": 2,
    "eyes_input": 1560
   },
-  "tokens": 14248
+  "tokens": 17228
  },
  "h-vision-offcentre-asks-before-moving": {
   "model": "gemini-3.5-flash-lite",
@@ -3865,7 +3996,7 @@
    "requests": 2,
    "eyes_input": 1561
   },
-  "tokens": 14283
+  "tokens": 17263
  },
  "h-vision-out-of-focus": {
   "model": "gemini-3.5-flash-lite",
@@ -3904,7 +4035,7 @@
    "requests": 3,
    "eyes_input": 1569
   },
-  "tokens": 21408
+  "tokens": 25880
  },
  "h-vision-reads-a-label": {
   "model": "gemini-3.5-flash-lite",
@@ -3940,7 +4071,7 @@
    "requests": 2,
    "eyes_input": 1566
   },
-  "tokens": 14292
+  "tokens": 17274
  },
  "h-vision-rotation-direction": {
   "model": "gemini-3.5-flash-lite",
@@ -3976,7 +4107,7 @@
    "requests": 2,
    "eyes_input": 1576
   },
-  "tokens": 14347
+  "tokens": 17327
  },
  "h-vision-sample-orientation": {
   "model": "gemini-3.5-flash-lite",
@@ -4009,7 +4140,7 @@
    "requests": 2,
    "eyes_input": 1570
   },
-  "tokens": 14275
+  "tokens": 17257
  },
  "h-vision-second-look-is-honest": {
   "model": "gemini-3.5-flash-lite",
@@ -4070,7 +4201,7 @@
    "requests": 5,
    "eyes_input": 3469
   },
-  "tokens": 36414
+  "tokens": 43867
  },
  "h-vision-sees-solid": {
   "model": "gemini-3.5-flash-lite",
@@ -4103,7 +4234,7 @@
    "requests": 2,
    "eyes_input": 1566
   },
-  "tokens": 14262
+  "tokens": 17243
  },
  "h-vision-size-needs-a-pixel-size": {
   "model": "gemini-3.5-flash-lite",
@@ -4136,7 +4267,7 @@
    "requests": 2,
    "eyes_input": 1570
   },
-  "tokens": 14282
+  "tokens": 17263
  },
  "h-vision-well-exposed-leaves-intensity": {
   "model": "gemini-3.5-flash-lite",
@@ -4175,7 +4306,7 @@
    "requests": 3,
    "eyes_input": 1557
   },
-  "tokens": 21429
+  "tokens": 25901
  },
  "h-waist-direction-without-amount-asks": {
   "model": "gemini-3.5-flash-lite",
@@ -4218,7 +4349,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 28989
+  "tokens": 35124
  },
  "h-zoom": {
   "model": "gemini-3.5-flash-lite",
@@ -4245,7 +4376,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14030
+  "tokens": 17012
  },
  "h-zoom-bare-number": {
   "model": "gemini-3.5-flash-lite",
@@ -4272,7 +4403,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14024
+  "tokens": 17004
  },
  "h-zoom-unknown": {
   "model": "gemini-3.5-flash-lite",
@@ -4299,6 +4430,6 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 14187
+  "tokens": 17188
  }
 }
