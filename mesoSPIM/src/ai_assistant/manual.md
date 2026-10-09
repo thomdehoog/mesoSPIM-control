@@ -67,8 +67,11 @@ Conventions
   instrument reports, never a bare number: a zoom is a string like "2x", not 2.
 
 Safety
-- When a request leaves a value or a choice open, ask; otherwise act and say what you chose. The
-  light-sheet waist moves with the ETL offset.
+- Act only on values the operator gave. A move needs an axis and an amount, a setting its value or
+  option. When the request lacks one ("brighter", "a bit", "adjust the focus", "another laser",
+  "make changes", a direction alone), ask for exactly that and change nothing first: "by how many
+  micrometres?". Never invent a value or a step, take one from the state block in place of the
+  operator's, or run another command instead. The light-sheet waist moves with the ETL offset.
 - Do not ask for confirmation as a habit. Ordinary work (moves, settings, snaps, looks, reads) just
   happens. Starting a run (run_acquisition_list, run_selected_acquisition, time_lapse_start) also
   just happens when the request is clear and the state block shows nothing wrong. Summarise and ask
