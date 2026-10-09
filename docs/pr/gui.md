@@ -1,9 +1,9 @@
 # Remote Control: the acquisition manager's features as calls
 
 Branch `agent/gui-pr`, on `agent/lean-pr` (the AI Assistant's lean package, which it needs: the
-assistant's own row tool is removed here in favour of the registered call). Eight commits: five
+assistant's own row tool is removed here in favour of the registered call). Ten commits: five
 lifts in `utils/`, each its own commit so it can be taken or dropped alone, then the calls, the
-live sweep for them, and the writer readout.
+demo sweep for them, the writer readout, the assistant's size help, and the real-hardware sweep.
 
 ## Summary
 
@@ -54,15 +54,19 @@ page, and the live sweep with its contracts.
 
 ## Validation
 
-- **Offline.** The dev suite passes (627, with 10 tests of the table calls and 4 of the coverage
-  map). `test/test_tiling.py` cannot run on either side: it builds the wizard without the parent
+- **Offline.** The fork's dev suite passes (1109 tests, 11 skipped), the replay suite included, with
+  10 tests of the table calls and 4 of the coverage map. `test/test_tiling.py` cannot run on either side: it builds the wizard without the parent
   window it now needs. Its five fixtures, given to the lifted `image_counts`, all give the
   expected counts.
 - **Demo, Linux.** The all-commands live sweep, with a fresh two-row table before each table call
   and the table read back after it: 67 of 67 over TCP and over MCP, the demo's state restored. Run
   offscreen with the three Windows-only imports stubbed in a scratch launcher.
 - **Assistant.** Two cases and their held-out twins (a tiling list, a table round trip): 12 of 12
-  on gemini-3.5-flash-lite.
+  on gemini-3.5-flash-lite, and recorded. The eleven tool definitions make each request 15 to 21 %
+  larger, about 7,500 tokens before the conversation; on Anthropic the cache carries that part.
+- **Real hardware.** `live/test_all_commands_real_hardware.py` gives the table calls the same
+  setup as the demo sweep, built from the microscope's own state. It refuses a demo stage, so it
+  runs for the first time on the microscope.
 - **Package branch.** On `agent/gui-pr` itself, the real-Qt scripts pass (67 commands) and
   `run.py live tcp` against a demo started from it: 2 passed, 67 calls verified.
 - **Please check on Windows** (demo mode): `python mesoSPIM/test/remote_control/run.py live tcp`
