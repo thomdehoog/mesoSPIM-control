@@ -23,14 +23,13 @@ def instrument(axes=None, **sample):
     return core
 
 
-def tools_on(core, tmp_path, axes=None, answer=True):
+def tools_on(core, tmp_path, axes=None):
     """The assistant's tools on the simulator, with a history whose calibration is in tmp_path."""
     acceptor = harness.SimulatedAcceptor(core)
     store = ai.SessionStore(core.clock, fh.Calibration(tmp_path / "calibration.json"))
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: gate.answer(answer))
-    tools = ai.build_tools(acceptor, threading.Event(), endpoint=SCRIPTED, gate=gate, store=store,
+    tools = ai.build_tools(acceptor, threading.Event(), endpoint=SCRIPTED, store=store,
                            axes=dict(ai.config.DEFAULT_AXES, **(axes or {})))
-    ai.with_state(acceptor, "a turn", store)                 # the guard counts turns; the moves get their Run
+    ai.with_state(acceptor, "a turn", store)                 # a turn in the store: the readout trail starts from it
     return acceptor, store, {t.name: t for t in tools}
 
 
@@ -158,10 +157,7 @@ def test_calibrate_measures_a_wrong_coordinate_system_and_the_moves_follow_it(tm
     assert core.truth()["off_centre_um"] < 40
 
 
-def test_calibrate_waits_for_run_and_needs_a_sample(tmp_path):
-    core = instrument()
-    _, _, tools = tools_on(core, tmp_path, answer=False)
-    assert call(tools, "calibrate")["error"]["code"] == "refused" and "move_relative" not in str(core.calls())
+def test_calibrate_needs_a_sample(tmp_path):
     empty = instrument(x=8000.0)                             # nothing in the field
     _, _, tools = tools_on(empty, tmp_path)
     assert "visible sample" in call(tools, "calibrate")["error"]["message"]
@@ -185,3 +181,16 @@ def test_a_case_on_the_simulator_centres_with_the_kept_move():
     trace = harness.run_case(case, scripted((("look", {"question": "where?"}), ("move_relative", {"deltas": move}),
                                              "Centred.")), SCRIPTED)
     assert harness.score(case, trace) == [], trace["truth"]
+
+
+def test_a_look_right_after_a_snap_reads_that_frame_and_a_change_takes_a_new_one(tmp_path):
+    """A model that snaps and then looks would expose the sample twice. The look reads the snap's
+    frame when the newest frame is a snap of this place and these settings, taken a moment ago;
+    after a move it takes its own."""
+    core = instrument()
+    _, _, tools = tools_on(core, tmp_path)
+    snaps = lambda: [name for name, *_ in core.calls()].count("snap")        # noqa: E731
+    call(tools, "snap")
+    assert "snapped a moment ago" in call(tools, "look", question="centred?")["frame"] and snaps() == 1
+    call(tools, "move_relative", deltas={"x": 50})
+    assert "frame" not in call(tools, "look", question="centred?") and snaps() == 2

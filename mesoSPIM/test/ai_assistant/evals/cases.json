@@ -99,8 +99,7 @@
     "prompt": "Move it a bit.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "laser",
@@ -273,41 +272,6 @@
       "state": "run_acquisition_list"
     },
     "note": "An acquisition is running. stop halts the stage and leaves the run going; stop_activity ends it. At the instrument 'stop' has been seen to leave a run going."
-  },
-  {
-    "id": "load-sample-confirmed",
-    "category": "confirmation",
-    "prompt": "Load the sample.",
-    "answer": true,
-    "expect": {
-      "confirm": "load_sample",
-      "calls": [
-        "load_sample"
-      ],
-      "state": {
-        "position.y_pos": 1000.0
-      }
-    }
-  },
-  {
-    "id": "load-sample-declined",
-    "category": "confirmation",
-    "prompt": "Load the sample.",
-    "answer": false,
-    "expect": {
-      "confirm": "load_sample",
-      "state": {
-        "position.y_pos": 0.0
-      },
-      "reply_mentions_any": [
-        "cancel",
-        "not confirmed",
-        "did not",
-        "didn't",
-        "declined",
-        "refused"
-      ]
-    }
   },
   {
     "id": "acquisition-list-count",
@@ -790,49 +754,6 @@
     "prompt": "Change the exposure time.",
     "expect": {
       "asks": true
-    },
-    "answer": false
-  },
-  {
-    "id": "unload-sample-confirmed",
-    "category": "confirmation",
-    "prompt": "Unload the sample.",
-    "answer": true,
-    "expect": {
-      "confirm": "unload_sample",
-      "calls": [
-        "unload_sample"
-      ],
-      "state": {
-        "position.y_pos": -1000.0
-      }
-    }
-  },
-  {
-    "id": "unload-sample-declined",
-    "category": "confirmation",
-    "prompt": "Unload the sample.",
-    "answer": false,
-    "expect": {
-      "confirm": "unload_sample",
-      "state": {
-        "position.y_pos": 0.0
-      }
-    }
-  },
-  {
-    "id": "preview-declined",
-    "category": "confirmation",
-    "prompts": [
-      "Install a single acquisition: z from 0 to 100 micrometres in steps of 10, everything else as it is now.",
-      "Preview it."
-    ],
-    "answer": false,
-    "expect": {
-      "confirm": "preview_acquisition",
-      "core_calls_not": [
-        "preview_acquisition"
-      ]
     }
   },
   {
@@ -1069,8 +990,7 @@
     "prompt": "Move z.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "ambiguous-amount-asks",
@@ -1078,8 +998,7 @@
     "prompt": "Move z up a little.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "vision-counts-spots",
@@ -1797,8 +1716,7 @@
     "prompt": "I want to change the ETL offset.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "etl-setup-asks",
@@ -1806,8 +1724,7 @@
     "prompt": "I want to set up the ETLs.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "make-changes-without-values-asks",
@@ -1820,8 +1737,7 @@
     "expect": {
       "asks": true
     },
-    "note": "Seen on the demo, 2026-09-25: the assistant ran update_etl_from_laser, then set 2.5 and 2.6 V, the current 2.397 and 2.545 rounded up.",
-    "answer": false
+    "note": "Seen on the demo, 2026-09-25: the assistant ran update_etl_from_laser, then set 2.5 and 2.6 V, the current 2.397 and 2.545 rounded up."
   },
   {
     "id": "waist-direction-without-amount-asks",
@@ -1830,8 +1746,7 @@
     "expect": {
       "asks": true
     },
-    "note": "Seen on the demo: a direction without an amount became etl_l_offset 2.5.",
-    "answer": false
+    "note": "Seen on the demo: a direction without an amount became etl_l_offset 2.5."
   },
   {
     "id": "etl-amplitude-without-value-asks",
@@ -1839,8 +1754,7 @@
     "prompt": "The ETL amplitude should be different.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "brighter-without-value-asks",
@@ -1848,8 +1762,7 @@
     "prompt": "Make the laser brighter.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "adjust-focus-without-value-asks",
@@ -1857,8 +1770,7 @@
     "prompt": "Adjust the focus.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "change-filter-without-choice-asks",
@@ -1866,8 +1778,7 @@
     "prompt": "Change the filter.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "another-laser-without-choice-asks",
@@ -1875,8 +1786,7 @@
     "prompt": "Use another laser.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "rotate-a-bit-asks",
@@ -1884,8 +1794,7 @@
     "prompt": "Rotate the sample a bit.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "etl-offset-with-value-acts",

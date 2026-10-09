@@ -1,5 +1,5 @@
-"""The 158 cases, their 158 held-out twins and the 234 multi-step cases as a regression suite: each
-is replayed from a recorded model run (evals/replay.py) through the real agent, tools, guard and dispatcher, and must
+"""The single-step cases, their held-out twins and the multi-step cases as a regression suite: each
+is replayed from a recorded model run (evals/replay.py) through the real agent, tools and dispatcher, and must
 score as it did when recorded, with no more than GROWTH_ALLOWED more estimated tokens."""
 import pytest
 
@@ -10,8 +10,7 @@ from mesoSPIM.test.ai_assistant.test_evals import SCRIPTED, scripted
 pytest.importorskip("pydantic_ai")
 
 FILES = tuple(harness.CASES_FILE.with_name(name) for name in
-              ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json",
-               "cases_unattended.json"))
+              ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json"))
 
 
 def _recorded_cases():
@@ -43,7 +42,7 @@ def test_a_recorded_run_replays_to_the_same_calls_and_size():
 
 def test_a_replay_that_runs_out_of_answers_says_so():
     case = next(c for c in harness.load_cases() if c["id"] == "move-relative-mm")
-    recorded = {"model": "m", "vision": False, "profile": None, "responses": [], "eyes": []}
+    recorded = {"model": "m", "vision": False, "responses": [], "eyes": []}
     trace = replay.replay_case(case, recorded)
     assert trace["replies"] == [replay.REPLAY_ENDED] and trace["failures"]
 

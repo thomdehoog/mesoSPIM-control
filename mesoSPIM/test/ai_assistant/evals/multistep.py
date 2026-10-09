@@ -20,7 +20,6 @@ from pathlib import Path
 FOLDER = Path(__file__).parent
 SMOKE_FILE = FOLDER / "cases_multistep.json"
 GENERATED_FILE = FOLDER / "cases_generated.json"
-UNATTENDED_FILE = FOLDER / "cases_unattended.json"
 HOME = {"x_pos": 0.0, "y_pos": 0.0, "z_pos": 0.0, "f_pos": 5000.0}
 CENTRED_UM = 150          # a tenth of the field at 1x is 205 um
 IN_FOCUS_UM = 40
@@ -209,32 +208,6 @@ def _stop_partway(case_id, phrasing, seed, extra, pick, rng):
                  setup={"intensity": 10 if index not in (1, 5) else 50, **extra.get("setup", {})})
 
 
-def unattended(seed=0, per_group=6):
-    """Measured values (E1): the centring and acquisition cases with the setting on and an operator
-    who cancels every question, so what is done is what the setting lets through; and the same with
-    the coordinate system set wrong, where the sample must not be driven far away (each next
-    measured offset must be smaller, so the second wrong move waits)."""
-    rng, out = random.Random(seed), []
-    for group in ("centring", "acquisition with checks"):
-        for n in range(1, per_group + 1):
-            case = build(group, f"un-{_slug(group)}-{n}", rng.choice(PHRASINGS[group]), rng)
-            case["setup"].pop("axes", None)
-            case["setup"]["measured"] = True
-            case["answer"] = False
-            out.append(case)
-    for n in range(1, per_group + 1):
-        case = build("centring", f"un-wrong-axes-{n}", rng.choice(PHRASINGS["centring"]), rng)
-        case["setup"].pop("axes", None)
-        case["setup"].update(measured=True, true_axes=rng.choice([{"x": "left"}, {"y": "down"}]))
-        case["answer"] = False
-        case["category"] = "wrong coordinate system"
-        dx, dy = case["setup"]["sample"]["x"], case["setup"]["sample"]["y"]
-        case["expect"] = {"truth": {"off_centre_um_max": round(3 * (dx * dx + dy * dy) ** 0.5)},
-                          "max_calls": {"move_relative": 3, "move_absolute": 3}}
-        out.append(case)
-    return out
-
-
 def smoke():
     rng = random.Random(0)
     return [build(group, f"ms-{_slug(group)}-{n}", phrasing, rng, canonical=True)
@@ -252,8 +225,7 @@ def _slug(group):
 
 
 def write(seed=0, per_group=20):
-    for path, cases in ((SMOKE_FILE, smoke()), (GENERATED_FILE, generated(seed, per_group)),
-                        (UNATTENDED_FILE, unattended())):
+    for path, cases in ((SMOKE_FILE, smoke()), (GENERATED_FILE, generated(seed, per_group))):
         path.write_text(json.dumps(cases, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
@@ -264,8 +236,7 @@ def main(argv=None):
     arguments = parser.parse_args(argv)
     write(arguments.seed, arguments.per_group)
     print(f"{len(smoke())} smoke cases -> {SMOKE_FILE.name}; "
-          f"{len(PHRASINGS) * arguments.per_group} generated -> {GENERATED_FILE.name}; "
-          f"{len(unattended())} unattended -> {UNATTENDED_FILE.name}")
+          f"{len(PHRASINGS) * arguments.per_group} generated -> {GENERATED_FILE.name}")
 
 
 if __name__ == "__main__":

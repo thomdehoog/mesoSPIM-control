@@ -540,124 +540,6 @@ def test_build_tools_adds_look_only_with_an_endpoint():
     assert with_endpoint - without == {"look"}
 
 
-# --- the confirmation gate ---
-
-def test_gate_waits_for_the_operator_and_returns_the_answer():
-    asked = []
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: asked.append((name, args)))
-    results = []
-    thread = threading.Thread(target=lambda: results.append(gate.ask("load_sample", {})))
-    thread.start()
-    deadline = time.monotonic() + 5
-    while not asked and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert asked == [("load_sample", "{}")]
-    assert not results                                              # still waiting
-    gate.answer(True)
-    thread.join(5)
-    assert results == [True]
-
-
-def _wait_for(predicate, timeout=5):
-    deadline = time.monotonic() + timeout
-    while not predicate():
-        assert time.monotonic() < deadline, "timed out"
-        time.sleep(0.01)
-
-
-def test_one_run_answers_one_question_when_a_reply_asks_two():
-    """pydantic-ai runs the tool calls of one reply concurrently: two confirm-first commands asked at
-    once used to share one answer, so Run on the question shown ran both."""
-    asked = []
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: asked.append(name))
-    results = {}
-    threads = [threading.Thread(target=lambda n=n: results.update({n: gate.ask(n, {})}), daemon=True)
-               for n in ("load_sample", "preview_acquisition")]
-    for thread in threads:
-        thread.start()
-    _wait_for(lambda: len(asked) == 1)
-    time.sleep(0.1)
-    assert len(asked) == 1                                           # the second waits its turn
-    first = asked[0]
-    gate.answer(True)
-    _wait_for(lambda: len(asked) == 2)
-    assert results == {first: True}                                  # one Run, one command
-    gate.answer(False)
-    for thread in threads:
-        thread.join(5)
-    assert results[asked[1]] is False
-
-
-def test_a_question_is_not_asked_after_cancel():
-    """Cancel answers the open question; one about to be asked must not wait for an answer again."""
-    cancel = threading.Event()
-    cancel.set()
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: pytest.fail(f"asked for {name}"), cancel=cancel)
-    assert gate.ask("load_sample", {}) is False
-
-
-def test_gate_waits_until_answered_not_a_clock():
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: None)
-    results = []
-    thread = threading.Thread(target=lambda: results.append(gate.ask("unload_sample", {})), daemon=True)
-    thread.start()
-    time.sleep(0.2)
-    assert thread.is_alive() and results == []                     # still waiting, no deadline
-    gate.answer(False)
-    thread.join(5)
-    assert results == [False]
-
-
-def test_confirm_first_tool_is_refused_when_the_operator_cancels():
-    acc = FakeAcceptor()
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: gate.answer(False))
-    fn = ai._tool_fn(acc, "unload_sample", WAIT, threading.Event(), gate=gate)
-    out = json.loads(fn())
-    assert out["error"]["code"] == "refused" and "unload_sample" in out["error"]["message"]
-    assert acc.calls == []                                          # never dispatched
-
-
-def test_confirm_first_tool_is_not_asked_after_cancel():
-    acc = FakeAcceptor()
-    asked = []
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: asked.append(name))
-    cancel = threading.Event()
-    cancel.set()
-    fn = ai._tool_fn(acc, "load_sample", WAIT, cancel, gate=gate)
-    assert json.loads(fn()) == {"status": "cancelled"}
-    assert asked == [] and acc.calls == []                           # no Run / Cancel bar, no dispatch
-
-
-def test_confirm_first_tool_runs_after_run():
-    acc = FakeAcceptor(flip_after=1)
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: gate.answer(True))
-    fn = ai._tool_fn(acc, "load_sample", WAIT, threading.Event(), gate=gate)
-    out = json.loads(fn())
-    assert out["status"] == COMPLETED and acc.calls[0] == ("load_sample", {})
-
-
-def test_only_the_three_stage_moves_and_calibrate_ask():
-    assert set(ai.config.CONFIRM_FIRST) == {"load_sample", "unload_sample", "preview_acquisition", "calibrate"}
-    acc = FakeAcceptor(flip_after=1)
-    gate = ai.ConfirmationGate(on_ask=lambda name, args: pytest.fail(f"asked for {name}"))
-    for name, kind in (("get_state", READ), ("run_acquisition_list", WAIT), ("time_lapse_start", WAIT)):
-        ai._tool_fn(acc, name, kind, threading.Event(), gate=gate)()
-    assert [c[0] for c in acc.calls if c[0] not in ("get_progress", "get_snapshot")] == ["get_state", "run_acquisition_list", "time_lapse_start"]
-
-
-def test_interrupt_cancels_an_open_question():
-    worker = AssistantWorker(FakeAcceptor())
-    asked = threading.Event()
-    worker.sig_confirm.connect(lambda name, args: asked.set())
-    results = []
-    thread = threading.Thread(target=lambda: results.append(worker.gate.ask("unload_sample", {})))
-    thread.start()
-    assert asked.wait(5), "the question was never asked"
-    worker.interrupt()
-    thread.join(5)
-    assert results == [False]
-
-
 # --- schemas on the tools, the prompt, the history cap ---
 
 def test_tools_publish_each_commands_schema():
@@ -737,7 +619,7 @@ def test_system_prompt_is_the_preamble_plus_the_commands_by_kind():
     commands = prompt.split("# Commands")[1]
     by_kind = {line.split(":")[0].strip("- "): line.split(":", 1)[1] for line in commands.splitlines() if line.startswith("- ")}
     assert set(by_kind) == {"reads, which change nothing", "actions, which return at once",
-                            "waits, which return when the instrument is done", "emergency commands, never gated"}
+                            "waits, which return when the instrument is done", "emergency commands, which always run"}
     for name, cmd in COMMANDS.items():
         if name != "get_manual":
             assert any(name in names for label, names in by_kind.items() if label.startswith(cmd.kind[:4]))
@@ -1231,15 +1113,6 @@ def test_the_instructions_and_tools_are_identical_across_agents():
         return [(t.name, t.description, json.dumps(t.function_schema.json_schema, sort_keys=True))
                 for t in build_tools(FakeAcceptor(), threading.Event())]
     assert schemas() == schemas()
-
-
-def test_the_snap_tool_tells_the_model_that_look_snaps_by_itself():
-    pytest.importorskip("pydantic_ai")
-    from mesoSPIM.src.ai_assistant.assistant import build_tools
-    from mesoSPIM.src.remote_control.dispatcher import COMMANDS
-    by_name = {t.name: t for t in build_tools(FakeAcceptor(), threading.Event())}
-    assert "never snap and then look" in by_name["snap"].description
-    assert by_name["set_laser"].description == COMMANDS["set_laser"].hint      # the others keep the wire hint
 
 
 def test_the_camera_tool_names_the_unit_the_wire_schema_leaves_out():

@@ -98,8 +98,7 @@
     "prompt": "Nudge the sample somewhere better.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-laser",
@@ -264,41 +263,6 @@
       "calls_any": [
         "stop",
         "stop_activity"
-      ]
-    }
-  },
-  {
-    "id": "h-load-sample-confirmed",
-    "category": "confirmation",
-    "prompt": "Please load the sample now.",
-    "answer": true,
-    "expect": {
-      "confirm": "load_sample",
-      "calls": [
-        "load_sample"
-      ],
-      "state": {
-        "position.y_pos": 1000.0
-      }
-    }
-  },
-  {
-    "id": "h-load-sample-declined",
-    "category": "confirmation",
-    "prompt": "Go ahead and load the sample.",
-    "answer": false,
-    "expect": {
-      "confirm": "load_sample",
-      "state": {
-        "position.y_pos": 0.0
-      },
-      "reply_mentions_any": [
-        "cancel",
-        "not confirmed",
-        "did not",
-        "didn't",
-        "declined",
-        "refused"
       ]
     }
   },
@@ -784,49 +748,6 @@
     "prompt": "Adjust the laser intensity.",
     "expect": {
       "asks": true
-    },
-    "answer": false
-  },
-  {
-    "id": "h-unload-sample-confirmed",
-    "category": "confirmation",
-    "prompt": "Take the sample out.",
-    "answer": true,
-    "expect": {
-      "confirm": "unload_sample",
-      "calls": [
-        "unload_sample"
-      ],
-      "state": {
-        "position.y_pos": -1000.0
-      }
-    }
-  },
-  {
-    "id": "h-unload-sample-declined",
-    "category": "confirmation",
-    "prompt": "Please unload the sample.",
-    "answer": false,
-    "expect": {
-      "confirm": "unload_sample",
-      "state": {
-        "position.y_pos": 0.0
-      }
-    }
-  },
-  {
-    "id": "h-preview-declined",
-    "category": "confirmation",
-    "prompts": [
-      "Set up one acquisition: z from 50 to 250 micrometres with a 20 micrometre step, all other settings as they are.",
-      "Show me a preview of it."
-    ],
-    "answer": false,
-    "expect": {
-      "confirm": "preview_acquisition",
-      "core_calls_not": [
-        "preview_acquisition"
-      ]
     }
   },
   {
@@ -1063,8 +984,7 @@
     "prompt": "Move x.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-ambiguous-amount-asks",
@@ -1072,8 +992,7 @@
     "prompt": "Move y down slightly.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-vision-counts-spots",
@@ -1793,8 +1712,7 @@
     "prompt": "Can you adjust the ETL offsets for me?",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-etl-setup-asks",
@@ -1802,8 +1720,7 @@
     "prompt": "Help me configure the ETLs.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-make-changes-without-values-asks",
@@ -1814,8 +1731,7 @@
     ],
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-waist-direction-without-amount-asks",
@@ -1823,8 +1739,7 @@
     "prompt": "Shift the light-sheet waist to the right.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-etl-amplitude-without-value-asks",
@@ -1832,8 +1747,7 @@
     "prompt": "Tweak the ETL amplitude.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-brighter-without-value-asks",
@@ -1841,8 +1755,7 @@
     "prompt": "The image is too dark, turn up the laser.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-adjust-focus-without-value-asks",
@@ -1850,8 +1763,7 @@
     "prompt": "Refocus a little.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-change-filter-without-choice-asks",
@@ -1859,8 +1771,7 @@
     "prompt": "Swap the filter.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-another-laser-without-choice-asks",
@@ -1868,8 +1779,7 @@
     "prompt": "Switch to a different wavelength.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-rotate-a-bit-asks",
@@ -1877,8 +1787,7 @@
     "prompt": "Turn the sample slightly.",
     "expect": {
       "asks": true
-    },
-    "answer": false
+    }
   },
   {
     "id": "h-etl-offset-with-value-acts",
