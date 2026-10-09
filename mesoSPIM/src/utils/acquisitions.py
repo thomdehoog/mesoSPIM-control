@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 from ..plugins.utils import get_image_writer_name_for_file_extension, get_image_writer_from_name
 
 
+def replace_with_underscores(string):
+    '''Replace spaces, slashes and percent signs with underscores or ASCII equivalents.
+
+    Used for sanitising file and folder names produced from user inputs.
+
+    Args:
+        string (str): Raw string, e.g. a filter name like ``"488 nm / 50%"``.
+
+    Returns:
+        str: Sanitised string safe for use in file paths.
+    '''
+    s = string.replace(' ', '_').replace('/', '_').replace('%', 'pct')
+    return s
+
+
 def value_from_state(state, key):
     ''' The value an acquisition row's `key` takes from the microscope's current state ("mark current"):
     positions rounded as the table shows them, the focus range at the current focus. '''
@@ -289,6 +304,76 @@ class AcquisitionList(list):
         Here, a list of capitalized keys is returned for usage as a table header
         '''
         return self[0].get_keylist()
+
+    def filenames(self, file_names, extension, description=''):
+        '''
+        The file name of every row, by an image writer's naming rules (`file_names`, its
+        FileNaming: mesoSPIM/src/plugins/ImageWriterApi.py) and its first file extension, with the
+        operator's description first. A single-file writer gives every row the same name.
+        '''
+        row_count = 1 if file_names.SingleFileFormat else len(self)
+        filename_list = []
+        for row in range(0, row_count):
+            filename = ''
+
+            # Add custom description
+            if description:
+                filename += replace_with_underscores(description) + '_'
+
+            # Add Magnification
+            if file_names.IncludeMag:
+                filename += f"Mag{self[row]['zoom']}_"
+
+            # Add Tile
+            if file_names.IncludeTile:
+                filename += f'Tile{self.get_tile_index(self[row])}_'
+
+            # Add Channel(s)
+            if file_names.IncludeChannel:
+                if file_names.SingleFileFormat and file_names.IncludeAllChannelsInSingleFileFormat:
+                    for laser in self.get_unique_attr_list('laser'):
+                        filename += 'Ch' + laser[:-3] + '_'
+                else:
+                    filename += f"Ch{self[row]['laser'][:-3]}_"
+
+            # Add Filter
+            if file_names.IncludeFilter:
+                filename += f"Flt{replace_with_underscores(self[row]['filter'])}_"
+
+            # Add Shutter
+            if file_names.IncludeShutter:
+                if self.get_n_shutter_configs() > 1:
+                    shutter_id = 0 if self[row]['shutterconfig'] == 'Left' else 1
+                else:
+                    shutter_id = 0
+                filename += f'Sh{shutter_id}_'
+
+            # Add Rotation/Angle
+            if file_names.IncludeRotation:
+                if self.get_n_angles() > 1:
+                    angle = int(self[row]['rot'])
+                else:
+                    angle = 0
+                filename += f'Rot{angle}_'
+
+            # Add Suffix
+            if file_names.IncludeSuffix:
+                filename += f'{file_names.IncludeSuffix}'
+
+            # Trim trailing _
+            if filename.endswith('_'):
+                filename = filename[:-1]
+
+            # Add File Extension
+            if extension.startswith('.'):
+                extension = extension[1:]
+            filename += '.' + extension
+
+            filename_list.append(filename)
+
+        if file_names.SingleFileFormat:
+            filename_list *= len(self)
+        return filename_list
 
     def to_csv(self, filename):
         ''' Saves the acquisition table as a CSV file '''
