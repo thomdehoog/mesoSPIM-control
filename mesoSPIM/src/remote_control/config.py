@@ -128,6 +128,12 @@ SNAP_TIMEOUT_SEC = 30.0
 FRAME_BINS = (1, 2, 4, 8)   # get_frame's bin: the PNG binned n x n, as a camera bins
 POSITION_TOLERANCE = {"x": 1.0, "y": 1.0, "z": 1.0, "f": 1.0, "theta": 1.0}
 
+# A setter answers as soon as Core has taken the value; Core applies it later, on other threads
+# (the camera's). The keys a setter set are read until they hold the value or READ_BACK_S has
+# passed: the main window is refreshed then, and the AI Assistant reports what they read.
+READ_BACK_S = 3.0
+READ_BACK_POLL_INTERVAL_MS = 150
+
 # --- environment variable names (the reading lives in Commands) ---
 LIMITS_ENV_VAR = "MESOSPIM_RS_LIMITS"
 

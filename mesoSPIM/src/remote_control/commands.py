@@ -203,6 +203,34 @@ def defer_wait(core, milestone, action, verify_idle=False):
     QtCore.QTimer.singleShot(0, body)
 
 
+def _reads_as(value, asked):
+    if isinstance(value, (int, float)) and isinstance(asked, (int, float)) and not isinstance(value, bool):
+        return abs(value - asked) <= 1e-9 * max(1.0, abs(asked))
+    return value == asked
+
+
+def refresh_window_after(core, expected):
+    """Refresh the main window once Core's state holds the values a setter set, or after READ_BACK_S.
+
+    Core's own setters refresh the window only after a filter, a shutter or an ETL file change; a
+    zoom, laser, intensity or camera setting made over TCP, MCP or by the AI Assistant left the
+    window's widgets on their old value. The camera worker applies its keys on its own thread, after
+    the setter has returned, so the refresh waits for the state rather than firing at once.
+    """
+    from PyQt5 import QtCore
+
+    single_shot = getattr(core, "_remote_control_single_shot", QtCore.QTimer.singleShot)
+    polls = int(config.READ_BACK_S * 1000 / config.READ_BACK_POLL_INTERVAL_MS)
+
+    def check(left):
+        if left == 0 or all(_reads_as(state(core, key), value) for key, value in expected.items()):
+            core.sig_update_gui_from_state.emit()
+        else:
+            single_shot(config.READ_BACK_POLL_INTERVAL_MS, lambda: check(left - 1))
+
+    single_shot(0, lambda: check(polls))
+
+
 # --- Reusable argument validators ---
 def only(args, allowed):
     unknown = sorted(set(args) - set(allowed))
@@ -1444,7 +1472,11 @@ def _accept_set_state(core, args):
 
 def _run_state_settings(core, args):
     """The execute shared by set_state and the four grouped setters."""
-    core.state_request_handler(args["settings"])
+    settings = args["settings"]
+    if "galvo_amp_scale_w_zoom" in settings:   # Core forwards it and nobody applies it; the window writes it itself
+        core.state["galvo_amp_scale_w_zoom"] = settings["galvo_amp_scale_w_zoom"]
+    core.state_request_handler(settings)
+    refresh_window_after(core, settings)
     return {}
 
 
@@ -1465,6 +1497,7 @@ def _accept_set_filter(core, args):
 
 def _run_set_filter(core, args):
     core.set_filter(args["filter"], wait_until_done=args["wait"])
+    refresh_window_after(core, {"filter": args["filter"]})
     return {}
 
 
@@ -1482,6 +1515,7 @@ def _accept_set_zoom(core, args):
 
 def _run_set_zoom(core, args):
     core.set_zoom(args["zoom"], wait_until_done=args["wait"], update_etl=args["update_etl"])
+    refresh_window_after(core, {"zoom": args["zoom"]})
     return {}
 
 
@@ -1501,6 +1535,7 @@ def _accept_set_laser(core, args):
 
 def _run_set_laser(core, args):
     core.set_laser(args["laser"], wait_until_done=args["wait"], update_etl=args["update_etl"])
+    refresh_window_after(core, {"laser": args["laser"]})
     return {}
 
 
@@ -1521,6 +1556,7 @@ def _accept_set_shutterconfig(core, args):
 
 def _run_set_shutterconfig(core, args):
     core.set_shutterconfig(args["shutterconfig"])
+    refresh_window_after(core, {"shutterconfig": args["shutterconfig"]})
     return {}
 
 
@@ -1541,6 +1577,7 @@ def _accept_set_intensity(core, args):
 
 def _run_set_intensity(core, args):
     core.set_intensity(args["intensity"], wait_until_done=args["wait"])
+    refresh_window_after(core, {"intensity": args["intensity"]})
     return {}
 
 
