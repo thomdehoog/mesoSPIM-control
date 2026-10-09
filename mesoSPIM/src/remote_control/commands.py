@@ -2064,6 +2064,399 @@ command(
 )
 
 
+# --- The acquisition table, as the acquisition manager edits it ---
+# Every edit builds the whole new table and hands it to set_acquisition_list's own accept and
+# install: the same row checks (limits, options, plane count), the same busy gate, the same bridge
+# to the manager window. No table edit has a path of its own.
+def _installed(core):
+    """The installed rows as plain objects, in order, every key present (as the list models them)."""
+    rows = jsonable(_make_acquisition_list(jsonable(state(core, "acq_list", []) or [])))
+    return [{key: value for key, value in row.items() if value is not None} for row in rows]
+
+
+def _as_list(core, rows, selected=None):
+    """The changed table, checked as set_acquisition_list checks it, ready for its install."""
+    args = {"acquisitions": rows}
+    if selected is not None:
+        args["selected_row"] = selected
+    return _accept_set_acquisition_list(core, args)
+
+
+def _row_list(args, key, count, required=True):
+    """A list of distinct row indices into a table of `count` rows; all rows when omitted."""
+    if key not in args:
+        if required:
+            raise ValidationError(f"{key!r} is required")
+        return list(range(count))
+    rows = args[key]
+    if not isinstance(rows, list) or not rows:
+        raise ValidationError(f"{key!r} must be a non-empty list of row indices")
+    for i, value in enumerate(rows):
+        integer({"row": value}, "row", minimum=0, maximum=count - 1)
+    if len(set(rows)) != len(rows):
+        raise ValidationError(f"{key!r} names a row twice")
+    return rows
+
+
+def _row_index(args, key, count):
+    return integer(args, key, minimum=0, maximum=count - 1)
+
+
+def _accept_update_acquisition_row(core, args):
+    only(args, ("row", "changes"))
+    rows = _installed(core)
+    row = _row_index(args, "row", len(rows))
+    changes = args.get("changes")
+    if not isinstance(changes, dict) or not changes:
+        raise ValidationError("'changes' must name at least one row key and its new value")
+    rows[row].update(changes)
+    return _as_list(core, rows, row)
+
+
+command(
+    "update_acquisition_row",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"row": _ROW, "changes": {"type": "object", "additionalProperties": True,
+                                             "description": "row key: new value; the rest of the row stays"}},
+                   required=("row", "changes")),
+    accept=_accept_update_acquisition_row,
+    hint="in: {row, changes:{key: value}}. out: {count}",
+)
+
+
+def _accept_add_acquisition_rows(core, args):
+    from ..utils.acquisitions import Acquisition
+
+    only(args, ("rows", "like", "at"))
+    installed = _installed(core)
+    new = args.get("rows", [{}])
+    if not isinstance(new, list) or not new or not all(isinstance(row, dict) for row in new):
+        raise ValidationError("'rows' must be a non-empty list of row objects")
+    base = installed[_row_index(args, "like", len(installed))] if "like" in args else \
+        {key: value for key, value in Acquisition().items() if value is not None}
+    at = integer(args, "at", minimum=0, maximum=len(installed), required=False, default=len(installed))
+    rows = installed[:at] + [dict(base, **row) for row in new] + installed[at:]
+    return _as_list(core, rows, at)
+
+
+command(
+    "add_acquisition_rows",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"rows": {"type": "array", "items": {"type": "object", "additionalProperties": True},
+                             "description": "row objects; a key left out takes the value of row `like`, or the default"},
+                    "like": _ROW, "at": {"type": "integer", "minimum": 0, "description": "insert before this row; the end when omitted"}}),
+    accept=_accept_add_acquisition_rows,
+    hint="in: {rows?:[{...}], like?, at?}: one default row at the end when empty; like copies a row. out: {count}",
+)
+
+
+def _accept_delete_acquisition_rows(core, args):
+    only(args, ("rows",))
+    installed = _installed(core)
+    gone = set(_row_list(args, "rows", len(installed)))
+    if len(gone) == len(installed):
+        raise ValidationError("the list keeps at least one row; set_acquisition_list replaces it whole")
+    return _as_list(core, [row for i, row in enumerate(installed) if i not in gone], 0)
+
+
+command(
+    "delete_acquisition_rows",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"rows": {"type": "array", "items": _ROW, "minItems": 1}}, required=("rows",)),
+    accept=_accept_delete_acquisition_rows,
+    hint="in: {rows:[...]}. out: {count}",
+)
+
+
+def _accept_move_acquisition_row(core, args):
+    only(args, ("row", "to"))
+    rows = _installed(core)
+    row, to = _row_index(args, "row", len(rows)), _row_index(args, "to", len(rows))
+    rows.insert(to, rows.pop(row))
+    return _as_list(core, rows, to)
+
+
+command(
+    "move_acquisition_row",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"row": _ROW, "to": _ROW}, required=("row", "to")),
+    accept=_accept_move_acquisition_row,
+    hint="in: {row, to}. out: {count}",
+)
+
+
+def _accept_mark_acquisition_rows(core, args):
+    from ..utils.acquisitions import value_from_state
+
+    only(args, ("rows", "marks"))
+    rows = _installed(core)
+    chosen = _row_list(args, "rows", len(rows))
+    marks = args.get("marks")
+    if not isinstance(marks, list) or not marks or not all(m in (*config.ROW_MARKS, "all") for m in marks):
+        raise ValidationError(f"'marks' must list some of: {', '.join(config.ROW_MARKS)}, or all")
+    keys = [key for group, keys in config.ROW_MARKS.items() if group in marks or "all" in marks for key in keys]
+    for row in chosen:
+        rows[row].update({key: value_from_state(core.state, key) for key in keys})
+    return _as_list(core, rows, chosen[0])
+
+
+command(
+    "mark_acquisition_rows",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"rows": {"type": "array", "items": _ROW, "minItems": 1},
+                    "marks": {"type": "array", "minItems": 1, "items": {"enum": [*config.ROW_MARKS, "all"]}}},
+                   required=("rows", "marks")),
+    accept=_accept_mark_acquisition_rows,
+    hint="in: {rows, marks:[xy|rotation|focus|etl|state|all]}: the rows take the instrument's current values. out: {count}",
+)
+
+
+def _csv_path(args, must_exist):
+    path = text(args, "path")
+    if not path.lower().endswith(".csv"):
+        raise ValidationError("'path' must name a .csv file")
+    if must_exist and not os.path.isfile(path):
+        raise ValidationError(f"{path!r} does not exist")
+    if not must_exist and not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+        raise ValidationError(f"the folder of {path!r} does not exist")
+    return path
+
+
+def _accept_save_acquisition_list(core, args):
+    only(args, ("path", "overwrite"))
+    path = _csv_path(args, must_exist=False)
+    if os.path.exists(path) and not flag(args, "overwrite", False):
+        raise ValidationError(f"{path!r} exists; pass overwrite true to replace it")
+    return {"path": path}
+
+
+def _run_save_acquisition_list(core, args):
+    _make_acquisition_list(_installed(core)).to_csv(args["path"])
+    return {"path": args["path"], "count": _acq_count(core)}
+
+
+command(
+    "save_acquisition_list",
+    ACTION,
+    _run_save_acquisition_list,
+    schema=_schema({"path": _STRING, "overwrite": _BOOLEAN}, required=("path",)),
+    accept=_accept_save_acquisition_list,
+    hint="in: {path (.csv), overwrite?}. out: {path, count}",
+)
+
+
+def _accept_load_acquisition_list(core, args):
+    from ..utils.acquisitions import AcquisitionList
+
+    only(args, ("path",))
+    try:
+        rows = [dict(row) for row in AcquisitionList.from_csv(_csv_path(args, must_exist=True))]
+    except (OSError, ValueError, KeyError) as error:
+        raise ValidationError(f"{args['path']!r} could not be read as an acquisition list: {error}") from None
+    if not rows:
+        raise ValidationError(f"{args['path']!r} holds no rows")
+    return _as_list(core, [{k: v for k, v in row.items() if k in config.ACQUISITION_FIELDS} for row in rows], 0)
+
+
+command(
+    "load_acquisition_list",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"path": _STRING}, required=("path",)),
+    accept=_accept_load_acquisition_list,
+    hint="in: {path (.csv)}: replaces the list. out: {count}",
+)
+
+
+def _writer(core, args, rows):
+    """The image writer named, or the one the first row names: (name, its naming rules, extension)."""
+    from ..plugins.utils import get_image_writer_from_name
+
+    name = text(args, "writer", required=False) or (rows[0].get("image_writer_plugin") if rows else None)
+    writer = get_image_writer_from_name(name) if name else None
+    if not writer:
+        raise ValidationError(f"unknown image writer {name!r}")
+    extensions = writer.get("file_extensions")
+    extension = extensions[0] if isinstance(extensions, (list, tuple)) else extensions
+    return writer["name"], writer["file_names"], extension
+
+
+def _named(core, args, rows):
+    """The rows with the file names of the writer's rules, as the filename wizard gives them."""
+    from ..utils.acquisitions import AcquisitionList
+
+    name, file_names, extension = _writer(core, args, rows)
+    filenames = AcquisitionList(_make_acquisition_list(rows)).filenames(
+        file_names, extension, text(args, "description", required=False, default=""))
+    return [dict(row, filename=filename, image_writer_plugin=name) for row, filename in zip(rows, filenames)]
+
+
+def _accept_name_acquisition_rows(core, args):
+    only(args, ("writer", "description"))
+    return _as_list(core, _named(core, args, _installed(core)))
+
+
+command(
+    "name_acquisition_rows",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({"writer": {**_STRING, "description": "an image writer's name; the first row's when omitted"},
+                    "description": {**_STRING, "description": "put first in every name"}}),
+    accept=_accept_name_acquisition_rows,
+    hint="in: {writer?, description?}: every row named by the writer's rules, as the filename wizard does. out: {count}",
+)
+
+
+def _accept_track_focus(core, args):
+    from ..utils.acquisitions import focus_at
+
+    only(args, ("z_1", "f_1", "z_2", "f_2", "rows", "laser", "filter"))
+    z_1, f_1, z_2, f_2 = (number(args, key) for key in ("z_1", "f_1", "z_2", "f_2"))
+    if z_1 == z_2:
+        raise ValidationError("z_1 and z_2 must differ")
+    rows = _installed(core)
+    chosen = _row_list(args, "rows", len(rows), required=False)
+    for key in ("laser", "filter"):
+        if key in args:
+            check_setting(core, key, args[key])
+            chosen = [i for i in chosen if rows[i].get(key) == args[key]]
+    if not chosen:
+        raise ValidationError("no row has that laser and filter")
+    for i in chosen:
+        rows[i]["f_start"] = focus_at(z_1, z_2, f_1, f_2, rows[i]["z_start"])
+        rows[i]["f_end"] = focus_at(z_1, z_2, f_1, f_2, rows[i]["z_end"])
+    return _as_list(core, rows, chosen[0])
+
+
+command(
+    "track_focus",
+    ACTION,
+    _run_set_acquisition_list,
+    schema=_schema({**{key: _NUMBER for key in ("z_1", "f_1", "z_2", "f_2")},
+                    "rows": {"type": "array", "items": _ROW, "minItems": 1},
+                    "laser": _setting_schema("laser"), "filter": _setting_schema("filter")},
+                   required=("z_1", "f_1", "z_2", "f_2")),
+    accept=_accept_track_focus,
+    hint="in: {z_1, f_1, z_2, f_2, rows?, laser?, filter?}: each row's focus range on the line through the two points. out: {count}",
+)
+
+
+def _channel(core, channel, label):
+    if not isinstance(channel, dict):
+        raise ValidationError(f"{label} must be an object")
+    only(channel, ("laser", "intensity", "filter", "f_start", "f_end", *config.ROW_MARKS["etl"]))
+    out = {key: state(core, key) for key in config.ROW_MARKS["etl"]}
+    out.update(f_start=state(core, "position")["f_pos"], f_end=state(core, "position")["f_pos"])
+    for key in ("laser", "intensity", "filter"):
+        if key not in channel:
+            raise ValidationError(f"{label}.{key} is required")
+    out.update(channel)
+    return out
+
+
+def _accept_build_tiling_list(core, args):
+    from ..utils.multicolor_acquisition_builder import (
+        MulticolorTilingAcquisitionListBuilder,
+        field_of_view_um,
+        image_counts,
+        tile_offsets,
+    )
+
+    only(args, ("x_start", "x_end", "y_start", "y_end", "z_start", "z_end", "z_step", "zoom", "shutterconfig",
+                "both_sides", "overlap_percent", "x_offset", "y_offset", "channels", "folder", "writer", "description"))
+    box = {key: number(args, key) for key in ("x_start", "x_end", "y_start", "y_end", "z_start", "z_end", "z_step")}
+    if box["z_step"] <= 0:
+        raise ValidationError("'z_step' must be positive")
+    zoom = option(core, args, "zoom") if "zoom" in args else state(core, "zoom")
+    shutterconfig = option(core, args, "shutterconfig") if "shutterconfig" in args else state(core, "shutterconfig")
+    if "x_offset" in args or "y_offset" in args:
+        if "overlap_percent" in args:
+            raise ValidationError("give overlap_percent or x_offset and y_offset, not both")
+        x_offset, y_offset = number(args, "x_offset", (1, 1e6)), number(args, "y_offset", (1, 1e6))
+    else:
+        overlap = number(args, "overlap_percent", (0, 90), required=False, default=10)
+        camera = cfg_dict(core, "camera_parameters")
+        pixelsize = cfg_dict(core, "pixelsize").get(zoom)
+        if not pixelsize:
+            raise ValidationError(f"no pixel size is configured for zoom {zoom!r}")
+        x_offset, y_offset = tile_offsets(*field_of_view_um(camera["x_pixels"], camera["y_pixels"], pixelsize), overlap)
+    x_count, y_count = image_counts(box["x_start"], box["x_end"], box["y_start"], box["y_end"], x_offset, y_offset)
+    channels = args.get("channels")
+    if not isinstance(channels, list) or not channels:
+        raise ValidationError("'channels' must be a non-empty list of {laser, intensity, filter, ...}")
+    channels = [_channel(core, channel, f"channels[{i}]") for i, channel in enumerate(channels)]
+    both = flag(args, "both_sides", False)
+    count = x_count * y_count * len(channels) * (2 if both else 1)
+    if count > config.MAX_TILING_ROWS:
+        raise ValidationError(f"{x_count} x {y_count} tiles x {len(channels)} channels make {count} rows; "
+                              f"at most {config.MAX_TILING_ROWS}")
+    built = MulticolorTilingAcquisitionListBuilder(dict(
+        box, x_offset=x_offset, y_offset=y_offset, x_image_count=x_count, y_image_count=y_count, zoom=zoom,
+        shutterconfig=shutterconfig, shutter_seq=both, folder=text(args, "folder"), channels=channels,
+        theta_pos=state(core, "position")["theta_pos"])).get_acquisition_list()
+    return _as_list(core, _named(core, args, [dict(row) for row in built]), 0)
+
+
+def _run_build_tiling_list(core, args):
+    out = _run_set_acquisition_list(core, args)
+    rows = args["acquisitions"]
+    out["tiles"] = len({(row["x_pos"], row["y_pos"]) for row in rows})
+    out["first"] = rows[0]
+    return out
+
+
+command(
+    "build_tiling_list",
+    ACTION,
+    _run_build_tiling_list,
+    schema=_schema({**{key: _NUMBER for key in ("x_start", "x_end", "y_start", "y_end", "z_start", "z_end")},
+                    "z_step": {"type": "number", "exclusiveMinimum": 0},
+                    "zoom": _setting_schema("zoom"), "shutterconfig": _setting_schema("shutterconfig"),
+                    "both_sides": {**_BOOLEAN, "description": "each tile once from the left and once from the right"},
+                    "overlap_percent": {"type": "number", "minimum": 0, "maximum": 90, "description": "10 when omitted"},
+                    "x_offset": _NUMBER, "y_offset": _NUMBER,
+                    "channels": {"type": "array", "minItems": 1, "items": {"type": "object", "properties": {
+                        "laser": _setting_schema("laser"), "intensity": _PERCENT, "filter": _setting_schema("filter"),
+                        "f_start": _NUMBER, "f_end": _NUMBER}, "required": ["laser", "intensity", "filter"],
+                        "additionalProperties": True}},
+                    "folder": _STRING, "writer": _STRING, "description": _STRING},
+                   required=("x_start", "x_end", "y_start", "y_end", "z_start", "z_end", "z_step", "channels", "folder")),
+    accept=_accept_build_tiling_list,
+    hint="in: {x/y/z start and end, z_step, channels:[{laser, intensity, filter, f_start?, f_end?}], folder, "
+         "overlap_percent? | x_offset, y_offset, zoom?, shutterconfig?, both_sides?, writer?, description?}: "
+         "replaces the list with the tiling wizard's grid, named by the writer's rules. out: {count, tiles, first}",
+)
+
+
+def _accept_set_snap_folder(core, args):
+    only(args, ("folder",))
+    folder = text(args, "folder")
+    if not os.path.isdir(folder):
+        raise ValidationError(f"{folder!r} is not an existing folder")
+    return {"folder": folder}
+
+
+def _run_set_snap_folder(core, args):
+    core.state["snap_folder"] = args["folder"]            # as the window's Choose button does; Core has no key for it
+    refresh_window_after(core, {"snap_folder": args["folder"]})
+    return {}
+
+
+command(
+    "set_snap_folder",
+    ACTION,
+    _run_set_snap_folder,
+    schema=_schema({"folder": _STRING}, required=("folder",)),
+    accept=_accept_set_snap_folder,
+    hint="in: {folder}: where snaps are saved. out: {}",
+)
+
+
 def _enter_and_start(core, run_state, row):
     """Run upstream's synchronous acquisition entry point with a truthful state transition.
 
