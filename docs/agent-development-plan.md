@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.1, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.2, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -22,8 +22,10 @@ owner's and are not up for re-litigation by a session.
     report and the test reports. Every phase branch below starts from it.
   - `agent/roadmap-2`: this plan.
   - `agent/haiku-pr` b699b4c: PR 121's branch, merged; keep for reference.
-  - `agent/demo-fixes`: the Windows demo test's evidence and tools (`docs/test-reports/evidence/`,
-    `tools/drive_gui.py`), not yet merged into the dev branch; merge it first (section 10.1).
+  - `agent/demo-fixes` 0b7b651: the Windows demo test's evidence and tools
+    (`docs/test-reports/evidence/`, `docs/test-reports/evidence/tools/drive_gui.py`); merged into
+    the dev branch.
+  - `agent/refresh` and `agent/refresh-pr`: work package 1, done (section 6).
   - `agent/h` d794b67: a parked `focus_sweep` block (work package 5).
   - `agent/a` to `agent/e`, `agent/a-pr` to `agent/e-pr`, `agent/f-pr`: 1.x history, done.
 - **Code:** `mesoSPIM/src/ai_assistant/` (4,305 lines: assistant.py 2069, gui.py 1109, frames.py
@@ -79,7 +81,9 @@ These are settled. A session implements them; it does not reopen them.
   dev branch. Commit and push to the fork as you go, with clear messages that say why. Never open
   a pull request; prepare a `-pr` branch with the src changes only (as `agent/a-pr` to
   `agent/e-pr` were made: `git diff <dev-before> <dev-after> -- mesoSPIM/src` applied on upstream's
-  head) and a description in `docs/pr/<package>.md`, and tell the owner.
+  head, plus an upstream test file the package extends, `mesoSPIM/test/test_combobox_state_requests.py`
+  in WP1; an item marked "separate commit" is cherry-picked onto the `-pr` branch as its own
+  commit) and a description in `docs/pr/<package>.md`, and tell the owner.
 - Models: gemini-3.5-flash-lite for every run; claude-haiku-5-5 once per work package. Ask the
   owner before using any other model. API keys arrive in chat; use them only in the environment
   of the command (`GEMINI_API_KEY=... python ...`), never in a file, log, test or commit. Before
@@ -99,9 +103,14 @@ These are settled. A session implements them; it does not reopen them.
 ## 4. Environment and commands
 
 A Python 3.12 venv with `pip install -r requirements-conda-mamba.txt`, `pip install -e
-".[ai-assistant]" pytest ruff` (pydantic-ai 2.14.1, anthropic < 1). PyQt5 is in the
-requirements; the real-Qt scripts need `QT_QPA_PLATFORM=offscreen` on Linux.
-`mesoSPIM/test/test_combobox_state_requests.py` needs Windows (it imports a joystick handler).
+".[ai-assistant]" pytest ruff` (pydantic-ai 2.14.1, anthropic < 1). The cloud container starts
+with Python 3.11 and no PyQt5: make the venv first (`uv venv --python 3.12 venv` or
+`python3.12 -m venv venv`, then `. venv/bin/activate` and the two installs; about 5 minutes).
+PyQt5 is in the requirements; the real-Qt scripts need `QT_QPA_PLATFORM=offscreen` on Linux.
+`mesoSPIM/test/test_combobox_state_requests.py` needs Windows: Core's import chain reaches
+`ctypes.windll` (`utils/utility_functions.py:10`) and the Dynamixel DLL, and the main window's
+`QtMultimedia` (the webcam window) needs libpulse. A scratch runner that stubs those three with
+`unittest.mock` before `pytest.main` runs the file on Linux (WP1.4 did; not committed).
 
 | What | Command (from the repo root) | At b3b0b48 |
 |---|---|---|
@@ -214,23 +223,32 @@ upstream modules. Tick the box with the date and the commit when done.
 
 ### WP1. The window follows every remote change
 
-Branch `agent/refresh`. Footprint: Core 0 lines, main window about 14 lines, Camera 0.
+Branch `agent/refresh`. Footprint: Core 0 lines, main window 16 lines, Camera 0. Done 9 October
+2026; `docs/pr/refresh.md`, branch `agent/refresh-pr` (3473921 the change, 564a4ae fact 14) on
+upstream b152c91. Still the owner's: the Windows test file, the driver's step r, the microscope.
 
-- [ ] **1.1. A refresh from the shared layer after every setter.** In `remote_control/commands.py`
+- [x] **1.1 (9 October 2026, 8388f5f). A refresh from the shared layer after every setter.** In `remote_control/commands.py`
   add one helper, `refresh_window_after(core, expected)`: on Core's thread, poll `core.state` with
   `QTimer.singleShot` steps (the dispatcher already schedules work that way, `dispatcher.py:395-453`)
-  until every key in `expected` reads its value or `READ_BACK_S` (`ai_assistant/config.py:198-200`,
-  move the constant to `remote_control/config.py`) has passed, then `core.sig_update_gui_from_state.emit()`.
+  until every key in `expected` reads its value or `READ_BACK_S` has passed, then
+  `core.sig_update_gui_from_state.emit()`. `READ_BACK_S` is defined in `remote_control/config.py`
+  with `READ_BACK_POLL_INTERVAL_MS`; `ai_assistant/config.py` takes it from there (`read_back`
+  and a test stand-in read `cfg.READ_BACK_S`, so it stays a name of the assistant's config). The
+  helper counts steps (`READ_BACK_S / READ_BACK_POLL_INTERVAL_MS`) instead of reading a clock, so
+  the offline Qt shim, which runs `singleShot` inline, ends at once on a record-only fake core.
+  `expected` is `{key: value}` for the five named setters and the whole `settings` dict for
+  `_run_state_settings`.
   Call it from the five named setters (commands.py:1467, 1484, 1503, 1523, 1543) and from
   `_run_state_settings` (1445-1448). `set_filter` and `set_shutterconfig` then refresh twice;
   harmless. Do not emit from `Core.state_request_handler` or `Core.set_intensity` (fact 2: the
-  camera thread; fact 1: `set_intensity` runs per row during a list and 1068 refreshes already).
+  camera thread; fact 1: `set_intensity` runs per row during a list and 872, the end of a list,
+  refreshes already).
   The assistant's own `read_back` (`assistant.py:109-121`) stays for the `changed` field; the
   refresh is the shared layer's so TCP and MCP get it too. For `galvo_amp_scale_w_zoom` the
   shared layer writes `core.state['galvo_amp_scale_w_zoom']` itself (fact 4), 2 lines in
   `_run_state_settings`. About 30 lines, all in `remote_control/`.
-- [ ] **1.2. The window.** (a) Guard `spinbox_to_state_parameter` (788-790) and `set_laser_intensity`
-  (692-696) with `if self.showing_state: return` (2 lines): a refresh then never echoes a value
+- [x] **1.2 (9 October 2026, e6bb0ce). The window.** (a) Guard `spinbox_to_state_parameter` (788-790) and `set_laser_intensity`
+  (692-696) with `if self.showing_state: return` (two lines each, as the file writes its ifs): a refresh then never echoes a value
   back to Core, which also removes today's re-application of rounded values (fact 3).
   (b) Add to `widget_to_state_parameter_assignment` (580-617): `BinningComboBox` → `camera_binning`,
   `LiveSubSamplingComboBox` → `camera_display_live_subsampling`, `AcquisitionSubSamplingComboBox`
@@ -238,22 +256,28 @@ Branch `agent/refresh`. Footprint: Core 0 lines, main window about 14 lines, Cam
   `ETLconfigIndicator` → `ETL_cfg_file`, `SnapFolderIndicator` → `snap_folder` (6 lines; check the
   exact state keys in `mesoSPIM_State.py`). (c) In `update_widget_from_state` (800-806): `str()`
   the value for a combo box (1 line), a `QCheckBox` branch with `setChecked` (2 lines), a `QLabel`
-  branch with `setText` (2 lines). (d) `run_timepoint` (980-983) reads `self.parent.core.timelapse_tpoints`
-  (or Core's attribute; check the name at 1532-1544) instead of the window's own (1 line), so the
+  branch with `setText` (2 lines). (d) `run_timepoint` (980-983) reads `self.core.timelapse_tpoints`
+  (Core:265, 1541; the window has no `parent`) instead of the window's own (1 line), so the
   progress bar works for a remote time lapse. Leave the time-lapse tab's spin boxes alone. Do not
   touch the duplicated `FilterComboBox` line.
-- [ ] **1.3. Fact 14 as a separate commit** on the same branch, for Nikita to take or drop: rename
+- [x] **1.3 (9 October 2026, ffedbc2). Fact 14 as a separate commit** on the same branch, for Nikita to take or drop: rename
   the four strings (Core:368, 371; WaveFormGenerator.py:119, 122) to the `_%` form. 4 lines.
-- [ ] **1.4. Tests.** In `mesoSPIM/test/test_combobox_state_requests.py` (Windows), one test per
+- [x] **1.4 (9 October 2026, e6bb0ce the Windows tests, 8388f5f the dev-suite tests, 6464dd7 and 3d4e78f the driver). Tests.** In `mesoSPIM/test/test_combobox_state_requests.py` (Windows), one test per
   setter path: a remote `set_camera` (exposure, binning, subsampling), `set_intensity`, `set_etl`,
   `set_galvo`, `set_state({'galvo_amp_scale_w_zoom': ...})` → the widget shows the value within
   `READ_BACK_S`, and the window sent no `sig_state_request` back (count emissions; the existing
-  tests at 196-210 show the pattern). In the dev suite, a `remote_control` test of
-  `refresh_window_after` with a fake core (state dict plus a signal with an `emit` counter): emits
-  once the state reads the value, once after the cap if it never does. Extend
+  tests at 196-210 show the pattern). The setter path is `commands._run_state_settings(core,
+  {'settings': ...})` and `commands._run_set_intensity(core, {...})` on a stand-in Core that
+  borrows Core's own `state_request_handler`, `set_intensity` and `set_camera_exposure_time` (the
+  handler's table looks up six more setter names: give them as `None`) and applies the camera keys
+  200 ms late. In the dev suite, a `remote_control` test of `refresh_window_after` with
+  `RecordingCore` and the `_remote_control_single_shot` hook (`_deferred` in `test_commands.py`):
+  emits once the state reads the value, once after the cap if it never does (the fake's recorded
+  emit is listed as a non-actuation in the transport matrix and expected after the setter in the
+  TCP framing test). Extend
   `docs/test-reports/evidence/tools/drive_gui.py` (from `agent/demo-fixes`) with a step that sets
   each value by tool and reads each widget back.
-- [ ] **1.5. Verification.** Offline suite green; `run.py pyqt` 10 PASS; on Windows
+- [x] **1.5 (9 October 2026, b9ba286; offline 1267 passed, 11 skipped; `run.py pyqt` 10 PASS; the Windows file 16 of 16 on Linux with the stubs). Verification.** Offline suite green; `run.py pyqt` 10 PASS; on Windows
   `test_combobox_state_requests.py` green and the driver step reports every widget following; on
   the microscope, one setting of each kind by tool with the window watched. Pull request text in
   `docs/pr/refresh.md` with the diff stat on the upstream files.
@@ -524,7 +548,7 @@ from the matrix that it needs precision, speed, determinism or heavy computation
 
 | Package | Effort | Depends on | Core / window / other upstream |
 |---|---|---|---|
-| WP1 Refresh | 1 day, plus the owner's Windows and microscope checks | `agent/demo-fixes` merged | 0 / 14 / 4 (fact 14, separate commit) |
+| WP1 Refresh | done; the owner's Windows and microscope checks remain | nothing | 0 / 16 / 4 (fact 14, separate commit) |
 | WP2 Lean | 3 days, plus two recordings (about 1 day of runs) | WP1 (the demo checks see the state) | 0 / 0 / 0 |
 | WP3 GUI commands | 3 days; 3.1 and 3.2 first | WP2 (one recording of the new cases) | 0 / 0 / about 110 moved |
 | WP4 Skills | half a day per skill, plus the lab's time | WP2; 3.1 for tiling | 0 / 0 / 0 |
@@ -560,9 +584,9 @@ Items in his modules, each proposed in the pull request that needs it, as a sepa
 
 ## 10. Before starting any package
 
-1. `git fetch origin && git checkout agent/schedule-display`, then merge `agent/demo-fixes` into
-   it (the evidence folder and `tools/drive_gui.py`; resolve the report's "Status: open" lines for
-   bug 1, fixed upstream by #118). Run the offline suite: 1264 passed.
+1. `git fetch origin && git checkout agent/schedule-display`. `agent/demo-fixes` is already merged
+   into it (0b7b651 is an ancestor of b3b0b48; the report has no "Status: open" line to resolve).
+   Run the offline suite: 1264 passed, 11 skipped at b3b0b48; 1267 once WP1's tests are merged.
 2. Check upstream's head: `git fetch https://github.com/mesoSPIM/mesoSPIM-control release/candidate-py312`
    and merge it into the dev branch if it moved; the src must stay identical to upstream's.
 3. Create the package branch from the dev branch. Write `PROJECT_CONTEXT.md` with the package's
@@ -602,6 +626,12 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
 - **2.1, 9 October 2026.** This plan: the 2.0 roadmap made actionable after three reviews, with
   the code facts, the decisions, the line references, the tests and cases per item, and the
   handoff material for a new session.
+- **2.2, 9 October 2026.** WP1 done and ticked. Corrected: `agent/demo-fixes` was already merged
+  (section 1, 7, 10.1); the environment steps and the three Windows-only imports behind the
+  combo-box test (section 4); the `-pr` branch carries the upstream test file and the separate
+  commit (section 3); in WP1, `READ_BACK_S` is imported rather than moved, the helper counts steps,
+  the `expected` per setter, 872 not 1068, `self.core` not `self.parent.core`, the guards are two
+  lines each (16, not 14), and the test entry points.
 
 When an item is done, tick its box with the date and the commit. When the plan changes, raise
 the version and add a line here saying what changed and why.
