@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.5, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.6, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -81,6 +81,14 @@ These are settled. A session implements them; it does not reopen them.
    join that registry; nothing is built beside it, and the tab validates nothing itself. The
    tab's own tools (look, ask_eyes, calibrate, load_skill) read a frame or a file and touch no
    hardware; they are the only tools outside the registry.
+10. **General, not fitted.** A capable model reads the tools' descriptions, calls what is
+   possible, reads why a call was refused and connects the steps itself. The manual stays short
+   and general (one rule for unclear requests: suggest what you would do and ask before doing it;
+   if you don't know, ask). No manual line, tool-description override or case is written to make
+   one evaluation case pass; the evaluation measures the assistant out of the box.
+11. **Fitting is per instrument, from real use.** The case set runs once on the actual microscope;
+   only failures that come from connected, collected use cases on that instrument are fixed, and
+   that is fine-tuning for that instrument, not a change to the general assistant.
 
 ## 3. Rules of work for a session
 
@@ -452,7 +460,8 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   `docs/source/remote_control/` unchanged (`time_lapse_stop` stays). The manual's size target
   (about 6,000 characters) is WP4's, after the procedures move out; here it only loses the removed
   rules.
-- [ ] **2.6. Re-record, twice.** After 2.2 and 2.3: `evals.run --record` on flash-lite for all
+- [x] **2.6 (9 October 2026, 12d996e on `agent/lean`, 2254bbf on `agent/lean-21`, merged as
+  6470618; Haiku open: it needs an Anthropic key). Re-record, twice.** After 2.2 and 2.3: `evals.run --record` on flash-lite for all
   five files (`cases_unattended.json` exists until 2.1 removes it; prune the recordings of
   removed cases first), then `pytest test_replay.py`; after 2.1 and 2.4: again, and once on Haiku
   (`cases_multistep.json` and `cases_generated.json` at least). Put both result tables in
@@ -460,6 +469,14 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   the removed ones; vague requests unchanged; the multi-step groups at or above today's
   (centring 17 of 20, exposure 12, focusing 7 on flash-lite); `must-stop-partway` is the group to
   watch, since the timer's `wait` was part of how it stopped.
+  *As done:* first recording (no timer, guard still in): single-step 140 of 140, held-out 138,
+  multi-step 31 of 48, generated 102 of 160. Second (no guard, the short manual of decision 10):
+  124 of 135, 124 of 135, 28 of 48, 96 of 160. Vague requests and ambiguity fall (the guard's
+  number check is gone), focusing, exposure and live tuning rise. The manual went through two
+  steps first: 2.1's one-line rule lost its examples, and putting the examples back was fitting
+  to the cases (decision 10); the owner's rule replaced both, and the manual became 34 lines
+  (6071905). The harness no longer scores a snap before a look or a numbered plan. Tables in
+  `docs/pr/lean.md`.
 - [ ] **2.7. Optional, the owner decides: a session log on disk.** Opt-in by a config attribute
   (`ai_assistant_log_folder`): one JSONL file per session with prompts, tool calls, results
   (shortened as the model sees them) and replies, no images. About 40 lines in `gui.py` or the
@@ -568,10 +585,17 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   *Partly done 9 October 2026:* offline suite and the live suites on the Linux demo pass; Windows
   demo and the microscope are the owner's. Found on the way, not fixed (upstream Core):
   `get_free_disk_space` calls `os.statvfs('')` off Windows, so a time lapse cannot start there.
+  The real-hardware sweep (`live/test_all_commands_real_hardware.py`) sets up the table calls
+  from the microscope's own state since 058f75d; it runs for the first time on the microscope.
 
 ### WP4. Skills
 
 Branch `agent/skills`. Footprint: Core 0, main window 0.
+
+**Owner: Nikita. Not for agent sessions** (decided 9 October 2026): writing skills is his, and
+none are written until he takes it up. The items below are a proposal for him. The procedure
+text 4.3 names was removed from the manual in 6071905; `git show 6071905~1:mesoSPIM/src/ai_assistant/manual.md`
+has it.
 
 - [ ] **4.1. Format and place.** One Markdown file per skill. Head, four lines: `name:`,
   `description:` (one line; this is the trigger text in the prompt), `version:`, `tools:` (the
@@ -712,6 +736,10 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
   manual clause and 2.6's first recording corrected. WP3 gains the control inventory with a
   coverage test (3.0) and the gaps it found (3.4b, section 9), after the owner asked whether the
   calls are comprehensive and checked through the same layer.
+- **2.6, 9 October 2026.** Decisions 10 (general, not fitted) and 11 (fitting is per instrument,
+  from real use), after the owner saw manual lines written to pass cases. 2.6 ticked with both
+  recordings; the manual is 34 lines. WP4 is Nikita's. 3.7: the real-hardware sweep now sets up
+  the table calls from the microscope's state (it sent the demo's values before).
 - **2.5, 9 October 2026.** WP3.6 done; 3.7 partly. WP2.1, 2.4 and 2.5 ticked (on `agent/lean-21`, merged into `agent/lean` with 2.6). WP3.0 to 3.4 done and ticked, with what turned out different (three
   tiling functions, marks without a GUI bridge, 39 calls from the windows). 3.4b corrected: the
   ETL file has a call. The 3.2 open question is closed by the lift.
