@@ -1,289 +1,269 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.6, 9 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 2.0, 9 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27, after upstream
+`release/candidate-py312` b152c91 (PR 120, phases A to E; PR 121, Claude Haiku 5.5).
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
-made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
-(evaluation, simulator, recorded frames) stay in the fork.
+made from `release/candidate-py312`, one branch per phase (`agent/<phase>`); each phase goes to
+Nikita as one pull request with the src changes only. Development tools (evaluation, simulator,
+recorded runs) stay in the fork.
 
 ## Goal
 
-Requests with several steps or a high-level aim work, for example: "centre the sample, optimise the
-image, then acquire every three minutes and keep it in focus". Today single requests work well and
-multi-step ones often lose the thread.
+The assistant is a full remote control of a mesoSPIM for a trained operator, on a cloud model:
+everything the operator can do in the window, the model can do by tool, and the same tools serve
+TCP and MCP clients. Procedures (centring, exposure, focusing, tiling, alignment, ETL tuning) are
+written as skills the model loads when a request calls for one. Nothing in the code exists to fit
+a small model.
 
 ## Principles
 
-- **Simple building blocks, composed by the model.** No coded procedures such as "autofocus". The
-  model combines look, move, set and wait.
+- **Simple building blocks, composed by the model.** No coded procedures. The model combines look,
+  move, set and the GUI commands; a skill says in which order.
 - **Code measures, the model judges.** Distances, focus, brightness and drift are computed in code;
   the vision model adds what numbers cannot.
-- **Measure before and after.** Every change is judged against the test set.
-- **Safety stays where it is.** Run for the large stage moves, the stage limits, the busy gate and
-  Stop microscope are unchanged. Only phase E changes a rule, behind a setting.
-- **Stay small.** Every tool, result field and prompt line is paid for on every turn. Two memories
-  only: the turn store and the frame history. New tools need a reason a reader of the code can see.
+- **Measure before and after.** Every change is judged against the test set, on
+  gemini-3.5-flash-lite and claude-haiku-5-5.
+- **Safety is Core's.** The stage limits, the busy gate and Stop microscope are Core's and stay. The
+  assistant asks only when a request leaves something open; it does not ask for confirmation.
+- **Contained.** Code in `mesoSPIM_Core.py`, `mesoSPIM_MainWindow.py` and the other upstream modules
+  is the fewest lines that let the packages do their work. Every item below states its count, and
+  every pull request description gives `git diff --stat` on those files.
+- **Stay small.** Every tool, result field and prompt line is paid for on every turn.
+
+## Delivered in 1.x, kept
+
+- Phases A to E (PR 120): one clock, results that read back, the simulator, the multi-step case
+  matrix, the frame history, `look` over frames, the map, `calibrate`.
+- PR 121: Claude Haiku 5.5 runs (no temperature 0, argument names it accepts, thinking blocks
+  handled). Benchmark: `docs/test-reports/2026-10-09-haiku-5-5-benchmark.md`.
+- The Windows demo test and its evidence: `docs/test-reports/windows-demo-agent-e.md`.
+- Evidence for phase 5 (was H): focusing and the long tasks fail on three models.
 
 ## What the code review found
 
-Facts from the 1.27 code that fix the design. Each is used by one item below.
+Facts from the code at b3b0b48 (the dev branch, src identical to upstream b152c91). Each is used
+by one item below.
 
-1. While a time lapse is active the dispatcher refuses every setting and move, whoever started it,
-   and Core keeps it active between points. "Keep it in focus" cannot run inside `time_lapse_start`.
-   The assistant drives a time lapse as a schedule of single acquisitions. (B4)
-2. Core keeps one display frame, refreshed every second plane during a stack, so it holds whatever
-   plane was shown last. A chosen image per time point would need a hook in Core or the writer;
-   the assistant looks between its own acquisitions instead. (set aside below)
-3. While a turn runs, the input is disabled and schedules do not fire, so a wait must end the turn
-   and continue later. (D2)
-4. The guard's "a value you did not give" reads the numbers in every stored prompt, and a scheduled
-   turn's prompt is text the model wrote. A number the model puts into a schedule instruction counts
-   as given when it fires. (D1, first)
-5. Guard memory is per turn; over hours, "two light changes per turn" means nothing. (D1)
-6. Settings return `{}` and Core applies them later; a move's position sits three levels deep. (A3)
-7. The scheduler takes a clock; the rest of the assistant reads time directly. Core's time-lapse
-   timer and snap polling are Qt timers, so in the simulator time passes only if it owns them. (A2, B1)
-8. The focus measure is Laplacian variance on a strided sample over the frame's range squared: a hot
-   pixel or saturation shifts it, and it compares only at the same zoom and scene. (B3)
-9. The eyes keep frames in their own conversation; explicit `frames=` would send them again. (C2)
-10. Ordinary moves are not confirmed, only `CONFIRM_FIRST` commands are. (C4)
+1. `Core.sig_update_gui_from_state` refreshes the window from state (`mesoSPIM_MainWindow.py:808`).
+   `set_filter`, `set_shutterconfig`, `stop`, the end of a list, a preview and the ETL table reload
+   emit it; `set_intensity` and everything that goes through `Core.state_request_handler` (`set_state`,
+   `set_camera`, `set_etl`, `set_galvo`, `set_laser_timing`) do not. (1)
+2. The window's state-to-widget table (`mesoSPIM_MainWindow.py:580-617`) has no entry for the
+   binning and the two subsampling boxes, the "scale galvo with zoom" box, the ETL file and snap
+   folder indicators, the time-lapse tab or the time point progress bar. `set_camera` changes the
+   first three. (1)
+3. Remote commands run on Core's thread, not the GUI thread. The one GUI-side path is the list
+   install: `set_acquisition_list` emits a signal of `RemoteControlGUI`, queued to the window, which
+   calls the acquisition manager's `model.setTable` (`remote_control/gui.py:177`). The tiling wizard
+   installs its list the same way (`utils/multicolor_acquisition_wizard.py:102`). (1, 3)
+4. The tiling wizard's list is built by `MulticolorTilingAcquisitionListBuilder`
+   (`utils/multicolor_acquisition_builder.py:17`) from a dict the pages fill: bounding box, z step,
+   zoom, shutter, overlap or offsets, per channel laser, intensity, filter, ETL, f start and end,
+   folder. The builder has no GUI in it. The filename, focus-tracking and image-processing wizards
+   write columns of the model with `setData`. (3)
+5. The guard, the requests and the scheduler are one knot: the guard tells typed from machine turns
+   through the requests, `wait` learns what it waits for through the guard, schedules fire as
+   machine turns of a request, and the scheduler is the assistant's clock for the store, the eyes
+   and the requests. Together about 900 lines of `assistant.py`, `requests.py`, `measured.py` and
+   `gui.py`, 60 tests and the harness's gate, continuation and schedule code. (2)
+6. The small-model scaffolding, with the reason each gives in its own comment: history compaction
+   and trimming ("twenty readouts would outweigh the system prompt on a small model"), the
+   "called nothing" challenge, the Regular tool set, the memory tools that exist because the
+   history is cut, the Local AI server mode. About 700 lines of src and 70 tests. The read-back,
+   `state_changed`, the result shortening, rows by reference, the failure advice and the eyes'
+   image detachment are cost or correctness controls for any model and stay. (2)
+7. Core's time lapse (`mesoSPIM_Core.py:1532-1580`) repeats the installed list every interval,
+   each row at its own position, with a `_TimeNNN` filename suffix; it refuses settings and moves
+   between points. `time_lapse_start` offers it over all three clients. (2)
+8. The manual is 9,420 characters; about a quarter is procedure (how to judge exposure, look after
+   a change, the pre-run summary, centring and focusing notes). Nothing covers focusing order,
+   tiling, light-sheet alignment or ETL tuning. Remote Control's `get_manual` carries four recipes
+   for TCP and MCP clients. (4)
+9. A file next to the microscope config has a precedent: `processor_chain.json`, found by
+   `os.path.dirname(cfg.__file__)` (`mesoSPIM_MainWindow.py:1129`). (4)
+10. The simulator scores position, focus and brightness only; nothing of the ETL or the light
+    sheet. Skill cases for those can check calls and their order, not outcomes. (4)
+11. Haiku 5.5 refuses a request when any message before a signed thinking block has changed. With
+    an append-only history the case cannot arise; fix 4 of PR 121 goes with the compaction. (2)
+12. Flash-lite answers "wait 30 seconds" with `wait` 8 times in 11 and with `schedule` 3 times
+    (evidence 08). Two tools for one thing. (2)
+13. `Core.state_request_handler` lists `laser_l_max_amplitude` without the `_%` the window sends
+    (`mesoSPIM_Core.py:368`, `mesoSPIM_MainWindow.py:597`), so that box never reaches Core. Not the
+    assistant's; reported to Nikita.
 
-## Phase A: foundations
+## Phase 1: the window follows every remote change
 
-No change in behaviour; everything after depends on it.
+Branch `agent/refresh`. Core: 1 line. Main window: 4 lines. Shared layer: about 20 lines.
 
-- [x] **A1. Port the evaluation and the offline tests** from `remote-control-py312` onto the 1.27
-  layout, in the fork: module paths, class renames, the fake-Qt setup (it reuses
-  `test/remote_control/conftest.py`). The 158 cases and their twins run as a regression suite and
-  report the tokens per case. *Done 7 October 2026 (03c124c, 0d37c5f, 7e46678, dcf7303): a recorded
-  gemini-3.5-flash-lite run of every case is replayed offline; each must score as recorded and grow at
-  most 3% in estimated tokens.*
-- [x] **A2. One clock.** Every time read in the assistant goes through the scheduler's injectable,
-  epoch-like clock. *Done 7 October 2026 (ba0c9bc); request spacing to a provider stays on real time.*
-- [x] **A3. Results that read back.** Setters return `changed` (the value read back after Core applied
-  it, polled with a time-out); every result ends with the state keys that changed since the previous
-  result. Existing shapes stay. Accepted when no case in the A1 suite grows by more than a few percent
-  in tokens. *Done 7 October 2026 (ae0b323): every score as recorded, +0.04% tokens in all, largest
-  case +0.2%.*
+- [ ] **1.1. A refresh after every setter.** `Core.state_request_handler` emits
+  `sig_update_gui_from_state` once it has sent the request on (1 line). `set_intensity` gets the
+  same (or goes through the handler). The named setters that already emit it are left alone. The
+  emit is queued to the window; a value the worker has not written yet is caught by the next
+  refresh, so the shared layer's setters also emit it after their read-back (`read_back`,
+  `assistant.py:109`), which is when the state is known to hold the value. Shared layer, no Core.
+- [ ] **1.2. The widgets that are never refreshed.** The binning, the two subsampling boxes and the
+  "scale galvo with zoom" box join the state-to-widget table (4 lines). The ETL file and snap folder
+  indicators, the time-lapse tab and the progress bar are listed for Nikita with the one-line fix
+  each; they are his widgets and not what the assistant changes.
+- [ ] **1.3. Checked, not assumed.** A test per setter in `test_combobox_state_requests.py` (runs on
+  Windows), and the Windows demo driver (`docs/test-reports/evidence/tools/drive_gui.py`) with a
+  step that sets each value by tool and reads each widget.
 
-## Phase B: measurement, partly at the microscope
+## Phase 2: lean, for cloud models
 
-- [x] **B1. A simulator that behaves over time:** focus follows the stage, the sample's place follows
-  x and y, brightness follows intensity and exposure with saturation, acquisitions progress on the
-  clock from A2, and drift and bleaching can be switched on per case. *Done 7 October 2026 (2af6e36,
-  4e1c932); cases are scored on its truth.*
-- [ ] **B2. Recorded real frames:** a focus series (about 30 frames across ±300 µm) and an x/y grid
-  over a few real samples, served by the simulator by position. *Needs the microscope.*
-- [ ] **B3. Check the focus measure** on the recorded series: it must peak clearly at the sharp
-  frame. If not, fix it here (a percentile range instead of min-max, a binned sample). *On the
-  simulator the old measure read highest far from focus; fixed 7 October 2026 (5d342f5, 4e1c932):
-  the Laplacian's energy over the squared signal, noise taken off, peaking 58 to 472 times above the
-  frames 100 um away. The check on the recorded series (evals/focus_check.py) waits for B2.*
-- [x] **B4. Multi-step cases from templates with seeds,** scored on outcomes: about 50 hand-written
-  smoke cases, and 150 to 200 generated ones (15 to 25 per group) before each pull request. Groups:
-  centring, focusing, exposure, live tuning, acquisition with checks, time lapses by schedule with
-  drift, recovery from refusals, vague requests, requests that must stop partway. *Done 7 October
-  2026 (f60fbb5): 54 smoke and 180 generated cases, in the replay suite.*
-- [x] **B5. Baseline and a strong-model check:** GLM 5.3 Flash through Baseten for routine runs, one
-  strong model once. If the strong model already solves most cases, F4 moves forward. *Done 7
-  October 2026 (21ded41) on gemini-3.5-flash-lite (GLM is not reachable from the cloud session):
-  21 of 54 smoke and 68 of 180 generated cases. gemini-3.1-pro-preview on the smoke set: 26 of 54.
-  Both fail every centring, acquisition-with-checks and time-lapse case, so the gap is the tools,
-  not the model: a stronger model for long requests is not needed.*
+Branch `agent/lean`. Core: 0 lines. Main window: 0 lines. One pull request; the recorded cases
+are re-recorded once at its end, on flash-lite and on Haiku.
 
-## Phase C: feedback the model can build on
+- [ ] **2.1. No confirmation and no guard.** Out: `ConfirmationGate`, `TurnGuard` and its number
+  helpers, `CONFIRM_FIRST`, the guard's config block, the light budget, the memory of refusals,
+  `measured.py` and `MEASURED_*`, the confirm bar, calibrate's question, look's guard hooks. The
+  manual keeps one rule: when a request leaves a value or a choice open, ask; otherwise act and
+  say what was chosen. Out of the cases: the five confirmation cases and their twins, the 18
+  unattended cases, the `answer`, `confirm` and `measured` keys of the harness. The 14 "asks"
+  cases stay: asking on a vague request is the model's job, not a gate's.
+- [ ] **2.2. No small-model scaffolding.** Out: `compact_history`, `trim_history`, the thinking
+  helpers and `ProcessHistory`; `MAX_HISTORY_TURNS` and the Memory box; the "called nothing"
+  challenge and its memory cleanup; the Regular tool set, `REGULAR_ARGS`, `_narrowed`, `_only_keys`,
+  the "# Tool set" prompt section and the Tools box (one tool set: all 56 commands); `recall_turn`
+  and `search_history`; the Local AI mode (`local.py`, its widgets, the models folder, the
+  `ai-assistant-local` extra, `run.py --local`). Kept: the OpenAI-style preset with a base URL (the
+  door to a local server later, at no cost now), `CONTEXT_TOO_SMALL_HELP` for it, the empty-reply
+  check (Gemini answered "_"), result shortening, rows by reference, the failure advice, the eyes'
+  image detachment and the bin box. The history is append-only until Clear context: about 12,000
+  tokens a request plus one to three thousand per turn, which the cloud models carry.
+- [ ] **2.3. No timer.** Out: the scheduler and its two tools, `wait`, `requests.py`, the
+  continuation, the schedule rows and the tick, the request line and its Cancel, the scheduler
+  smoke test. The clock stays one injectable callable on the worker (A2), without the scheduler
+  around it; the harness passes the simulator's. Time courses are Core's: `time_lapse_start` runs
+  the installed list every interval. A long run returns "still running" after the tool's cap
+  (`WAIT_CAP_S`); the operator comes back to the tab. Out of the cases: the "time" category, the
+  time-lapse-by-schedule group, `run_for_s`, `schedules` and the continuation code of the harness.
+  Open for Nikita: a hook so that a time lapse can refocus or re-centre between points (fact 7);
+  until then "keep it in focus" is not promised.
+- [ ] **2.4. The plan, for the model only.** Out: the plan parsing and the request line's plan. In
+  the manual, one rule: if the request needs more than one tool call, or the next step depends on
+  what a look shows, write a short numbered plan to yourself before the first call and tick it as
+  you go; otherwise act. The single-step cases get a check that the reply carries no checklist.
+- [ ] **2.5. The docs follow.** `index.md`, `architecture.md`, `tool-sets.md` (retired) and the
+  CHANGELOG lose the removed features; the manual shrinks to facts (target 6,000 characters).
+- [ ] **2.6. Re-record.** All case files on flash-lite and once on Haiku; the numbers go into the
+  pull request. Expected: the single-step sets unchanged but for the removed cases, the vague
+  requests unchanged, the multi-step groups at or above today's.
 
-- [x] **C1. The frame history.** Frames from looks, snaps and live are kept as small copies (bin 4 or
-  8, 16-bit, capped by bytes, about 100 frames) in the session store, numbered, with time, source,
-  position, settings and an optional label (`look(label="before")`). Per frame, code adds brightness,
-  saturation, focus measure, centroid, and the offset from centre in pixels and in micrometres from
-  the nominal scale (pixel size, binning, the axes box), marked uncalibrated until C4.
-  *Done 7 October 2026 (d0366d7).*
-- [x] **C2. `look` over chosen frames:** `frames="last 3"`, `frames="1,7"`, `frames="3-10"`, at most
-  about 16; `snap=false` reuses recorded frames, so the model decides per look what must be fresh. The
-  result adds drift against the first frame shown and the change against the previous one. The
-  readout gives the count, the labels and the last three. The eyes keep their text memory and stop
-  carrying images. *Done 7 October 2026 (d0366d7). A count is "last 3": one string argument cannot
-  tell a count from a frame number.*
-- [x] **C3. The map, derived from the frames.** No store of its own: one readout line computed from
-  the frame history, grouped by zoom and light settings, with the sample's position in stage
-  coordinates, the best focus from the focus curve with its uncertainty, good settings, labelled
-  positions and the age of each. Frames flagged by code's checks are left out and named. Scored
-  against the simulator's truth before any model uses it.
-  *Done 7 October 2026 (d0366d7): on the simulator the best focus within 20 um and the sample
-  within 50 um of the truth.*
-- [x] **C4. `calibrate`:** moves a known small step, measures the image shift, and stores scale and
-  direction per zoom in the microscope's config directory. In `CONFIRM_FIRST`, so one Run covers the
-  block. C1 and C3 switch to the calibrated scale once present.
-  *Done 7 October 2026 (d0366d7, d35d222): the file is git-ignored.*
+Size: about 1,600 of the 4,305 src lines and 150 of the 230 tests go. What a cloud model loses:
+nothing it used; what the operator loses: the Run/Cancel question and the schedule rows.
 
-## Phase D: long tasks
+## Phase 3: the window's features as commands
 
-- [x] **D1. The request.** Store entries carry a request id and whether their text was typed by the
-  operator or written by the machine (a schedule instruction, a continuation result). The guard reads
-  typed text only, keeps the request's first prompt as its reference, and keeps its memory for the
-  request. Budgets per request and time window: light changes per ten minutes, measured moves per
-  request. Safety test: a number in a schedule instruction or a continuation never counts as given.
-  *Done 7 October 2026 (969924a). Light changes are counted per request over ten minutes, so a new
-  typed request starts afresh; the budget of measured moves comes with E1, which makes them.*
-- [x] **D2. `wait` as a continuation.** `wait(until, max_s)` with `until` "done", "idle" or seconds.
-  "Done": the operation this request started last is finished or released, core state is not
-  acquiring and no time lapse is active; with nothing started it returns at once. The wait ends the
-  turn; the tab starts a follow-up turn of the same request when the condition is met, with the result
-  in the readout. One request class with one explicit state; one pending continuation at a time; a
-  continuation limit per request. The window shows the open request with its turns and tokens and a
-  Cancel of its own; Stop microscope, Cancel, Disconnect and Clear context end it. *Done 7 October
-  2026 (969924a, f7f9387). Phases C and D on flash-lite: 26 of 54 smoke and 91 of 180 generated
-  cases (before: 21 and 68); centring 6/6 and 17/20, every focusing-dependent group still 0.*
-- [x] **D3. The plan** is text: a checklist the model writes in its reply, which the tab renders and
-  keeps for the request. No tool, three lines in the manual. *Done 7 October 2026 (969924a); the
-  readout of the request's later turns carries the plan back.*
+Branch `agent/gui`. Core: 0 lines. Main window: 0 lines. Shared layer only; the GUI-side handlers
+hang on `RemoteControlGUI`, which already holds the window (fact 3), so every new command serves
+the tab, TCP and MCP alike.
 
-## Phase E: autonomy within bounds, with a session at the microscope
+- [ ] **3.1. `build_tiling_list`.** The tiling wizard's dict as arguments (bounding box, z step,
+  zoom, shutter, overlap or offsets, per channel laser, intensity, filter, ETL, f start and end,
+  folder, filename pattern); the list comes from the wizard's own builder (fact 4) and is
+  installed through the existing list install. The wizard's GUI is untouched. Returns the tile
+  counts and the first rows, so the model can report before the run.
+- [ ] **3.2. Table operations.** `save_acquisition_list` and `load_acquisition_list` (the manager's
+  CSV read and write, called on the GUI thread through the install signal's sibling), `mark_rows`
+  (the "mark current" actions: xy, focus, rotation, state, ETL, all, for chosen rows, computed in
+  the shared layer from state), and `set_rows_folder`. `update_acquisition_row` already edits a row.
+- [ ] **3.3. The other wizards as functions.** Filename pattern (the filename wizard's rule) and
+  focus tracking (f per row from two reference points) as arguments of `build_tiling_list` and as
+  row updates; both are small pure functions once lifted from the wizards.
+- [ ] **3.4. Settings that lack a command.** The snap folder as a lasting setting (Core's handler
+  has no `snap_folder` key, evidence 06: if it needs Core, 1 line, else the shared layer keeps it);
+  the ETL increment and zero toggles only if a skill needs them.
+- [ ] **3.5. Not now.** The optimizer (a GUI-thread window with its own flow; phase 5 decides whether
+  focusing becomes code), the camera window's levels and overlays, the contrast window, the script
+  editor (code execution), PSF and field curvature tools. Each is listed with the reason, so a
+  reader sees it was a choice.
+- [ ] **3.6. Cases.** A tiling case on the simulator (the list's rows and counts are checked, not an
+  image), a table round trip, and the MCP and TCP live suites extended by the new commands.
 
-- [ ] **E1. Measured values through the turn guard.** A value passes without Run when it matches
-  code's own numbers and the measurement is fresh: its frame was taken at the current position, after
-  the last move or setting. Bounds: a move within about 20% of the computed offset and at most one
-  field of view, each next measured offset smaller than the last or the guard refuses and asks; a
-  focus step toward the curve's best focus, or a search of at most 100 µm per step within ±300 µm of
-  the request's start; an intensity or exposure change within a factor of two, after a fresh look.
-  Measured moves are capped per request. Behind a setting, off until checked on the microscope with an
-  operator present. Safety tests on both sides, including a stale frame and a wrong calibration sign.
-  Adds at most a paragraph to the manual.
-  *Built offline in the fork, 7 October 2026 (agent/e, ac8c28f and ed494e6), off by default
-  (`ai_assistant_measured_values` in the microscope config). The paragraph goes into the prompt only
-  when it is on, not into the manual. Convergence is checked per image direction: a move that makes
-  either worse stops the next one. On 18 unattended cases on flash-lite, with an operator who cancels
-  every question: centring 6 of 6 with no question asked, a wrong coordinate system 6 of 6 with the
-  sample kept near where it was, acquisition 0 of 6 (focus). The box stays open until the microscope
-  cells pass with an operator present.*
+## Phase 4: skills
 
-## Set aside: only if needed
+Branch `agent/skills`. Core: 0 lines. Main window: 0 lines.
 
-Taken out of the plan in 1.4. Each would change code Nikita maintains or add a model, and none is
-needed for multi-step requests; each comes back only with a reason from the lab's practice.
+- [ ] **4.1. The format and the place.** One Markdown file per skill with a two-line head (name,
+  one-line description) and the body: when it applies, which tools in which order, what to look
+  for, when it is good enough, what to report. Shipped defaults in `mesoSPIM/src/ai_assistant/skills/`;
+  the microscope's own in `skills/` next to its config (fact 9), which add to or replace the
+  shipped ones by name. Lab-specific knowledge goes in the config folder, never in the package.
+- [ ] **4.2. Loading.** The prompt lists the skills' names and descriptions under "# Skills" and
+  one rule: when a request matches a skill, load it before the first call. A `get_skill` command in
+  the shared layer serves the text to all three clients and replaces `get_manual`'s recipes; the
+  tab offers it as the `load_skill` tool. A loaded skill is a tool result in the history, so it is
+  paid for once per request, not per turn.
+- [ ] **4.3. The first skills, lifted from the manual** (fact 8): exposure, look after a change,
+  the pre-run check, centring, focusing. The manual loses the procedure text and keeps the facts.
+  Tool descriptions stay factual; chaining advice (snap, ask_eyes) moves into the skills.
+- [ ] **4.4. The new skills, written with the lab:** tiling (on 3.1), light-sheet alignment, ETL
+  tuning. Each is checked at the microscope by an operator before it ships as a default.
+- [ ] **4.5. Cases per skill** in the matrix: the skill is loaded, the calls come in the skill's
+  order, and the outcome is scored where the simulator can (exposure, centring, focusing); for
+  alignment and ETL, calls and order only (fact 10). Run on flash-lite and Haiku.
 
-- **Frames from acquisitions** (a representative image per time point, by a hook in Core or the
-  image writer): the assistant takes its own look between the acquisitions it schedules.
-- **Moves between the points of a time lapse** (in the dispatcher, so `time_lapse_start` could
-  replace the schedule): the schedule of single acquisitions works; only Core's own time-lapse
-  timing or file naming would call for it.
-- **`wait` over TCP and MCP** (in the shared layer): it helps other clients only, and changes an
-  interface they rely on.
-- **A stronger model for long requests:** B5's strong model fails the same cases as flash-lite.
+## Phase 5: what should be code, by evidence
 
-## Phase G: skills, the last polishing step
+As phase H of 1.x. A function moves from model steps or a skill into Python only with evidence
+from the matrix that it needs precision, speed, determinism or heavy computation.
 
-Skills come only after the workflows work well without them; they never compensate for weak blocks.
-
-- [ ] **G1. Skills for expert routines,** written as instructions, not code: ETL tuning, light-sheet
-  alignment, a pre-acquisition check. Which settings to change, in which order, what to look for and
-  when it is good enough. Loaded on demand, so the prompt stays small.
-- [ ] **G2. Cases per skill** in the same test matrix.
-
-## Phase H: what should be code, after the skills
-
-A function is moved from model steps or a skill into Python only with evidence from the test matrix
-that it needs precision (registration, PSF fitting, curve fitting), speed (a loop every few seconds),
-determinism and an audit trail (a calibration later measurements depend on), or heavy computation.
-
-- [ ] **H1. Review the measurements and the skills for candidates** against those four criteria.
-  *First evidence, from the runs of 7 October 2026: focusing. Flash-lite steps f once, sees "better"
-  and stops; no focusing, acquisition-with-checks or time-lapse case ends in focus, with or without
-  C and D (precision, and in a time lapse speed and determinism). A first take on a `focus_sweep`
-  block is parked on agent/h. Also: conditional requests ("if nothing is visible, stop; otherwise
-  run") are run regardless, with the condition read correctly. From the E1 runs: with a wrong
-  coordinate system the model negates `centre_move_um` instead of moving by it, and it reports
-  success after its moves were refused.*
-  *Claude Haiku 5.5, 9 October 2026 (docs/test-reports/2026-10-09-haiku-5-5-benchmark.md): the
-  same groups fail, focusing 1 of 20 and exposure 5 of 20; the long-task groups 0 on both models.
-  A third model confirms that focusing and the long tasks want code, not a model.*
-- [ ] **H2. Build each promoted function as a measuring block,** such as `register_frames`: it returns
-  numbers, the model decides. Cases in the matrix; a skill it replaces is retired.
+- [ ] **5.1. Review the skills and the measurements for candidates.** *Evidence so far: focusing
+  fails on three models (flash-lite 1 to 7 of 20, Haiku 1 of 20); the long tasks on all. A first
+  `focus_sweep` block is parked on `agent/h`.*
+- [ ] **5.2. Build each promoted function as a measuring block;** a skill it replaces is retired.
+  A time lapse that refocuses between points needs Core's hook first (2.3).
 
 ## Order, effort and dependencies
 
-| Item | Effort | Builds on |
-|---|---|---|
-| A1 Port evaluation | 1 day | |
-| A2 One clock | 2 hours | |
-| A3 Results that read back | 1 day | A1 |
-| B1 Simulator over time | 1 day | A2 |
-| B2 Recorded frames | afternoon + 2 hours | B1 |
-| B3 Focus measure check | 2 hours | B2 |
-| B4 Multi-step cases | 2 days | B1 |
-| B5 Baseline, strong-model check | 1 hour | B4 |
-| C1 Frame history | 1 day | A3, B3 |
-| C2 `look` over frames | 1 day | C1 |
-| C3 Map from frames | 1.5 days | C2, B1 |
-| C4 `calibrate` | 1 day | C1 |
-| D1 The request | 1 day | A1 |
-| D2 `wait` as continuation | 1.5 days | D1, A2 |
-| D3 Plan as text | half a day | D1 |
-| E1 Guard bounds | 1.5 days + bench | C2, C3, C4, D1 |
-| G Skills | half a day per skill | A to E |
-| H What should be code | half a day; 1 to 2 days per routine | G |
+| Phase | Effort | Depends on | Core / window lines |
+|---|---|---|---|
+| 1 Refresh | 1 day, plus a Windows demo run | none | 1 / 4 |
+| 2 Lean | 3 days, plus the re-recording | 1 (so the demo checks see the state) | 0 / 0 |
+| 3 GUI commands | 3 days; 3.1 first | 2 (one re-recording) | 0 / 0 |
+| 4 Skills | half a day per skill, plus the lab's time | 2, 3.1 for tiling | 0 / 0 |
+| 5 Code by evidence | per function | 4 | per function, stated then |
 
-Phases A to E: about fifteen days. B2 needs the microscope and can run beside A; D can run beside C.
-Each phase is one pull request, measured against the baseline before it is sent.
+1 and 3.1 do not need 2, but every case recorded before 2 is re-recorded after it, so 3's cases
+are recorded once if 3 follows 2.
 
 ## How it is validated
 
-Every item passes three environments, each without and with the model. "Without the model" replays
-a recorded sequence of tool calls: a successful model run is saved and replayed in the next
-environment, so both columns test the same thing and no scripts are written by hand.
+- **Offline, every change:** the ai_assistant and remote_control suites, the replay suite (each
+  recorded case scores as recorded, with at most 3% more estimated tokens), ruff with no new
+  finding, `run.py pyqt`.
+- **Demo mode on Windows, each phase:** the driver from the evidence folder, extended per phase.
+- **The microscope, with an operator present:** phase 1 (the boxes follow), phase 3 (a tiling
+  list built by tool and run), phase 4 (each skill once).
+- **Models:** flash-lite for every run, Haiku once per phase; any other model is asked for first.
+- **Containment:** the pull request description carries `git diff --stat` on `mesoSPIM_Core.py`,
+  `mesoSPIM_MainWindow.py` and `mesoSPIM_State.py`, and the count matches the item.
 
-| | Without the model (replayed) | With the model |
-|---|---|---|
-| **1. Offline simulator** | Plumbing, guards, continuations, timing; deterministic | Composition by the model, at scale on the generated set |
-| **2. Demo mode** | The real app, Qt loop and Core, same sequences | The real app with the real model |
-| **3. Microscope, operator present** | Real timing and motion with a known sequence | The full system |
+## Open questions
 
-- **Gates.** An item moves to the next environment only when both columns pass in the current one.
-  E1 stays off until both microscope cells pass. The replayed run goes first on the microscope: it
-  separates hardware problems from model problems with a known, small sequence.
-- **Where.** Only Gemini is reachable from the cloud session; Baseten and demo mode run on the lab
-  machine. Demo mode's camera is synthetic, so vision is tested offline on recorded frames and on the
-  microscope.
-- **Safety tests** in every environment: machine-written numbers never count as given (D1), E1's
-  bounds on both sides with a stale frame and a wrong calibration, a `wait` ended by Stop, Cancel,
-  Disconnect and Clear context.
-- **Cost.** Every pull request reports tokens per case and per simulated hour of a time lapse.
-- **The microscope requests:** the three from the LinkedIn post and two longer ones.
+- 2.3: is a long run that outlives the tool's cap acceptable as "still running, come back", or
+  does the tab need a passive "done" notice (a label, no model turn)?
+- 2.3 and 5.2: will Nikita take a hook in Core's time lapse that calls back between points?
+- 3.2: the acquisition manager's CSV read and write are methods of its window; calling them
+  through the GUI signal is contained, lifting them into the shared layer is cleaner. Which?
+- 4.1: are lab skills committed to the lab's config repository, so they are versioned with the
+  hardware file?
+- Fact 13: a one-line Core fix for the laser max amplitude key; Nikita's call.
 
 ## Versions
 
-- **1.0, 6 October 2026.** First version, after the 1.27 release candidate: phases A to G, validation
-  in three environments, each without and with the model.
-- **1.1, 6 October 2026.** Phase H: which functions should become Python routines, by evidence.
-- **1.2, 6 October 2026.** After an independent review against the code and for leanness. The time
-  lapse refuses moves between points, so the assistant drives it by schedule until F2. The guard reads
-  model-written prompts as the operator's: fixed first in D1 with a safety test. E1 requires a fresh
-  frame and convergence. D2 defines "done", one pending continuation, a request line with its own
-  Cancel. Two memories instead of three: the map is derived from the frame history; `mark` and
-  `recall_map` dropped, labels go on `look`; the plan is text, not a tool; the envelope reduced to
-  `changed` on setters plus changed state keys, accepted on measured tokens. `calibrate` joins
-  `CONFIRM_FIRST`; C1 uses a nominal scale until C4. Duplicated text removed; efforts live in the table
-  only; A to E re-estimated at fifteen days.
-
-- **1.3, 7 October 2026.** After phases A to D in the fork. B5 ran on gemini-3.5-flash-lite, the
-  strong-model check on gemini-3.1-pro-preview: the strong model fails the same groups, so F4 stays.
-  C2's count is written "last 3". D1's light budget is per request over ten minutes; the budget of
-  measured moves moves to E1. The prompt-size test no longer caps the prompt: first make the agent
-  work on cloud models, then scale down to local ones. H1 has its first evidence (focusing,
-  conditional requests); routines wait for H, failures before it are recorded, not fixed.
-
-- **1.4, 7 October 2026.** Phase F taken out of the plan and listed as set aside, only if needed:
-  none of it is needed for multi-step requests, three items would change Nikita's code, and B5
-  showed a stronger model does not help. The letters G and H stay.
-
-- **1.5, 7 October 2026.** E1 built offline, off by default: the convergence check looks at each
-  image direction, after a run with one axis set wrong made two wrong moves. H1 gets two findings
-  from the unattended runs.
-
-- **1.6, 9 October 2026.** Haiku 5.5 benchmarked, after four fixes it needed (PR 121). It is level
-  with flash-lite overall and fails the same groups, so H1 has its third model's evidence; the set
-  aside "stronger model" item stays set aside.
+- **1.0 to 1.6, 6 to 9 October 2026.** Phases A to E built and merged (PR 120), F set aside, G and
+  H kept as long-term goals; Haiku 5.5 fixes (PR 121) and benchmark. The 1.x entries are in the
+  git history of this file.
+- **2.0, 9 October 2026.** A new direction after the first runs on two cloud models and the Windows
+  demo test. The agent targets cloud models: everything built to fit a small model goes (2.2). No
+  confirmation (2.1): the operator wants the assistant to act, and Core's limits and Stop stay.
+  No timer (2.3): time courses are the software's, and the model confused `wait` with `schedule`.
+  The plan is for the model, not the operator (2.4). The window's features become commands for
+  all three clients (3), and the procedures become skills (4), which were phase G. Phase H is
+  phase 5. Containment is a principle with a count per item.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 changes, raise the version and add a line here saying what changed and why.
