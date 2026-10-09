@@ -137,19 +137,35 @@ def _install_fake_pyqt5():
         def __init__(self, parent=None):
             super().__init__(parent)
             self._items = []
+            self._data = {}
             self._current = ""
             self.currentTextChanged = _Signal()
+            self.currentIndexChanged = _Signal()
 
         def addItems(self, items):
             self._items.extend(items)
             if not self._current and self._items:
                 self._current = self._items[0]
 
+        def addItem(self, text, data=None):
+            self.addItems([text])
+            self._data[text] = data
+
+        def findData(self, data):
+            return next((i for i, text in enumerate(self._items) if self._data.get(text) == data), -1)
+
+        def setCurrentIndex(self, index):
+            if 0 <= index < len(self._items):
+                self._current = self._items[index]
+
         def setCurrentText(self, text):
             self._current = text
 
         def currentText(self):
             return self._current
+
+        def currentData(self):
+            return self._data.get(self._current)
 
     class QLineEdit(QWidget):
         Normal = 0
