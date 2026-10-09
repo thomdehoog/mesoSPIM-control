@@ -725,6 +725,18 @@ def _wavelength_nm(name):
     return int(digits) if digits else None
 
 
+def _image_writers():
+    """The registered image writers and their file extensions, the names the table calls take."""
+    from ..plugins.utils import get_image_writer_plugins
+
+    writers = []
+    for plugin in get_image_writer_plugins():
+        extensions = plugin["file_extensions"]
+        writers.append({"name": plugin["name"],
+                        "file_extensions": [extensions] if isinstance(extensions, str) else list(extensions)})
+    return writers
+
+
 def _config_document(core):
     cfg = getattr(core, "cfg", None)
     lasers = [{"name": n, "wavelength_nm": _wavelength_nm(n)} for n in cfg_dict(core, "laserdict")]
@@ -744,6 +756,7 @@ def _config_document(core):
         "shutter_configs": list(shutters),
         "axes": list(config.AXES),
         "camera": {"pixels_x": pixels_x, "pixels_y": pixels_y},
+        "image_writers": _image_writers(),
     }
 
 
@@ -917,7 +930,7 @@ def _run_get_config(core, args):
 
 
 command(
-    "get_config", READ, _run_get_config, accept=no_args, hint="in: none. out: lasers/filters/zooms/camera"
+    "get_config", READ, _run_get_config, accept=no_args, hint="in: none. out: lasers/filters/zooms/camera/image_writers"
 )
 
 
@@ -2280,7 +2293,8 @@ def _writer(core, args, rows):
     name = text(args, "writer", required=False) or (rows[0].get("image_writer_plugin") if rows else None)
     writer = get_image_writer_from_name(name) if name else None
     if not writer:
-        raise ValidationError(f"unknown image writer {name!r}")
+        known = ", ".join(f"{w['name']} ({', '.join(w['file_extensions'])})" for w in _image_writers())
+        raise ValidationError(f"{'unknown image writer ' + repr(name) if name else 'name a writer'}: one of {known}")
     extensions = writer.get("file_extensions")
     extension = extensions[0] if isinstance(extensions, (list, tuple)) else extensions
     return writer["name"], writer["file_names"], extension

@@ -56,6 +56,9 @@ from mesoSPIM.src.remote_control import dispatcher as dispatcher
 from mesoSPIM.src.remote_control import servers as servers
 from mesoSPIM.src.remote_control.dispatcher import COMMANDS, READ
 from mesoSPIM.test.remote_control.support.fakes import RecordingCore
+from mesoSPIM.test.remote_control.support.writers import use_tiff_writer
+
+use_tiff_writer()   # the writer the table calls name rows with; the offline registry loads no plugins
 
 CASES_FILE = Path(__file__).with_name("cases.json")
 FINISH_AT_ONCE = (rc_config.MILESTONE_FINISHED, rc_config.MILESTONE_TIMELAPSE, rc_config.MILESTONE_PREVIEW)
@@ -556,7 +559,7 @@ def check_cases(cases):
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
              "core_calls_not", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
              "truth", "core_call_counts"}
-    tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate", "update_acquisition_row"}
+    tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate"}
     problems, seen = [], set()
     for case in cases:
         if case["id"] in seen:

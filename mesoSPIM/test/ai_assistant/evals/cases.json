@@ -2478,5 +2478,77 @@
         "position.x_pos": 23999.0
       }
     }
+  },
+  {
+    "id": "tiling-list-by-call",
+    "category": "acquisition",
+    "note": "Plan WP3.6: the tiling wizard's list by build_tiling_list, not rows written by hand.",
+    "prompt": "Build a tiling acquisition list: x from 0 to 3000 µm, y from 0 to 0, z from 0 to 100 µm in steps of 10, one channel with the 488 nm laser at 10 % and the Empty filter, 20 % overlap, TIFF files in D:/tmp/tiles.",
+    "expect": {
+      "calls": [
+        "build_tiling_list"
+      ],
+      "not_calls": [
+        "set_acquisition_list"
+      ],
+      "state": {
+        "acq_list.0.z_step": 10
+      }
+    }
+  },
+  {
+    "id": "table-round-trip-by-calls",
+    "category": "acquisition",
+    "note": "Plan WP3.6: the acquisition manager's buttons as calls, the row left as it was except what was asked.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 100,
+          "z_step": 10,
+          "planes": 11,
+          "rot": 0,
+          "f_start": 2500,
+          "f_end": 2500,
+          "laser": "488 nm",
+          "intensity": 10,
+          "filter": "Empty",
+          "zoom": "2x",
+          "shutterconfig": "Right",
+          "folder": "D:/tmp",
+          "filename": "one_2.tif",
+          "image_writer_plugin": "Tiff_Writer",
+          "etl_l_offset": 2.397,
+          "etl_l_amplitude": 0.461,
+          "etl_r_offset": 2.545,
+          "etl_r_amplitude": 0.366,
+          "processing": "MAX"
+        }
+      ]
+    },
+    "prompts": [
+      "Add a copy of the acquisition as a second row.",
+      "Mark the second row with the current laser, filter and zoom.",
+      "Now delete the first row."
+    ],
+    "expect": {
+      "calls": [
+        "add_acquisition_rows",
+        "delete_acquisition_rows"
+      ],
+      "calls_any": [
+        "mark_acquisition_rows",
+        "update_acquisition_row"
+      ],
+      "not_calls": [
+        "set_acquisition_list"
+      ],
+      "state": {
+        "acquisition_rows": 1,
+        "acq_list.0.z_end": 100
+      }
+    }
   }
 ]

@@ -2483,5 +2483,74 @@
         "position.y_pos": -1000.0
       }
     }
+  },
+  {
+    "id": "h-tiling-list-by-call",
+    "category": "acquisition",
+    "prompt": "Make me a tile scan list covering x 0 to 2000 µm and y 0 to 1000 µm, z 0 to 50 µm every 5 µm, 561 nm at 20 % through the Empty filter, 10 % overlap, saved as TIFF to D:/tmp/scan.",
+    "expect": {
+      "calls": [
+        "build_tiling_list"
+      ],
+      "not_calls": [
+        "set_acquisition_list"
+      ],
+      "state": {
+        "acq_list.0.z_step": 5
+      }
+    }
+  },
+  {
+    "id": "h-table-round-trip-by-calls",
+    "category": "acquisition",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 100,
+          "z_step": 10,
+          "planes": 11,
+          "rot": 0,
+          "f_start": 2500,
+          "f_end": 2500,
+          "laser": "488 nm",
+          "intensity": 10,
+          "filter": "Empty",
+          "zoom": "2x",
+          "shutterconfig": "Right",
+          "folder": "D:/tmp",
+          "filename": "one_2.tif",
+          "image_writer_plugin": "Tiff_Writer",
+          "etl_l_offset": 2.397,
+          "etl_l_amplitude": 0.461,
+          "etl_r_offset": 2.545,
+          "etl_r_amplitude": 0.366,
+          "processing": "MAX"
+        }
+      ]
+    },
+    "prompts": [
+      "Duplicate the acquisition, so there are two rows.",
+      "Give row two the laser, filter and zoom the microscope has right now.",
+      "Remove row one."
+    ],
+    "expect": {
+      "calls": [
+        "add_acquisition_rows",
+        "delete_acquisition_rows"
+      ],
+      "calls_any": [
+        "mark_acquisition_rows",
+        "update_acquisition_row"
+      ],
+      "not_calls": [
+        "set_acquisition_list"
+      ],
+      "state": {
+        "acquisition_rows": 1
+      }
+    }
   }
 ]

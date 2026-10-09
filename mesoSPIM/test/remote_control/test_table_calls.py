@@ -108,8 +108,9 @@ def test_rows_are_named_by_the_writer_s_rules():
     dispatcher.run(core, "name_acquisition_rows", {"writer": writer, "description": "my sample"})
     assert all(name.startswith("my_sample_Mag1x_Tile") and name.endswith(".tiff") for name in names(core))   # its first extension
     assert names(core)[0] != names(core)[1] and {r["image_writer_plugin"] for r in core.state["acq_list"]} == {writer}
-    with pytest.raises(dispatcher.ValidationError, match="unknown image writer"):
+    with pytest.raises(dispatcher.ValidationError, match=f"unknown image writer .No_Writer.: one of .*{writer}"):
         dispatcher.run(core, "name_acquisition_rows", {"writer": "No_Writer"})
+    assert writer in [w["name"] for w in dispatcher.run(core, "get_config", {})["image_writers"]]   # the reader of the choice
 
 
 def test_focus_tracking_sets_each_row_s_focus_on_the_line_through_two_points():
