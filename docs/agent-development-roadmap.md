@@ -1,6 +1,6 @@
 # Agent development roadmap: mesoSPIM AI Assistant
 
-Version 1.5, 7 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
+Version 1.6, 9 October 2026. Applies to the AI Assistant in mesoSPIM-control 1.27.
 
 Code: `mesoSPIM/src/ai_assistant/` and `mesoSPIM/src/remote_control/`. Work happens on a fork branch
 made from `release/candidate-py312`; each phase goes to Nikita as one pull request. Development tools
@@ -195,6 +195,9 @@ determinism and an audit trail (a calibration later measurements depend on), or 
   run") are run regardless, with the condition read correctly. From the E1 runs: with a wrong
   coordinate system the model negates `centre_move_um` instead of moving by it, and it reports
   success after its moves were refused.*
+  *Claude Haiku 5.5, 9 October 2026 (docs/test-reports/2026-10-09-haiku-5-5-benchmark.md): the
+  same groups fail, focusing 1 of 20 and exposure 5 of 20; the long-task groups 0 on both models.
+  A third model confirms that focusing and the long tasks want code, not a model.*
 - [ ] **H2. Build each promoted function as a measuring block,** such as `register_frames`: it returns
   numbers, the model decides. Cases in the matrix; a skill it replaces is retired.
 
@@ -277,6 +280,10 @@ environment, so both columns test the same thing and no scripts are written by h
 - **1.5, 7 October 2026.** E1 built offline, off by default: the convergence check looks at each
   image direction, after a run with one axis set wrong made two wrong moves. H1 gets two findings
   from the unattended runs.
+
+- **1.6, 9 October 2026.** Haiku 5.5 benchmarked, after four fixes it needed (PR 121). It is level
+  with flash-lite overall and fails the same groups, so H1 has its third model's evidence; the set
+  aside "stronger model" item stays set aside.
 
 When an item is done, tick its box and note the date and the pull request beside it. When the plan
 changes, raise the version and add a line here saying what changed and why.
