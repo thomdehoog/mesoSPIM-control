@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.3, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.4, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -122,7 +122,7 @@ PyQt5 is in the requirements; the real-Qt scripts need `QT_QPA_PLATFORM=offscree
 | What | Command (from the repo root) | At b3b0b48 |
 |---|---|---|
 | Offline suite | `python -m pytest mesoSPIM/test/ai_assistant mesoSPIM/test/remote_control -q -p no:cacheprovider` | 1264 passed, 11 skipped, about 2 min |
-| Real Qt scripts | `QT_QPA_PLATFORM=offscreen python mesoSPIM/test/remote_control/run.py pyqt` | 10 PASS; the combo-box test errors on Linux |
+| Real Qt scripts | `QT_QPA_PLATFORM=offscreen python mesoSPIM/test/remote_control/run.py pyqt` | 10 PASS; the combo-box test errors on Linux. 9 PASS from WP2.3 on (the scheduler smoke is gone) |
 | Ruff | `ruff check mesoSPIM/src/ai_assistant mesoSPIM/src/remote_control` | 23 findings in ai_assistant, all old; no new one allowed |
 | One case live | `python -m mesoSPIM.test.ai_assistant.evals.run --provider Gemini --only <id> --cases <file>` | |
 | Record a file | `... evals.run --provider Gemini --cases <file> --record --attempts 3` | writes `evals/recorded/<file>` |
@@ -312,7 +312,9 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   1016, 1032, methods 1048-1065, the measured read 458-459.
   Manual: replace 75-80 (values only from the operator) with one rule: "When a request leaves a
   value or a choice open, ask; otherwise act and say what you chose." Delete 88-92 (Run/Cancel,
-  "never gated"). Keep 25-27 (never retry a limit rejection; a model rule). Replace 108-111 with
+  "never gated"). Of 25-27 keep only the clause "never retry a call that was rejected for
+  exceeding a movement limit; tell them the limit and ask" (a model rule); the rest of it is the
+  "values only from the operator" rule this item replaces. Replace 108-111 with
   one sentence: "Never stop a run the operator started from the window to make room; say it is
   running." Tool text: calibrate's description "asks for Run" (1461-1462), `_KINDS` "never gated"
   (1570), the refusal texts 570-584.
@@ -327,7 +329,16 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   631-632`); keep `_mutations` (524-534: a dispatcher refusal is still no change). The 14 "asks"
   cases stay as they are: a vague request gets a question from the model, not a gate.
   Docs: `index.md` 129, 162, 175, 180-187, 210-228; `architecture.md` 119-127; `CHANGELOG.md:7`.
-- [ ] **2.2. No small-model scaffolding.**
+- [x] **2.2 (9 October 2026, 7504e88, with 2.3). No small-model scaffolding.** As done: the
+  ceilings per preset are Gemini 500k / 900k, OpenAI 200k / 360k, Anthropic (now
+  `claude-haiku-5-5`) 100k / 900k (its price per token rises fivefold above 100k), none for
+  OpenAI-style; a provider that reports no input count leaves the meter as it was. Caching:
+  pydantic-ai's `anthropic_cache_tool_definitions="1h"`, `anthropic_cache_instructions="1h"`,
+  `anthropic_cache="5m"` (checked on the wire by a test; three of four breakpoints, the hour
+  first, as the API requires). Sequential calls: `Tool.from_schema(..., sequential=True)` on
+  every tool. The request is about 8,200 tokens of prompt and tools (not above 12,000), and
+  `CONTEXT_TOO_SMALL_HELP` says 8,000. The manual's memory and tool-set lines went with their
+  tools. Recording: 2.6.
   Remove: `trim_history`, `_turn_starts` (if no other user remains), `_compact_prompt`,
   `compact_history`, `_without_thinking_after_a_change`, `_without_thinking` (`assistant.py:1609-1722`),
   `ProcessHistory` in `build_agent` (1820-1832), the worker's `trim_history` (2022) and
@@ -384,7 +395,14 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   "Regular tool set"; the recordings' 65 "SAME" replies disappear with the re-recording.
   Docs: retire `tool-sets.md`; `index.md` 33, 64-113, 229-236, 250; `architecture.md` 23, 26,
   34-35, 110-116, 126-135; manual 37-41 (memory tools) and 114-117 (tool set).
-- [ ] **2.3. No timer.**
+- [x] **2.3 (9 October 2026, 7504e88). No timer.** As done: `_submit` stays, reduced to the
+  typed turn (not removed: every turn uses it); the worker keeps `now()` returning `self.clock()`,
+  with `self.clock = time.time` settable before `reset()`, and the harness, which never builds a
+  worker, passes the clock straight to `SessionStore`, `VisionSession` and `build_agent(clock=)`;
+  the done notice does not use `_operation_id`: `_tool_fn` tells the worker (`on_started`) of a
+  run that returned under way with its operation id, and the tab's 2 s timer asks the worker
+  (`check_run`, a queued slot on the worker's thread, so the GUI never waits on Core) to read
+  `get_progress`.
   Remove: `Scheduler` and helpers 1097-1203, the schemas 1206-1225, `_schedule_tools` 1228-1259,
   `_wait_tool` 1262-1291, the hooks in `build_tools` 1406-1409 and the `clock = scheduler.clock`
   at 1377 (becomes a `clock=` parameter of `build_tools`, default `time.time`), `with_state`'s
@@ -435,7 +453,8 @@ Do 2.2 and 2.3 first (scaffolding and timer out, prompt rules unchanged), record
   (about 6,000 characters) is WP4's, after the procedures move out; here it only loses the removed
   rules.
 - [ ] **2.6. Re-record, twice.** After 2.2 and 2.3: `evals.run --record` on flash-lite for all
-  four remaining files, then `pytest test_replay.py`; after 2.1 and 2.4: again, and once on Haiku
+  five files (`cases_unattended.json` exists until 2.1 removes it; prune the recordings of
+  removed cases first), then `pytest test_replay.py`; after 2.1 and 2.4: again, and once on Haiku
   (`cases_multistep.json` and `cases_generated.json` at least). Put both result tables in
   `docs/pr/lean.md`. Expected: single-step and held-out within a few cases of 158 and 157 minus
   the removed ones; vague requests unchanged; the multi-step groups at or above today's
@@ -457,6 +476,17 @@ take them one by one. Decisions 6 and 9 rule: Core first, readers with appliers,
 and every new command registered like the 56 (the count in `test_commands.py` and
 `docs/source/remote_control/calls.md` moves with it).
 
+- [ ] **3.0. The inventory and its test, first.** The window has 99 controls in
+  `mesoSPIM_MainWindow.ui` (37 buttons, 49 value fields, 3 check boxes among them, 11 menu
+  entries) and 25 in `mesoSPIM_AcquisitionManagerWindow.ui` (24 buttons). Most already have a call:
+  the value fields are the `set_*` keys; 28 of the 37 buttons are 17 of the 56 calls (ten jog
+  buttons are `move_relative`, four zero buttons `zero`). A test in the dev suite parses both
+  `.ui` files and holds a table, in `remote_control/config.py` or beside the test, mapping every
+  control name to exactly one of: the command that does it, "display", or "not exposed: <reason>".
+  It fails when a control has no entry (a new button upstream) and when two commands claim the
+  same control: comprehensive and without redundancy, checked rather than promised. Buttons that
+  differ by a parameter are one command (the six "mark current" buttons are
+  `mark_acquisition_rows(rows, keys)`).
 - [ ] **3.1. `build_tiling_list`.** A shared-layer command (`remote_control/commands.py`, kind
   ACTION, mutation through the existing list install). Arguments: the builder's dict (fact 6)
   with `overlap_percent` or `x_offset`/`y_offset`, `channels` as a list of objects, `folder`,
@@ -489,6 +519,16 @@ and every new command registered like the 56 (the count in `test_commands.py` an
   in the readout (check `get_snapshot`, commands.py:1067-1093, lists `snap_folder` and
   `ETL_cfg_file`; add them if not). The ETL increment and the zero toggles: only if a skill in WP4
   needs them.
+- [ ] **3.4b. Gaps the inventory found, the owner decides each** (section 9): auto illumination
+  (Left/Right per tile from its x against the median; a pure function over the rows, lift it into
+  `utils/` and make it a command, or leave it to a skill over `update_acquisition_row`); the image
+  processing wizard (the processor chain, `processor_chain.json`; a `set_processor_chain` command
+  with its reader); "Save to config" (writes the Parameters tab into the config file; a command
+  that writes a file on the instrument, or not exposed); choosing the ETL file (`ETL_cfg_file` is
+  in Core's handler but not in `SETTABLE_STATE_KEYS`; one key added to `set_etl` with a check that
+  the file exists, or a `load_etl_config(path)`); the zero-ETL and freeze-galvo toggles (3.4). Not
+  calls: the three group toggles (they sort the table; row moves do the same), set folders
+  (`update_acquisition_row`).
 - [ ] **3.5. Not now, listed with the reason:** the optimizer (a GUI-thread window with its own
   flow; WP5 decides whether focusing becomes code), the camera window's levels and overlays and
   the contrast window (display, not control), the script editor (code execution), the PSF and
@@ -586,7 +626,9 @@ Items in his modules, each proposed in the pull request that needs it, as a sepa
 ## 9. Open questions for the owner
 
 - 2.7: the session log on disk, yes or no?
-- 2.2: the ceiling values (`CONTEXT_WARN_TOKENS`, `CONTEXT_MAX_TOKENS`) per model.
+- 2.2: the ceiling values per preset (set in 2.2; see its tick); change them if the lab's use says so.
+- 3.4b: which of the gaps become commands: auto illumination, the processor chain, Save to
+  config, the ETL file, the zero-ETL and freeze-galvo toggles.
 - 3.2: `mark_acquisition_rows` through the GUI bridge (0 upstream lines, needs the window open)
   or computed in the shared layer from the readout (duplicates the model's rounding)? The plan
   says the bridge.
@@ -639,6 +681,11 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
   handoff material for a new session.
 - **2.3, 9 October 2026.** Decision 9, one way in: the window's features join the command registry
   with the same validation and reach all three clients. `agent/lean` starts from `agent/refresh`.
+- **2.4, 9 October 2026.** WP2.2 and 2.3 done and ticked, with what turned out different
+  (`_submit`, the clock, the done notice, the request size, the ceilings, the caching). 2.1's
+  manual clause and 2.6's first recording corrected. WP3 gains the control inventory with a
+  coverage test (3.0) and the gaps it found (3.4b, section 9), after the owner asked whether the
+  calls are comprehensive and checked through the same layer.
 - **2.2, 9 October 2026.** WP1 done and ticked. Corrected: `agent/demo-fixes` was already merged
   (section 1, 7, 10.1); the environment steps and the three Windows-only imports behind the
   combo-box test (section 4); the `-pr` branch carries the upstream test file and the separate
