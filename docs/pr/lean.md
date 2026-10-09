@@ -94,6 +94,21 @@ Per group, multi-step and generated, first to second recording:
 | Vague requests | 6 to 0 of 6 | 20 to 5 of 20 |
 | Must stop partway | 3 to 3 of 6 | 15 to 17 of 20 |
 
+Claude Haiku 5.5, run once on the final code (not recorded; the flash-lite recordings stay the
+replay baseline), against flash-lite's second recording:
+
+| Case file | flash-lite | Haiku |
+|---|---|---|
+| Single-step | 124 of 135 | 119 of 135 |
+| Held-out twins | 124 of 135 | 117 of 135 |
+| Multi-step | 28 of 48 | 36 of 48 |
+| Generated multi-step | 96 of 160 | 113 of 160 |
+
+Haiku asks on unclear requests far more often (ambiguity 11 of 14 against 6; vague requests 4 of
+6 and 16 of 20 against 0 and 5) and does better at focusing, live tuning and recovery from
+refusals. It is weaker on single looks: on vision questions it often answers or acts without
+taking a frame (vision 22 of 29 against 28). Neither model completes acquisition with checks.
+
 What moved, and why:
 
 - **Vague requests fall.** "Make it brighter" or "rotate a bit" now gets a value picked, or offered,
@@ -114,8 +129,9 @@ use cases there are worth fixing, as fine-tuning for that instrument.
 - **Offline.** The fork's dev suite passes (1058 tests, 11 skipped), the replay suite included, on
   the second recording. On the package branch the real-Qt scripts pass (9; the combo-box test needs
   Windows, as before).
-- **Claude Haiku 5.5.** Not run yet: the one Haiku recording the plan asks for needs an Anthropic
-  key. The cache settings are checked offline, read off the request on the wire.
+- **Claude Haiku 5.5.** Run once on the final code, see Results. Prompt caching checked live: on a
+  multi-step case each request read about 94 % of its input from the cache (11,322 of 11,997
+  tokens on the first, the history on the later ones).
 - **Please check on Windows** (demo mode): the AI Assistant tab connects, the size meter shows after
   a turn, and a time lapse started by the assistant ends with one grey line in the transcript.
 - **On the microscope.** One session with each model: a look, a move, a run started and ended.
