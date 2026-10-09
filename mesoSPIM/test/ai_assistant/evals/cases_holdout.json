@@ -16,11 +16,7 @@
     "category": "reads",
     "prompt": "Which things are you able to do on this microscope?",
     "expect": {
-      "no_mutations": true,
-      "reply_mentions_any": [
-        "Regular tool set",
-        "regular tool set"
-      ]
+      "no_mutations": true
     }
   },
   {
@@ -187,7 +183,6 @@
     "id": "h-exposure-ms",
     "category": "settings",
     "prompt": "Exposure time 20 ms, please.",
-    "profile": "Full",
     "expect": {
       "calls": [
         "set_camera"
@@ -359,63 +354,6 @@
           "timepoints": 5,
           "interval_sec": 30
         }
-      }
-    }
-  },
-  {
-    "id": "h-regular-hides-exposure",
-    "category": "profiles",
-    "prompt": "Make the exposure time 30 ms.",
-    "profile": "Regular",
-    "expect": {
-      "not_calls": [
-        "set_camera"
-      ],
-      "reply_mentions_any": [
-        "Full",
-        "not available",
-        "cannot",
-        "can't",
-        "not offered",
-        "unable",
-        "not part",
-        "not in",
-        "outside",
-        "not offer",
-        "tool set",
-        "no command",
-        "not have a command",
-        "don't have a command",
-        "do not have"
-      ]
-    }
-  },
-  {
-    "id": "h-full-offers-the-machine",
-    "category": "profiles",
-    "prompt": "Set the right ETL offset to 2.0.",
-    "profile": "Full",
-    "expect": {
-      "calls": [
-        "set_etl"
-      ],
-      "args": {
-        "set_etl": {
-          "etl_r_offset": 2.0
-        }
-      }
-    }
-  },
-  {
-    "id": "h-memory-across-turns",
-    "category": "memory",
-    "prompts": [
-      "Set the intensity to 15.",
-      "Now triple it."
-    ],
-    "expect": {
-      "state": {
-        "intensity": 45
       }
     }
   },
@@ -758,7 +696,6 @@
     "id": "h-exposure-seconds",
     "category": "settings",
     "prompt": "Make the exposure 1.5 seconds.",
-    "profile": "Full",
     "expect": {
       "calls": [
         "set_camera"
@@ -774,7 +711,6 @@
     "id": "h-exposure-microseconds",
     "category": "settings",
     "prompt": "An exposure of 2000 microseconds, please.",
-    "profile": "Full",
     "expect": {
       "calls": [
         "set_camera"
@@ -944,114 +880,6 @@
     }
   },
   {
-    "id": "h-regular-hides-galvo",
-    "category": "profiles",
-    "prompt": "Set the right galvo frequency to 100.",
-    "profile": "Regular",
-    "expect": {
-      "not_calls": [
-        "set_galvo",
-        "set_state"
-      ],
-      "reply_mentions_any": [
-        "Full",
-        "not available",
-        "cannot",
-        "can't",
-        "not offered",
-        "unable",
-        "not part",
-        "not in",
-        "outside",
-        "not offer",
-        "tool set",
-        "no command",
-        "not have a command",
-        "don't have a command",
-        "do not have"
-      ]
-    }
-  },
-  {
-    "id": "h-full-offers-galvo",
-    "category": "profiles",
-    "prompt": "Set the right galvo frequency to 100.",
-    "profile": "Full",
-    "expect": {
-      "calls": [
-        "set_galvo"
-      ],
-      "args": {
-        "set_galvo": {
-          "galvo_r_frequency": 100
-        }
-      }
-    }
-  },
-  {
-    "id": "h-regular-hides-binning",
-    "category": "profiles",
-    "prompt": "Bin the camera 2x2.",
-    "profile": "Regular",
-    "expect": {
-      "max_calls": {
-        "set_camera": 1
-      },
-      "not_calls": [
-        "set_state"
-      ],
-      "reply_mentions_any": [
-        "Full",
-        "not available",
-        "cannot",
-        "can't",
-        "not offered",
-        "unable",
-        "not part",
-        "not in",
-        "outside",
-        "not offer",
-        "tool set",
-        "no command",
-        "not have a command",
-        "don't have a command",
-        "do not have"
-      ]
-    }
-  },
-  {
-    "id": "h-full-offers-binning",
-    "category": "profiles",
-    "prompt": "Bin the camera 2x2.",
-    "profile": "Full",
-    "expect": {
-      "calls": [
-        "set_camera"
-      ],
-      "args": {
-        "set_camera": {
-          "camera_binning": "2x2"
-        }
-      }
-    }
-  },
-  {
-    "id": "h-regular-offers-the-etl",
-    "category": "profiles",
-    "prompt": "Change the right ETL amplitude to 0.9.",
-    "profile": "Regular",
-    "expect": {
-      "calls": [
-        "set_etl"
-      ],
-      "args": {
-        "set_etl": {
-          "etl_r_amplitude": 0.9
-        }
-      }
-    }
-  },
-  {
     "id": "h-busy-stale-acquisition-state",
     "category": "busy",
     "prompt": "Move y to 100.",
@@ -1203,33 +1031,6 @@
       ],
       "state": {
         "intensity": 10
-      }
-    }
-  },
-  {
-    "id": "h-memory-same-for-other-axis",
-    "category": "memory",
-    "prompts": [
-      "Move z to 3000 micrometres.",
-      "Same again for y."
-    ],
-    "expect": {
-      "state": {
-        "position.z_pos": 3000.0,
-        "position.y_pos": 3000.0
-      }
-    }
-  },
-  {
-    "id": "h-memory-undo",
-    "category": "memory",
-    "prompts": [
-      "Set the zoom to 2x.",
-      "Actually, revert that."
-    ],
-    "expect": {
-      "state": {
-        "zoom": "1x"
       }
     }
   },
@@ -1777,55 +1578,6 @@
         "no ",
         "not running",
         "not busy"
-      ]
-    }
-  },
-  {
-    "id": "h-recall-a-readout-the-memory-lost",
-    "category": "memory",
-    "prompts": [
-      "Change the zoom to 2x.",
-      "Move z to 800 micrometres.",
-      "Set the intensity to 22.",
-      "Select the 515LP filter.",
-      "What was the laser intensity in the readout of our very first turn?"
-    ],
-    "memory": 2,
-    "expect": {
-      "calls": [
-        "recall_turn"
-      ],
-      "reply_mentions_any": [
-        "10"
-      ]
-    }
-  },
-  {
-    "id": "h-search-what-the-operator-said-earlier",
-    "category": "memory",
-    "prompts": [
-      "For the record: this sample is zebrafish from tank 12.",
-      "Make the intensity 35.",
-      "Go to zoom 2x.",
-      "Let the shutters open.",
-      "Which tank did I say the sample came from?"
-    ],
-    "memory": 2,
-    "expect": {
-      "calls_any": [
-        "search_history",
-        "recall_turn"
-      ],
-      "reply_mentions_any": [
-        "tank 12",
-        "12"
-      ],
-      "reply_mentions_none": [
-        "did not mention",
-        "didn't mention",
-        "no record",
-        "don't have",
-        "do not have"
       ]
     }
   },
@@ -2589,131 +2341,6 @@
         "disc",
         "bright"
       ]
-    }
-  },
-  {
-    "id": "h-schedule-every-n-minutes",
-    "category": "time",
-    "prompt": "Every five minutes, save a snap.",
-    "expect": {
-      "calls": [
-        "schedule"
-      ],
-      "args": {
-        "schedule": {
-          "every_seconds": 300
-        }
-      },
-      "schedules": 1
-    }
-  },
-  {
-    "id": "h-schedule-at-a-time",
-    "category": "time",
-    "prompt": "Run the list at 09:30.",
-    "expect": {
-      "calls": [
-        "schedule"
-      ],
-      "args": {
-        "schedule": {
-          "at": "09:30"
-        }
-      },
-      "not_calls": [
-        "run_acquisition_list",
-        "run_selected_acquisition"
-      ],
-      "schedules": 1
-    }
-  },
-  {
-    "id": "h-schedule-in-n-minutes-is-once",
-    "category": "time",
-    "prompt": "Open the shutters two minutes from now.",
-    "expect": {
-      "calls": [
-        "schedule"
-      ],
-      "not_calls": [
-        "open_shutters"
-      ],
-      "schedules": 1
-    },
-    "note": "Flash-Lite set it as a clock time two minutes ahead rather than in_seconds; both fire once at that time."
-  },
-  {
-    "id": "h-schedule-cancel",
-    "category": "time",
-    "setup": {
-      "schedules": [
-        {
-          "name": "focus check",
-          "instruction": "look and tell me whether the focus drifted",
-          "every_seconds": 3600
-        }
-      ]
-    },
-    "prompt": "Cancel the hourly focus check.",
-    "expect": {
-      "calls": [
-        "cancel_schedule"
-      ],
-      "not_calls": [
-        "stop",
-        "stop_activity"
-      ],
-      "schedules": 0
-    }
-  },
-  {
-    "id": "h-scheduled-turn-is-carried-out",
-    "category": "time",
-    "setup": {
-      "schedules": [
-        {
-          "name": "focus check",
-          "instruction": "look and tell me whether the focus drifted",
-          "every_seconds": 3600
-        }
-      ],
-      "frame": "blur"
-    },
-    "prompt": "[scheduled 'focus check'] look and tell me whether the focus drifted",
-    "expect": {
-      "calls": [
-        "look"
-      ],
-      "not_calls": [
-        "schedule",
-        "cancel_schedule"
-      ],
-      "schedules": 1
-    }
-  },
-  {
-    "id": "h-schedule-listing",
-    "category": "time",
-    "setup": {
-      "schedules": [
-        {
-          "name": "focus check",
-          "instruction": "look and tell me whether the focus drifted",
-          "every_seconds": 3600
-        }
-      ]
-    },
-    "prompt": "Is anything scheduled?",
-    "expect": {
-      "no_mutations": true,
-      "not_calls": [
-        "schedule",
-        "cancel_schedule"
-      ],
-      "reply_mentions_any": [
-        "focus"
-      ],
-      "schedules": 1
     }
   },
   {

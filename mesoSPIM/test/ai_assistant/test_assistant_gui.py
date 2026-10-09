@@ -10,7 +10,6 @@ from PyQt5 import QtWidgets
 
 from mesoSPIM.src.ai_assistant import gui as gui_module
 from mesoSPIM.src.ai_assistant.gui import AiAssistantGUI
-from mesoSPIM.src.ai_assistant.local import model_name
 
 
 class _FakeTabWidget:
@@ -108,7 +107,7 @@ def test_submit_single_flight_disables_input(monkeypatch):
     gui = AiAssistantGUI(_FakeParent(_FakeCore(acceptor=object())))
     monkeypatch.setattr(gui, "_ensure_worker", lambda: True)   # pretend ready; no real thread
     monkeypatch.setenv("GEMINI_API_KEY", "k")
-    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None, profile=None: None})()
+    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None: None})()
     gui.on_connect()
     sent = _collect(gui.sig_run_turn)
     gui.chat_window.input.setText("hello")
@@ -128,14 +127,14 @@ def test_the_tab_is_setup_only_and_the_window_opens_with_connect(monkeypatch):
     assert gui.status_label.text() == "disconnected"
     assert gui.connect_button.isEnabled() and not gui.disconnect_button.isEnabled()
     assert not gui.chat_window.isVisible()
-    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None, profile=None: None})()
+    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None: None})()
     monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
     gui.language.key.setText("g-key")
     gui.on_connect()
     assert gui.chat_window.isVisible() and gui.chat_window.windowTitle() == "mesoSPIM AI Assistant — Gemini, gemini-3.5-flash-lite"
     assert gui.status_label.text() == "connected: Gemini, gemini-3.5-flash-lite"
     assert not gui.connect_button.isEnabled() and gui.disconnect_button.isEnabled()
-    assert not gui.language.isEnabled() and not gui.tools_profile.isEnabled()   # applied by Connect: Disconnect to change
+    assert not gui.language.isEnabled() and not gui.frame_bin.isEnabled()   # applied by Connect: Disconnect to change
     gui.on_connect()                                                             # a second press does nothing
     assert gui._state == "ready"
 
@@ -168,7 +167,7 @@ def test_connect_without_a_key_explains_and_does_not_start(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     gui = _gui()
     configured = []
-    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None, profile=None: configured.append(endpoint)})()
+    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None: configured.append(endpoint)})()
     monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
     gui.on_connect()
     assert configured == [] and gui._state == "idle"          # nothing configured
@@ -181,7 +180,7 @@ def test_connect_with_a_key_configures_the_worker(monkeypatch):
     configured = []
 
     class _Worker:
-        def configure(self, endpoint, vision=None, profile=None):
+        def configure(self, endpoint, vision=None):
             configured.append(endpoint)
 
     gui._worker = _Worker()
@@ -201,7 +200,7 @@ def test_openai_style_connects_without_a_key_and_passes_one_through(monkeypatch)
         configured = []
 
         class _Worker:
-            def configure(self, endpoint, vision=None, profile=None):
+            def configure(self, endpoint, vision=None):
                 configured.append(endpoint)
 
         gui._worker = _Worker()
@@ -226,149 +225,9 @@ def test_a_message_sends_only_while_connected():
     assert sent == [] and gui.chat_window.input.text() == "hello"
 
 
-# --- local mode: one model dropdown, the serving decided behind Connect ---
-
-_SERVERS = []  # every _FakeServer built, so a test can inspect the ones the tab started
-
-
-class _FakeServer:
-    """A LocalModelServer stand-in: ready after `ready_after` polls, or dies with `error`."""
-
-    def __init__(self, model_path, ready_after=2, error=None, projector=None, context_tokens=None):
-        self.model_path = model_path
-        self.projector = projector
-        self.context_tokens = context_tokens
-        self.model = model_name(model_path)            # as LocalModelServer names it
-        self.port = 4242
-        self.base_url = "http://127.0.0.1:4242/v1"
-        self.log_path = "/tmp/fake.log"
-        self.polls = 0
-        self.started = False
-        self.stopped = False
-        self._ready_after = ready_after
-        self._error = error
-        _SERVERS.append(self)
-
-    def start(self):
-        self.started = True
-
-    def ready(self):
-        self.polls += 1
-        if self._error:
-            raise RuntimeError(self._error)
-        return self.polls >= self._ready_after
-
-    def stop(self):
-        self.stopped = True
-
-
-def _local_gui(tmp_path, monkeypatch, server_factory=_FakeServer):
-    (tmp_path / "qwen3.5-8b-q4.gguf").write_bytes(b"")
-    (tmp_path / "gemma-4-12b-q4.gguf").write_bytes(b"")
-    (tmp_path / "readme.txt").write_bytes(b"")
-    core = _FakeCore(acceptor=object())
-    core.cfg = types.SimpleNamespace(ai_assistant_models_folder=str(tmp_path))
-    gui = AiAssistantGUI(_FakeParent(core))
-    gui._worker = type("_Worker", (), {"configure": lambda self, endpoint, vision=None, profile=None: setattr(self, "endpoint", endpoint)})()
-    monkeypatch.setenv("GEMINI_API_KEY", "g")                      # the default cloud language model connects
-    monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
-    monkeypatch.setattr(gui_module, "LocalModelServer", server_factory)
-    scheduled = []
-    gui._single_shot = lambda ms, fn: scheduled.append(fn)   # the test drives the polls
-    _SERVERS.clear()
-    return gui, scheduled
-
-
-def _choose_mode(gui, mode, picker=None):
-    picker = picker or gui.language
-    picker.mode.setCurrentText(mode)
-    picker.mode.currentTextChanged.emit(mode)
-
-
 def _choose_provider(picker, name):
     picker.provider.setCurrentText(name)
     picker.provider.currentTextChanged.emit(name)
-
-
-def test_local_mode_lists_model_files_and_swaps_the_cloud_fields(tmp_path, monkeypatch):
-    gui, _ = _local_gui(tmp_path, monkeypatch)
-    assert gui.language.provider.isVisible() and not gui.language.local_model.isVisible()
-    _choose_mode(gui, "Local AI")
-    assert gui.language.local_model.items() == ["gemma-4-12b-q4.gguf", "qwen3.5-8b-q4.gguf"]
-    assert gui.language.local_model.isVisible() and gui.language.folder_button.isVisible()
-    assert not gui.language.key.isVisible() and not gui.language.provider.isVisible() and not gui.language.model.isVisible()
-    _choose_mode(gui, "Cloud AI")
-    assert gui.language.provider.isVisible() and not gui.language.local_model.isVisible()
-
-
-def test_local_connect_starts_the_server_and_configures_when_ready(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.language.local_model.setCurrentText("qwen3.5-8b-q4.gguf")
-    gui.on_connect()
-    (server,) = _SERVERS
-    assert server.started and server.model_path == str(tmp_path / "qwen3.5-8b-q4.gguf")
-    assert gui._state == "starting" and gui.status_label.text() == "starting qwen3.5-8b-q4…"
-    assert not gui.chat_window.isVisible() and gui.disconnect_button.isEnabled()
-    scheduled.pop()()                                          # first poll: still loading
-    assert gui._state == "starting" and len(scheduled) == 1
-    scheduled.pop()()                                          # second poll: ready
-    endpoint = gui._worker.endpoint
-    assert (endpoint.kind, endpoint.model, endpoint.base_url) == ("openai-compatible", "qwen3.5-8b-q4", server.base_url)
-    assert endpoint.api_key == "" and not endpoint.needs_key
-    assert gui._state == "ready" and gui.chat_window.isVisible()
-    assert scheduled == []
-
-
-def test_local_server_failure_is_reported_and_cleaned_up(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch,
-                                server_factory=lambda path, projector=None, context_tokens=None: _FakeServer(path, error="exited with code 3"))
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    scheduled.pop()()
-    (server,) = _SERVERS
-    assert server.stopped and gui._servers == {}
-    assert gui._state == "idle" and "exited with code 3" in gui.status_label.text()
-
-
-def test_going_cloud_after_disconnect_leaves_no_server(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    first = _SERVERS[-1]
-    gui.on_connect()                                           # ignored while starting: the setup is locked
-    assert not first.stopped and len(_SERVERS) == 1
-    gui._worker = None                                         # no session taken in this test
-    gui.on_disconnect()                                        # while loading: the child goes with it
-    assert first.stopped and gui._servers == {} and scheduled and gui._state == "idle"
-    _choose_mode(gui, "Cloud AI")
-    gui.language.key.setText("k")
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: None})()
-    gui.on_connect()
-    assert len(_SERVERS) == 1 and gui._servers == {}
-
-
-def test_empty_models_folder_is_explained(tmp_path, monkeypatch):
-    gui, _ = _local_gui(tmp_path, monkeypatch)
-    for name in ("qwen3.5-8b-q4.gguf", "gemma-4-12b-q4.gguf"):
-        (tmp_path / name).unlink()
-    _choose_mode(gui, "Local AI")
-    assert gui.language.local_model.items() == [] and not gui.language.local_model.isEnabled()
-    gui.on_connect()
-    assert "Put a model file" in gui.status_label.text()
-
-
-def test_choosing_a_folder_rescans(tmp_path, monkeypatch):
-    gui, _ = _local_gui(tmp_path, monkeypatch)
-    other = tmp_path / "other"
-    other.mkdir()
-    (other / "phi.gguf").write_bytes(b"")
-    _choose_mode(gui, "Local AI")
-    QtWidgets.QFileDialog.chosen = str(other)
-    gui.on_choose_folder()
-    QtWidgets.QFileDialog.chosen = ""
-    assert gui._models_folder == str(other)
-    assert gui.language.local_model.items() == ["phi.gguf"]
 
 
 # --- the window ---
@@ -385,17 +244,6 @@ def test_closing_the_window_disconnects(monkeypatch):
     assert gui._blocks == []
     gui.on_connect()
     assert gui.chat_window.isVisible() and gui._blocks == [] and "earlier turn" not in gui.chat_window.output.toPlainText()
-
-
-def test_local_status_moves_from_starting_to_ready(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    assert gui.status_label.text().startswith("starting") and not gui.chat_window.isVisible()
-    scheduled.pop()()
-    scheduled.pop()()
-    assert gui.status_label.text() == "connected: gemma-4-12b-q4 on http://127.0.0.1:4242/v1; no vision: look gives the numbers only"   # the first file, no projector
-    assert gui.chat_window.isVisible()
 
 
 def test_the_chat_shows_no_images():
@@ -480,8 +328,7 @@ def test_confirmation_bar_is_hidden_until_asked_and_answers_the_gate():
 def test_clear_all_clears_the_transcript_and_the_worker_between_turns():
     gui = _gui()
     resets = []
-    from mesoSPIM.src.ai_assistant.requests import Requests
-    gui._worker = type("_W", (), {"reset": lambda self: resets.append(True), "requests": Requests()})()
+    gui._worker = type("_W", (), {"reset": lambda self: resets.append(True)})()
     gui._blocks.append(gui._user_block("old question"))
     gui._render()
     assert "old question" in gui.chat_window.output.toPlainText()
@@ -492,217 +339,16 @@ def test_clear_all_clears_the_transcript_and_the_worker_between_turns():
     assert resets == [True] and not gui.chat_window.clear_button.isEnabled()
 
 
-def test_options_row_sets_the_worker_at_once():
-    gui = _gui()
-    gui._worker = type("_W", (), {"max_history_turns": 20, "look_image_bin": 1})()
-    assert gui.frame_bin.items() == ["1", "2", "4", "8"] and gui.frame_bin.currentText() == "2"
-    gui._apply_options()                                            # what _ensure_worker does on start
-    assert gui._worker.max_history_turns == 50 and gui._worker.look_image_bin == 2
-    gui.history_turns.setValue(5)
-    gui.frame_bin.setCurrentText("8")
-    gui.frame_bin.currentTextChanged.emit("8")
-    assert gui._worker.max_history_turns == 5 and gui._worker.look_image_bin == 8
-
-
 def test_vision_box_defers_to_the_language_model_by_default(monkeypatch):
     gui = _gui()
     configured = []
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: configured.append(vision)})()
+    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None: configured.append(vision)})()
     monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
     assert gui.vision.mode.currentText() == "Same as language model" and gui.vision.same
-    assert not gui.vision.provider.isVisible() and not gui.vision.local_model.isVisible()
+    assert not gui.vision.provider.isVisible()
     gui.language.key.setText("k")
     gui.on_connect()
     assert configured == [None]
-
-
-def test_cloud_vision_model_reaches_the_worker_able_to_see(monkeypatch):
-    gui = _gui()
-    configured = []
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: configured.append((endpoint, vision))})()
-    monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
-    _choose_provider(gui.language, "Anthropic")
-    gui.language.key.setText("sk")
-    _choose_mode(gui, "Cloud AI", gui.vision)
-    _choose_provider(gui.vision, "OpenAI-style")               # a vLLM with eyes: the preset alone says no
-    gui.vision.base_url.setText("http://eyes:8000/v1")
-    gui.on_connect()
-    (endpoint, vision), = configured
-    assert endpoint.provider == "Anthropic"
-    assert (vision.kind, vision.base_url, vision.vision) == ("openai-compatible", "http://eyes:8000/v1", True)
-    assert "vision:" in gui.status_label.text()
-
-
-def test_vision_model_without_a_key_falls_back_with_a_note(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    gui = _gui()
-    configured = []
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: configured.append(vision)})()
-    monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
-    gui.language.key.setText("k")
-    _choose_mode(gui, "Cloud AI", gui.vision)
-    _choose_provider(gui.vision, "OpenAI")
-    gui.on_connect()
-    assert configured == [None]
-    assert "OPENAI_API_KEY" in gui.chat_window.output.toPlainText()   # the note stays in view although connected
-    assert gui._state == "ready" and gui.chat_window.isVisible()
-
-
-def test_local_vision_model_is_served_with_its_projector(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    (tmp_path / "mmproj-gemma-4-12b-f16.gguf").write_bytes(b"")
-    gui.language.key.setText("k")
-    _choose_mode(gui, "Local AI", gui.vision)
-    assert gui.vision.local_model.items() == ["gemma-4-12b-q4.gguf", "qwen3.5-8b-q4.gguf"]  # not the projector
-    gui.vision.local_model.setCurrentText("gemma-4-12b-q4.gguf")
-    gui.on_connect()
-    (server,) = _SERVERS
-    assert server.projector == str(tmp_path / "mmproj-gemma-4-12b-f16.gguf")
-    assert gui._state == "starting"
-    scheduled.pop()()
-    scheduled.pop()()
-    vision = gui._endpoints["vision"]
-    assert (vision.provider, vision.model, vision.base_url, vision.vision) == ("Local", "gemma-4-12b-q4", server.base_url, True)
-    assert gui._worker.endpoint.provider == "Gemini"           # the language model stayed cloud
-    assert gui._state == "ready" and gui.chat_window.isVisible()
-
-
-def test_local_language_model_sees_when_its_projector_is_beside_it(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    (tmp_path / "mmproj-qwen3.5-8b-f16.gguf").write_bytes(b"")
-    _choose_mode(gui, "Local AI")
-    gui.language.local_model.setCurrentText("qwen3.5-8b-q4.gguf")
-    gui.on_connect()                                           # vision stays "Same as language model"
-    (server,) = _SERVERS
-    assert server.projector == str(tmp_path / "mmproj-qwen3.5-8b-f16.gguf")
-    scheduled.pop()()
-    scheduled.pop()()
-    assert gui._worker.endpoint.vision is True and "vision" not in gui._endpoints
-
-
-def test_the_same_file_in_both_boxes_is_served_once(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    (tmp_path / "mmproj-gemma-4-12b-f16.gguf").write_bytes(b"")
-    _choose_mode(gui, "Local AI")
-    gui.language.local_model.setCurrentText("gemma-4-12b-q4.gguf")
-    _choose_mode(gui, "Local AI", gui.vision)
-    gui.vision.local_model.setCurrentText("gemma-4-12b-q4.gguf")
-    gui.on_connect()
-    (server,) = _SERVERS                                       # one child for both roles
-    assert gui._servers["language"] is gui._servers["vision"] is server
-    scheduled.pop()()
-    scheduled.pop()()
-    assert gui._endpoints["language"].base_url == gui._endpoints["vision"].base_url == server.base_url
-    assert gui._state == "ready" and gui.chat_window.isVisible()
-
-
-def test_a_poll_left_over_from_a_disconnected_load_does_nothing(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    stale = scheduled.pop()
-    gui._worker = None                                         # no session taken in this test
-    gui.on_disconnect()                                        # before the child answered
-    assert _SERVERS[0].stopped and gui._state == "idle"
-    stale()                                                    # the old chain finds its servers gone
-    assert scheduled == [] and gui._state == "idle"
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: None})()
-    gui.on_connect()
-    scheduled.pop()()
-    scheduled.pop()()
-    assert gui._state == "ready" and scheduled == []
-
-
-def test_language_model_takes_no_projector_when_vision_is_its_own(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    (tmp_path / "mmproj-qwen3.5-8b-f16.gguf").write_bytes(b"")
-    (tmp_path / "mmproj-gemma-4-12b-f16.gguf").write_bytes(b"")
-    _choose_mode(gui, "Local AI")
-    gui.language.local_model.setCurrentText("qwen3.5-8b-q4.gguf")
-    _choose_mode(gui, "Local AI", gui.vision)
-    gui.vision.local_model.setCurrentText("gemma-4-12b-q4.gguf")
-    gui.on_connect()
-    by_path = {os.path.basename(s.model_path): s for s in _SERVERS}
-    assert by_path["qwen3.5-8b-q4.gguf"].projector is None       # text only; the other one sees
-    assert by_path["gemma-4-12b-q4.gguf"].projector == str(tmp_path / "mmproj-gemma-4-12b-f16.gguf")
-    scheduled.pop()()                                          # neither ready yet: one poll rescheduled
-    assert len(scheduled) == 1 and gui._state == "starting"
-    scheduled.pop()()
-    language, vision = gui._endpoints["language"], gui._endpoints["vision"]
-    assert (language.vision, vision.vision) == (False, True) and (language.model, vision.model) == ("qwen3.5-8b-q4", "gemma-4-12b-q4")
-    assert gui._state == "ready" and gui.chat_window.isVisible()
-
-
-def test_the_window_waits_for_a_local_model_to_load(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    assert not gui.chat_window.isVisible() and not _SERVERS[0].stopped
-    scheduled.pop()()
-    scheduled.pop()()
-    assert gui.chat_window.isVisible()
-    sent = _collect(gui.sig_run_turn)
-    gui.chat_window.input.setText("centre the sample")
-    gui.on_submit()
-    assert sent == ["centre the sample"]
-
-
-def test_a_local_model_that_never_answers_is_given_up_with_its_log(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch, server_factory=lambda path, projector=None, context_tokens=None: _FakeServer(path, ready_after=99))
-    monkeypatch.setattr(gui_module.config, "LOCAL_SERVER_TIMEOUT_S", -1)   # past at once: Windows' clock can read 0 s
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    scheduled.pop()()
-    assert _SERVERS[0].stopped and gui._servers == {} and gui._state == "idle"
-    assert "did not answer" in gui.status_label.text() and "/tmp/fake.log" in gui.status_label.text()
-
-
-def test_a_server_that_cannot_start_is_reported_at_the_tab(tmp_path, monkeypatch):
-    class _NoRuntime(_FakeServer):
-        def start(self):
-            raise RuntimeError('llama-cpp-python is not installed: pip install "llama-cpp-python[server]"')
-
-    gui, scheduled = _local_gui(tmp_path, monkeypatch, server_factory=_NoRuntime)
-    _choose_mode(gui, "Local AI")
-    assert gui.on_connect() is None and scheduled == []
-    assert gui._servers == {} and gui._state == "idle"
-    assert "llama-cpp-python[server]" in gui.status_label.text()
-
-
-def test_other_models_take_disconnect_then_connect(tmp_path, monkeypatch):
-    """The setup is locked while connected: Disconnect first, then the new choice is applied by
-    the Connect after it, and refused there if it cannot be served."""
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    scheduled.pop()()
-    scheduled.pop()()
-    (server,) = _SERVERS
-    assert not gui.vision.isEnabled()
-    gui._worker = None                                         # no session taken in this test
-    gui.on_disconnect()
-    assert server.stopped and gui._state == "idle" and gui.vision.isEnabled()
-    _choose_mode(gui, "Local AI", gui.vision)                  # no projector in the folder
-    gui.on_connect()
-    assert gui._state == "idle" and "projector file" in gui.status_label.text()
-
-
-def test_shutdown_stops_local_servers(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    gui._worker = None                                         # nothing else to stop in this test
-    gui.shutdown()
-    assert _SERVERS[0].stopped and gui._servers == {}
-
-
-def test_local_vision_model_without_a_projector_is_refused(tmp_path, monkeypatch):
-    gui, _ = _local_gui(tmp_path, monkeypatch)
-    gui.language.key.setText("k")
-    _choose_mode(gui, "Local AI", gui.vision)
-    gui.on_connect()
-    assert _SERVERS == [] and gui._state == "idle"
-    assert "projector file" in gui.status_label.text()
 
 
 def test_stop_microscope_goes_the_main_windows_way_and_cancels_the_assistant():
@@ -734,37 +380,16 @@ def test_cancel_is_always_clickable_and_idle_between_turns():
     assert interrupted == [True] and "[cancelled]" in gui.chat_window.output.toPlainText()
 
 
-def test_tools_choice_defaults_to_regular_reaches_the_worker_and_follows_the_config(monkeypatch):
-    gui = _gui()
-    assert gui.tools_profile.currentText() == "Regular"
-    configured, switched = [], []
-    gui._worker = type("_W", (), {"configure": lambda self, endpoint, vision=None, profile=None: configured.append(profile),
-                                  "set_profile": lambda self, profile: switched.append(profile)})()
-    monkeypatch.setattr(gui, "_ensure_worker", lambda: True)
-    gui.language.key.setText("k")
-    gui.on_connect()
-    assert configured == ["Regular"]
-    gui.tools_profile.setCurrentText("Full")
-    gui.tools_profile.currentTextChanged.emit("Full")
-    assert switched == ["Full"]
-    core = _FakeCore(acceptor=object())
-    core.cfg = types.SimpleNamespace(ai_assistant_tools="Full")
-    assert AiAssistantGUI(_FakeParent(core)).tools_profile.currentText() == "Full"
-
-
 # --- ending the session ---
 
 class _StoppableWorker:
     """What Disconnect touches on the worker and its thread, recorded."""
 
     def __init__(self):
-        from mesoSPIM.src.ai_assistant.requests import Requests
         self.interrupted = 0
         self.configured = []
-        self.scheduler = None
-        self.requests = Requests()
 
-    def configure(self, endpoint, vision=None, profile=None):
+    def configure(self, endpoint, vision=None):
         self.configured.append(endpoint)
 
     def interrupt(self):
@@ -808,7 +433,7 @@ def test_the_coordinate_system_box_reaches_the_worker_and_takes_the_config_start
     gui = _gui()
     assert gui.axes() == config.DEFAULT_AXES
     assert gui.axis_boxes["z"].items() == ["toward the camera", "away from the camera"]
-    gui._worker = type("_W", (), {"max_history_turns": 20, "look_image_bin": 1})()
+    gui._worker = type("_W", (), {"look_image_bin": 1})()
     gui.axis_boxes["y"].setCurrentText("down")
     gui.axis_boxes["y"].currentTextChanged.emit("down")
     assert gui._worker.axes == {"x": "right", "y": "down", "z": "toward the camera"}
@@ -820,80 +445,6 @@ def test_the_coordinate_system_box_reaches_the_worker_and_takes_the_config_start
     assert not gui2.axis_boxes["x"].isEnabled()                                  # locked while connected, like the rest
 
 
-def test_a_due_schedule_runs_as_a_turn_and_a_stop_clears_them(monkeypatch):
-    """The tab's tick fires the first due schedule as a turn of its own, marked in the transcript,
-    written by the machine for the request that set it, never while a turn runs; Stop microscope
-    and Disconnect clear every schedule."""
-    from mesoSPIM.src.ai_assistant import config as config
-    gui, core, worker, thread = _connected_gui(monkeypatch)
-    clock = [1_000_000.0]
-    gui.scheduler.clock = lambda: clock[0]
-    sent, typed = [], []
-    gui.sig_run_machine_turn.connect(lambda text, request: sent.append((text, request)))
-    gui.sig_run_turn.connect(typed.append)
-    gui.scheduler.add("snaps", "take a snap", every_seconds=180, request=4)
-    gui.fire_due_schedule()
-    assert sent == []                                               # not due yet
-    clock[0] += 180
-    gui.fire_due_schedule()
-    assert sent == [(config.SCHEDULED_TURN.format(name="snaps", instruction="take a snap"), 4)] and typed == []
-    shown = gui.chat_window.output.toPlainText()
-    assert gui._running and "⏱ Scheduled: snaps · take a snap" in shown and "[scheduled" not in shown
-    clock[0] += 180
-    gui.fire_due_schedule()
-    assert len(sent) == 1                                           # a turn runs: it waits
-    gui._on_done()
-    gui.fire_due_schedule()
-    assert len(sent) == 2
-    gui.on_stop_microscope()
-    assert gui.scheduler.listing() == []
-    gui.scheduler.add("snaps", "take a snap", every_seconds=180)
-    gui.on_disconnect()
-    assert gui.scheduler.listing() == []
-
-
-def test_each_schedule_has_a_row_that_counts_down_and_cancels_it(monkeypatch):
-    """A row per schedule, in firing order, with how often and the time to its next firing; a due
-    one waits for the running turn; its Cancel ends that schedule only; Stop removes every row."""
-    gui, core, worker, thread = _connected_gui(monkeypatch)
-    clock = [1_000_000.0]
-    gui.scheduler.clock = lambda: clock[0]
-    rows = lambda: gui.chat_window.schedule_rows                  # noqa: E731  (rebuilt when the schedules change)
-    gui.fire_due_schedule()
-    assert rows() == {}                                               # nothing scheduled: no row
-    gui.scheduler.add("snap_every_minute", "take a snap", every_seconds=60)
-    gui.scheduler.add("focus", "check the focus", in_seconds=3725)
-    clock[0] += 18
-    gui._show_schedules()
-    assert list(rows()) == ["snap_every_minute", "focus"]
-    assert rows()["snap_every_minute"][1].text() == "⏱ snap every minute · every 1 min · next in 0:42"
-    assert rows()["focus"][1].text() == "⏱ focus · once · next in 1:01:47"
-    clock[0] += 42
-    gui._running = True                                             # a turn runs: the due one waits for it
-    gui._show_schedules()
-    assert rows()["snap_every_minute"][1].text().endswith("due, after this turn")
-    gui._running = False
-    gui.on_cancel_schedule("snap_every_minute")
-    assert [item["name"] for item in gui.scheduler.listing()] == ["focus"] and list(rows()) == ["focus"]
-    assert "[schedule cancelled: snap every minute]" in gui.chat_window.output.toPlainText()
-    gui.on_stop_microscope()
-    assert rows() == {}
-
-
-def test_a_continuation_is_shown_as_the_machine_s_turn_and_sent_as_written(monkeypatch):
-    """The model gets the bracketed continuation; the transcript shows a muted line, not the
-    operator's panel."""
-    from mesoSPIM.src.ai_assistant import config as config
-    gui, core, worker, thread = _connected_gui(monkeypatch)
-    sent = []
-    gui.sig_run_machine_turn.connect(lambda text, request: sent.append((text, request)))
-    text = config.CONTINUATION_TURN.format(number=3, result="waited 30 s; until done: met")
-    gui._on_continue(text, 3)
-    assert sent == [(text, 3)]
-    shown = gui.chat_window.output.toPlainText()
-    assert "↻ Request 3 continues: waited 30 s; until done: met" in shown and "[continuation" not in shown
-
-
 def test_an_openai_style_model_sees_only_when_the_box_says_so(monkeypatch):
     """An OpenAI-style server says nothing about its model: unticked, the endpoint cannot see and
     the status line says so; ticked, it can."""
@@ -902,7 +453,7 @@ def test_an_openai_style_model_sees_only_when_the_box_says_so(monkeypatch):
         configured = []
 
         class _Worker:
-            def configure(self, endpoint, vision=None, profile=None):
+            def configure(self, endpoint, vision=None):
                 configured.append(endpoint)
 
         gui._worker = _Worker()
@@ -970,19 +521,6 @@ def test_disconnect_during_a_turn_cancels_it(monkeypatch):
     assert gui._blocks == [] and gui.chat_window.output.toPlainText() == ""
 
 
-def test_disconnect_stops_a_local_model_server(tmp_path, monkeypatch):
-    gui, scheduled = _local_gui(tmp_path, monkeypatch)
-    _choose_mode(gui, "Local AI")
-    gui.on_connect()
-    scheduled.pop()()
-    scheduled.pop()()                      # the server answers: ready
-    assert gui._state == "ready"
-    gui._worker = None                                        # no session taken in this test
-    gui.on_disconnect()
-    assert _SERVERS[0].stopped and gui._servers == {}
-    assert gui._state == "idle"
-
-
 def test_a_path_in_a_reply_is_as_large_as_the_text_around_it():
     """Qt's Markdown gives an inline code span, which is how a model writes a file path, a fixed
     8 pt: smaller than the chat. The size goes; the fixed-width face stays."""
@@ -991,3 +529,41 @@ def test_a_path_in_a_reply_is_as_large_as_the_text_around_it():
     html = gui_module._chat_sized(qt)
     assert "font-size" not in html
     assert "font-family:'Courier New';" in html and "D:/tmp/remote_20260924-175526.tif" in html
+
+
+def test_the_meter_shows_the_session_size_warns_and_stops_at_the_model_s_ceiling(monkeypatch):
+    """The history is append-only until Clear context, so the tab shows what the last request cost
+    and refuses a new turn past the model's ceiling rather than sending one it would refuse."""
+    from mesoSPIM.src.ai_assistant import config as config
+    gui, core, worker, thread = _connected_gui(monkeypatch)            # Gemini
+    sent = []
+    gui.sig_run_turn.connect(sent.append)
+    warn, ceiling = config.PROVIDERS["Gemini"]["context_warn_tokens"], config.PROVIDERS["Gemini"]["context_max_tokens"]
+    gui._on_usage(12_000)
+    assert gui.chat_window.meter.text() == "12,000 tokens per request"
+    gui._on_usage(0)                                                    # a provider that counted nothing
+    assert gui.chat_window.meter.text() == "12,000 tokens per request"
+    gui._on_usage(warn)
+    assert config.CONTEXT_LARGE in gui.chat_window.meter.text()
+    gui._on_usage(ceiling)
+    gui.chat_window.input.setText("move x by 100")
+    gui.on_submit()
+    assert sent == [] and config.CONTEXT_FULL in gui.chat_window.output.toPlainText()
+    gui._worker = type("_W", (), {"reset": lambda self: None})()
+    gui.on_clear_all()
+    gui._worker = worker
+    gui.chat_window.input.setText("move x by 100")
+    gui.on_submit()
+    assert sent == ["move x by 100"] and gui.chat_window.meter.text() == ""
+
+
+def test_the_done_notice_is_one_grey_line_and_no_turn(monkeypatch):
+    gui, core, worker, thread = _connected_gui(monkeypatch)
+    sent = []
+    gui.sig_run_turn.connect(sent.append)
+    gui._active = {"tools": [], "reply": None, "error": None}
+    gui._on_tool("run_acquisition_list", "{}")
+    assert gui._done_check.active                                       # the worker is asked every 2 s
+    gui._on_run_ended("Acquisition list finished 14:02:00")
+    assert not gui._done_check.active and sent == []
+    assert "Acquisition list finished 14:02:00" in gui.chat_window.output.toPlainText()

@@ -158,7 +158,7 @@ def test_a_value_in_the_operators_words_is_not_asked_about():
                       ("set_camera", {"camera_exposure_time": 0.2}), ("set_intensity", {"intensity": 5}),
                       ("move_relative", {"deltas": {"y": 500}}), ("set_camera", {"camera_exposure_time": 0.0005}), "Done."))
     trace = run(model, "Intensity 30, move x by -0.1 mm, exposure 0.2 seconds, then five percent, "
-                       "y by half a millimetre, and 500 microseconds.", profile="Full")
+                       "y by half a millimetre, and 500 microseconds.")
     assert trace["asked"] == []                                              # every value was theirs
     assert not any(r.get("error", {}).get("code") == "refused" for r in results(trace))
     assert "outside" in results(trace)[-1]["error"]["message"]               # 500 us: the camera's own range, not the guard

@@ -83,7 +83,7 @@ def recorder(model):
     return Recorder(model)
 
 
-def record_case(case, model_factory, endpoint, profile=None, attempts=1, retries=2, retry_wait=None):
+def record_case(case, model_factory, endpoint, attempts=1, retries=2, retry_wait=None):
     """Run the case on the real model up to `attempts` times, until a run passes, and return the
     last run's trace with its recording under "recording". A run that ends in an error (a provider's
     rate limit) is run again up to `retries` times; every run has fresh recorders, so a recording
@@ -94,14 +94,14 @@ def record_case(case, model_factory, endpoint, profile=None, attempts=1, retries
                 time.sleep(harness.RETRY_WAIT_S if retry_wait is None else retry_wait)
             main = recorder(model_factory())
             eyes = recorder(model_factory()) if endpoint.vision else None
-            trace = harness.run_case(case, main, endpoint, profile, retries=0, vision_model=eyes)
+            trace = harness.run_case(case, main, endpoint, retries=0, vision_model=eyes)
             if not trace["error"]:
                 break
         trace["failures"] = harness.score(case, trace)
         if not trace["error"] and not trace["failures"]:
             break
     trace["recording"] = {
-        "model": endpoint.model, "vision": endpoint.vision, "profile": profile, "responses": main.responses,
+        "model": endpoint.model, "vision": endpoint.vision, "responses": main.responses,
         "eyes": eyes.responses if eyes is not None else [], "failures": trace["failures"],
         "provider_tokens": {"input": main.input_tokens, "requests": len(main.responses),
                             "eyes_input": eyes.input_tokens if eyes is not None else 0},
@@ -146,7 +146,7 @@ def replay_case(case, recorded):
                            vision=recorded["vision"])
     sizes = []
     eyes = replayed(recorded["eyes"]) if recorded["vision"] else None
-    trace = harness.run_case(case, replayed(recorded["responses"], sizes), endpoint, recorded["profile"], retries=0, vision_model=eyes)
+    trace = harness.run_case(case, replayed(recorded["responses"], sizes), endpoint, retries=0, vision_model=eyes)
     trace["failures"] = harness.score(case, trace)
     trace["tokens"] = sum(sizes)
     trace["requests"] = len(sizes)

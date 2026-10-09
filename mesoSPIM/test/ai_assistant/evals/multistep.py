@@ -1,6 +1,6 @@
 """Multi-step cases on the simulator over time, scored on outcomes (roadmap B4).
 
-Nine groups, each a template with hand-written phrasings. The smoke set is every phrasing with the
+Eight groups, each a template with hand-written phrasings. The smoke set is every phrasing with the
 group's canonical parameters (cases_multistep.json); the generated set draws phrasing and
 parameters from a seed: where the sample is, how far out of focus, how bright, how it drifts,
 the coordinate system (cases_generated.json). Both files are written from here:
@@ -68,14 +68,6 @@ PHRASINGS = {
         "Look at the sample, correct its position and focus if needed, and run the acquisition list.",
         "Get the sample centred and focused and then acquire the list.",
         "Prepare the sample (centred, in focus) and run the acquisition list.",
-    ],
-    "time lapse by schedule": [
-        "Run the acquisition list every {every} minutes for {total} minutes, and keep the sample in focus between runs.",
-        "Acquire the list every {every} minutes for the next {total} minutes. Refocus before each run.",
-        "Make a time series: the acquisition list every {every} minutes, {total} minutes in all, and keep it in focus.",
-        "For {total} minutes, run the acquisition list every {every} minutes, checking the focus each time.",
-        "Every {every} minutes, check the focus and run the acquisition list; stop after {total} minutes.",
-        "I need the list acquired every {every} minutes over {total} minutes, with the sample kept in focus.",
     ],
     "recovery from refusals": [
         "Set the filter to 515 long pass and take a snap.",
@@ -164,15 +156,6 @@ def build(group, case_id, phrasing, rng, canonical=False):
         return _case(case_id, group, phrasing, {"x": dx, "y": dy, "f": HOME["f_pos"] + df, "seed": seed},
                      {"core_calls": ["start"],
                       "truth": {"off_centre_um_max": CENTRED_UM, "focus_error_um_max": IN_FOCUS_UM}}, **extra)
-    if group == "time lapse by schedule":
-        every, total = pick((3, 15), lambda: rng.choice([(2, 10), (3, 15), (5, 20), (4, 12)]))
-        drift = pick(5.0, lambda: round(rng.choice((-1, 1)) * rng.uniform(3.0, 7.0), 1))
-        runs = total // every
-        return _case(case_id, group, phrasing.format(every=every, total=total),
-                     {"drift_um_per_min": {"f": drift}, "seed": seed},
-                     {"core_call_counts": {"start": [runs, runs + 1]}, "schedules": 0,
-                      "truth": {"focus_error_um_max": IN_FOCUS_UM}},
-                     setup={"run_for_s": (total + 2 * every) * 60, **({"axes": axes} if axes else {})})
     if group == "recovery from refusals":
         return _recovery(case_id, phrasing, seed, extra)
     if group == "vague requests":

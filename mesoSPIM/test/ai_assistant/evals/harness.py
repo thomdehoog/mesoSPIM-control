@@ -7,17 +7,15 @@ differ. It answers a different question than the code tests do: does the assista
 model and this prompt, do what an operator expects, including on refusals, limits and ambiguity.
 
 A case:
-    {"id": ..., "category": ..., "prompt": ... | "prompts": [...], "profile": "Regular"|"Full",
-     "setup": {"state": "live", "timelapse_active": true, "schedules": [...], "frames": [one per turn],
+    {"id": ..., "category": ..., "prompt": ... | "prompts": [...],
+     "setup": {"state": "live", "timelapse_active": true, "frames": [one per turn],
                "axes": {"x": "left"}, ...}, "answer": true|false (the Run / Cancel
      answer), "expect": {...}}
 "true_axes" (with a sample) is how the stage really moves the sample when "axes", what the
 assistant is told, is wrong; "measured" switches on measured values (E1). Setup keys are state
 keys of the simulated instrument (state, intensity, snap_folder, ...);
 timelapse_active is the Core attribute a GUI time lapse sets; frame chooses a synthetic camera
-frame ("spots", "ring") whose content only a model that looks at the picture can report. A case
-with "memory": n keeps only the last n turns in the model's history, so what it needs from
-earlier turns must come from the session store (recall_turn, search_history).
+frame ("spots", "ring") whose content only a model that looks at the picture can report.
 Expectations:
     calls          tool names that must have been called
     calls_any      at least one of these
@@ -52,7 +50,6 @@ from pathlib import Path
 
 from mesoSPIM.test.remote_control import conftest  # noqa: F401  (the Qt substitute: headless, synchronous)
 from mesoSPIM.src.ai_assistant import assistant as ai
-from mesoSPIM.src.ai_assistant.requests import Requests
 from mesoSPIM.src.remote_control import config as rc_config
 from mesoSPIM.src.remote_control import dispatcher as dispatcher
 from mesoSPIM.src.remote_control import servers as servers
@@ -65,8 +62,6 @@ STATE_PATHS = ("state", "position.x_pos", "position.y_pos", "position.z_pos", "p
                "laser", "intensity", "filter", "zoom", "shutterconfig")
 WAIT_CAP_S = 2.0   # a WAIT that no simulated signal ends (live) returns "still_running" after this
 TURN_S = 5.0       # simulated seconds a turn takes on a timed instrument: the operator and the model
-SCHEDULED_TURNS_MAX = 200
-CONTINUE_POLL_S = 5.0   # simulated seconds between the checks of a pending wait, as the tab's tick
 RETRY_WAIT_S = 20.0   # a provider error is mostly a per-minute rate limit: wait it out before retrying
 ASKING = ("?", "please specify", "please provide", "please clarify", "please tell", "let me know", "which axis",
           "how far", "how much", "what value", "need to know")   # a reply that asks, with or without a question mark
@@ -351,16 +346,16 @@ def _state_snapshot(core, extra=()):
 throttled = ai.throttled     # the tab's own request spacing, for a host with a tight per-minute limit
 
 
-def run_case(case, model, endpoint, profile=None, retries=2, retry_wait=None, vision_model=None):
+def run_case(case, model, endpoint, retries=2, retry_wait=None, vision_model=None):
     """Run one case through a fresh agent on a fresh simulated instrument. Returns the trace. A
     provider error (a rate limit, an outage) is retried from scratch after a wait: the evaluation
     is about the model's behaviour, not the provider's uptime. `vision_model` stands in for the
     eyes' model, as `model` does for the main one, in the offline tests."""
-    trace = _run_once(case, model, endpoint, profile, vision_model)
+    trace = _run_once(case, model, endpoint, vision_model)
     attempts = 1
     while trace["error"] and attempts <= retries:
         time.sleep(RETRY_WAIT_S if retry_wait is None else retry_wait)
-        trace = _run_once(case, model, endpoint, profile, vision_model)
+        trace = _run_once(case, model, endpoint, vision_model)
         attempts += 1
     trace["attempts"] = attempts
     return trace
@@ -373,7 +368,7 @@ def _describe(problem):
     return " | ".join(parts)
 
 
-def _run_once(case, model, endpoint, profile, vision_model=None):
+def _run_once(case, model, endpoint, vision_model=None):
     setup = case.get("setup") or {}
     axes = dict(ai.config.DEFAULT_AXES, **(setup.get("axes") or {}))
     if "sample" in setup:                             # the simulator over time (sim.py)
@@ -381,7 +376,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
         core = SampleInstrument(dict(axes, **(setup.get("true_axes") or {})))   # a wrong coordinate system
     else:
         core = SimulatedInstrument()
-    scheduler = ai.Scheduler(clock=getattr(core, "clock", time.time))
+    clock = getattr(core, "clock", time.time)        # the assistant's one clock: the simulator's, when it keeps one
     for key, value in setup.items():
         if key == "timelapse_active":
             core.timelapse_active = value
@@ -392,10 +387,7 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
             for name in value:
                 synthetic_frame(name)
             core.frame_name = value[0]
-        elif key == "schedules":                      # already set when the case starts
-            for item in value:
-                scheduler.add(**item)
-        elif key in ("axes", "true_axes", "sample", "run_for_s", "measured"):
+        elif key in ("axes", "true_axes", "sample", "measured"):
             pass                                      # read below
         elif key == "position":
             core.state["position"].update(value)
@@ -408,12 +400,10 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     asked = []
     answer = case.get("answer", True)
     gate = ai.ConfirmationGate(on_ask=lambda name, args: (asked.append(name), gate.answer(answer)))
-    store = ai.SessionStore(scheduler.clock)
-    eyes = ai.VisionSession(endpoint, model=vision_model, clock=scheduler.clock) if endpoint is not None and endpoint.vision else None
-    requests = Requests(scheduler.clock)
+    store = ai.SessionStore(clock)
+    eyes = ai.VisionSession(endpoint, model=vision_model, clock=clock) if endpoint is not None and endpoint.vision else None
     agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, gate=gate, store=store,
-                           profile=case.get("profile") or profile, scheduler=scheduler, vision_session=eyes, axes=axes,
-                           requests=requests, measured=bool(setup.get("measured")))
+                           vision_session=eyes, axes=axes, measured=bool(setup.get("measured")), clock=clock)
     frames = setup.get("frames") or []                            # one frame per turn: the sample changes between them
     history, tools, replies, served, error, prompts_run = [], [], [], [], None, []
     started = time.monotonic()
@@ -421,24 +411,14 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
     ai.config.WAIT_CAP_S, ai.config.POLL_INTERVAL_S = WAIT_CAP_S, 0.0
     timed = getattr(core, "timed", False)
 
-    def turn(prompt, request=None):
-        """A typed prompt, or with `request` a turn the machine wrote for it."""
+    def turn(prompt):
         nonlocal history, served
         if timed:
             core.wait(TURN_S)                            # the operator types, the model answers
-        if request is None:
-            requests.typed(prompt)
-        else:
-            requests.machine(request)
-        origin = "operator" if request is None else "machine"
         prompts_run.append(prompt)
-        result = agent.run_sync(ai.with_state(acceptor, prompt, store, scheduler, requests, origin),
-                                message_history=history)
+        result = agent.run_sync(ai.with_state(acceptor, prompt, store, clock), message_history=history)
         store.finish(result.new_messages(), result.output)
-        requests.finish_turn(result.output, ai.tokens_of(result.usage))
-        history = result.all_messages()
-        if case.get("memory"):                           # a short memory, so the store is what remembers
-            history = ai.trim_history(history, case["memory"])
+        history = result.all_messages()                  # append-only, as the tab keeps it
         tools.extend(dict(call, turn=len(replies) + 1) for call in ai.turn_trace(result.new_messages()))
         served += [name for name in ai.served_models(result.new_messages()) if name not in served]
         replies.append(result.output)
@@ -448,10 +428,6 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
             if frames:
                 core.frame_name = frames[min(index, len(frames) - 1)]
             turn(prompt)
-        if timed:
-            _run_time(core, scheduler, requests, acceptor, turn, core.clock() + setup.get("run_for_s", 0))
-        else:
-            _continue_at_once(requests, acceptor, turn)
     except Exception as problem:
         error = _describe(problem)
     finally:
@@ -463,47 +439,9 @@ def _run_once(case, model, endpoint, profile, vision_model=None):
         "id": case["id"], "category": case.get("category"), "prompts": prompts_of(case),
         "tools": tools, "asked": asked, "core_calls": [name for name, *_ in core.calls()],
         "state": _state_snapshot(core, expected_paths), "replies": replies, "served": served, "error": error,
-        "schedules": scheduler.listing(), "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run,
-        "requests": [{"number": r.number, "turns": r.turns, "tokens": r.tokens, "plan": r.plan, "ended": r.ended}
-                     for r in requests._known.values()],
+        "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run,
         **({"truth": core.truth()} if timed else {}),
     }
-
-
-def _run_time(core, scheduler, requests, acceptor, turn, end, most=SCHEDULED_TURNS_MAX):
-    """Let the simulated time run, as the tab's timer does: a wait that is over continues its
-    request, a due schedule fires as a turn of the request that set it, one at a time; to `end`,
-    and on while a wait is pending (its own limit ends it)."""
-    for _ in range(most):
-        due = requests.due(acceptor.dispatch)
-        if due is not None:
-            request, result = due
-            turn(ai.config.CONTINUATION_TURN.format(number=request.number, result=result), request.number)
-            continue
-        item = scheduler.pop_due()
-        if item is not None:
-            turn(ai.config.SCHEDULED_TURN.format(name=item["name"], instruction=item["instruction"]),
-                 item.get("request") or 0)
-            continue
-        waits = [listed["due_in_s"] for listed in scheduler.listing()]
-        if requests.waiting is not None:
-            core.wait(min([CONTINUE_POLL_S] + [max(1, w) for w in waits]))
-        elif waits and core.clock() + min(waits) < end:
-            core.wait(max(1, min(waits)))
-        else:
-            core.wait(max(0.0, end - core.clock()))
-            return
-
-
-def _continue_at_once(requests, acceptor, turn):
-    """On the instrument without a clock, operations end at once: a wait for them is over at once,
-    and a wait for time never ends."""
-    for _ in range(ai.config.CONTINUATIONS_MAX):
-        due = requests.due(acceptor.dispatch)
-        if due is None:
-            return
-        request, result = due
-        turn(ai.config.CONTINUATION_TURN.format(number=request.number, result=result), request.number)
 
 
 _NEGATION_BEFORE = re.compile(r"(?:\bnon[- ]|\bnot (?:an? |the )?|\bno |n't (?:an? |the )?)$")
@@ -585,9 +523,6 @@ def score(case, trace):
             failures.append(f"expected no change before the question; called {_mutations(trace['tools'])}")
     if expect.get("no_mutations") and _mutations(trace["tools"]):
         failures.append(f"expected reads only; called {_mutations(trace['tools'])}")
-    if "schedules" in expect and len(trace.get("schedules") or []) != expect["schedules"]:
-        failures.append(f"{len(trace.get('schedules') or [])} schedules at the end, expected {expect['schedules']}: "
-                        f"{trace.get('schedules')}")
     if expect.get("reply_mentions_any") and not any(text.lower() in replies for text in expect["reply_mentions_any"]):
         failures.append(f"no reply mentions any of {expect['reply_mentions_any']}")
     leaked = [text for text in expect.get("reply_mentions_none", []) if _stated(text.lower(), replies)]
@@ -612,10 +547,9 @@ def score(case, trace):
 def check_cases(cases):
     """Problems in the case file itself: duplicate ids, unknown tools, unknown expectation keys."""
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
-             "core_calls_not", "confirm", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none", "schedules",
+             "core_calls_not", "confirm", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
              "truth", "core_call_counts"}
-    tools = set(COMMANDS) | {"look", "ask_eyes", "recall_turn", "search_history", "update_acquisition_row", "schedule",
-                             "cancel_schedule"}
+    tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate", "update_acquisition_row"}
     problems, seen = [], set()
     for case in cases:
         if case["id"] in seen:

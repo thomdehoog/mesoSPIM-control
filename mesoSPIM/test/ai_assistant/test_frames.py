@@ -29,7 +29,7 @@ def tools_on(core, tmp_path, axes=None, answer=True):
     store = ai.SessionStore(core.clock, fh.Calibration(tmp_path / "calibration.json"))
     gate = ai.ConfirmationGate(on_ask=lambda name, args: gate.answer(answer))
     tools = ai.build_tools(acceptor, threading.Event(), endpoint=SCRIPTED, gate=gate, store=store,
-                           axes=dict(ai.config.DEFAULT_AXES, **(axes or {})), profile="Full")
+                           axes=dict(ai.config.DEFAULT_AXES, **(axes or {})))
     ai.with_state(acceptor, "a turn", store)                 # the guard counts turns; the moves get their Run
     return acceptor, store, {t.name: t for t in tools}
 

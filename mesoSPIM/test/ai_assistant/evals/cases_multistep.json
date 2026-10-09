@@ -742,198 +742,6 @@
   }
  },
  {
-  "id": "ms-time-lapse-by-schedule-1",
-  "category": "time lapse by schedule",
-  "prompt": "Run the acquisition list every 3 minutes for 15 minutes, and keep the sample in focus between runs.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 5181
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
-  "id": "ms-time-lapse-by-schedule-2",
-  "category": "time lapse by schedule",
-  "prompt": "Acquire the list every 3 minutes for the next 15 minutes. Refocus before each run.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 3351
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
-  "id": "ms-time-lapse-by-schedule-3",
-  "category": "time lapse by schedule",
-  "prompt": "Make a time series: the acquisition list every 3 minutes, 15 minutes in all, and keep it in focus.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 9053
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
-  "id": "ms-time-lapse-by-schedule-4",
-  "category": "time lapse by schedule",
-  "prompt": "For 15 minutes, run the acquisition list every 3 minutes, checking the focus each time.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 7816
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
-  "id": "ms-time-lapse-by-schedule-5",
-  "category": "time lapse by schedule",
-  "prompt": "Every 3 minutes, check the focus and run the acquisition list; stop after 15 minutes.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 7254
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
-  "id": "ms-time-lapse-by-schedule-6",
-  "category": "time lapse by schedule",
-  "prompt": "I need the list acquired every 3 minutes over 15 minutes, with the sample kept in focus.",
-  "setup": {
-   "position": {
-    "x_pos": 0.0,
-    "y_pos": 0.0,
-    "z_pos": 0.0,
-    "f_pos": 5000.0
-   },
-   "sample": {
-    "drift_um_per_min": {
-     "f": 5.0
-    },
-    "seed": 8542
-   },
-   "run_for_s": 1260
-  },
-  "expect": {
-   "core_call_counts": {
-    "start": [
-     5,
-     6
-    ]
-   },
-   "schedules": 0,
-   "truth": {
-    "focus_error_um_max": 40
-   }
-  }
- },
- {
   "id": "ms-recovery-from-refusals-1",
   "category": "recovery from refusals",
   "prompt": "Set the filter to 515 long pass and take a snap.",
@@ -945,7 +753,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 4268
+    "seed": 5181
    }
   },
   "expect": {
@@ -970,7 +778,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 1021
+    "seed": 3351
    }
   },
   "expect": {
@@ -1002,7 +810,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 8990
+    "seed": 9053
    },
    "state": "live"
   },
@@ -1028,7 +836,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 231
+    "seed": 7816
    },
    "acq_list": []
   },
@@ -1054,7 +862,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 1529
+    "seed": 7254
    }
   },
   "expect": {
@@ -1079,7 +887,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 6535
+    "seed": 8542
    }
   },
   "expect": {
@@ -1109,7 +917,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 19,
+    "seed": 4268,
     "f": 5120.0
    }
   },
@@ -1143,7 +951,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 8087,
+    "seed": 1021,
     "f": 5120.0
    }
   },
@@ -1177,7 +985,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 5459,
+    "seed": 8990,
     "f": 5120.0
    }
   },
@@ -1211,7 +1019,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 3997,
+    "seed": 231,
     "f": 5120.0
    }
   },
@@ -1245,7 +1053,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 5329,
+    "seed": 1529,
     "f": 5120.0
    }
   },
@@ -1279,7 +1087,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 1032,
+    "seed": 6535,
     "f": 5120.0
    }
   },
@@ -1313,7 +1121,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 3131,
+    "seed": 19,
     "x": 6000,
     "y": 0
    },
@@ -1340,7 +1148,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 9299,
+    "seed": 8087,
     "brightness": 1000000
    },
    "intensity": 50
@@ -1366,7 +1174,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 3633,
+    "seed": 5459,
     "f": 5250.0
    },
    "intensity": 10
@@ -1392,7 +1200,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 3910,
+    "seed": 3997,
     "x": 600,
     "y": -400
    },
@@ -1419,7 +1227,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 2335,
+    "seed": 5329,
     "f": 4750.0
    },
    "intensity": 10
@@ -1445,7 +1253,7 @@
     "f_pos": 5000.0
    },
    "sample": {
-    "seed": 8897,
+    "seed": 1032,
     "brightness": 1000000
    },
    "intensity": 50

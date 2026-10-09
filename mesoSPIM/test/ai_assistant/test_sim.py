@@ -103,21 +103,6 @@ def test_live_shows_the_sample_as_it_is_now():
     assert frame["stats"]["signal_centroid"]["col"] > 0.7
 
 
-def test_a_case_on_the_simulator_fires_its_schedules_and_scores_the_outcome():
-    """A schedule set in the first turn fires as a turn of its own each minute while the case's
-    time runs, and the score reads the simulator's truth at the end."""
-    case = {"id": "sim", "prompt": "snap every minute",
-            "setup": {"sample": {"x": 0.0}, "position": {"x_pos": 300.0}, "run_for_s": 190},
-            "expect": {"calls": ["schedule"], "min_calls": {"snap": 3}, "truth": {"off_centre_um_max": 100}}}
-    model = scripted((("schedule", {"name": "snaps", "instruction": "take a snap", "every_seconds": 60}), "Scheduled."),
-                     *[(("snap", {}), "Snapped.")] * 3)
-    trace = harness.run_case(case, model, SCRIPTED)
-    assert [t["tool"] for t in trace["tools"]] == ["schedule", "snap", "snap", "snap"]
-    assert trace["truth"]["elapsed_s"] >= 190 and trace["truth"]["off_centre_um"] == 300.0
-    assert harness.score(case, trace) == ["off_centre_um is 300.0, expected at most 100"]
-    assert harness.check_cases([case]) == []
-
-
 @pytest.mark.parametrize("light", [
     {}, {"intensity": 2}, {"intensity": 100, "camera_exposure_time": 0.2}, {"zoom": "2x"}, {"hot_pixel": True}])
 def test_the_focus_measure_peaks_clearly_at_the_sharp_frame(light):

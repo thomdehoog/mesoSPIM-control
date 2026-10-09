@@ -1,14 +1,12 @@
 """Run the AI Assistant's behavioural evaluation against real models.
 
     python -m mesoSPIM.test.ai_assistant.evals.run --provider Gemini [--model NAME[,NAME...]] [--repeat N]
-        [--profile Regular] [--only id,id] [--out runs/{date}-{model}.jsonl]
+        [--only id,id] [--out runs/{date}-{model}.jsonl]
     python -m mesoSPIM.test.ai_assistant.evals.run --rescore runs/2026-09-17-gemini-3.5-flash-lite.jsonl
-    python -m mesoSPIM.test.ai_assistant.evals.run --local ~/mesoSPIM/models/gemma-3-12b-it-Q4_K_M.gguf
     python -m mesoSPIM.test.ai_assistant.evals.run --provider OpenAI-style --base-url http://localhost:11434/v1 --model qwen3:8b
 
---local serves a GGUF file exactly as the tab's Local AI mode does (with its projector file when
-one lies beside it, so the model can see) and evaluates against it; --base-url points the
-OpenAI-style preset at a server already running (Ollama, llama-server, vLLM). The key comes from
+--base-url points the OpenAI-style preset at a server already running (Ollama, llama-server,
+vLLM, a gateway). The key comes from
 the tab's environment variable for the provider (GEMINI_API_KEY, ...). Each
 case is printed as it finishes; every trace is appended to the output file, whose name may carry
 {date}, {provider} and {model}; several models run one after the other, each --repeat times, so
@@ -42,7 +40,7 @@ def file_name_part(model):
     return re.sub(r'[<>:"/\\|?*]+', "-", model)
 
 
-def run_suite(cases, model, endpoint, profile, sink, repeat=1, pause=0.0, log=print, retries=2, retry_wait=None):
+def run_suite(cases, model, endpoint, sink, repeat=1, pause=0.0, log=print, retries=2, retry_wait=None):
     """Run every case `repeat` times, appending each trace (with its score) to `sink`. Returns
     the (case, trace, failures) triples in order."""
     results = []
@@ -50,7 +48,7 @@ def run_suite(cases, model, endpoint, profile, sink, repeat=1, pause=0.0, log=pr
         for index, case in enumerate(cases):
             if results:
                 time.sleep(pause)
-            trace = harness.run_case(case, model, endpoint, profile, retries=retries, retry_wait=retry_wait)
+            trace = harness.run_case(case, model, endpoint, retries=retries, retry_wait=retry_wait)
             failures = harness.score(case, trace)
             trace["failures"] = failures
             trace["provider"], trace["model"], trace["repeat"] = endpoint.provider, endpoint.model, round_number
@@ -61,7 +59,7 @@ def run_suite(cases, model, endpoint, profile, sink, repeat=1, pause=0.0, log=pr
     return results
 
 
-def record_suite(cases, model_factory, endpoint, cases_file, profile=None, attempts=3, pause=0.0, log=print, retries=2,
+def record_suite(cases, model_factory, endpoint, cases_file, attempts=3, pause=0.0, log=print, retries=2,
                  retry_wait=None):
     """Run every case on the model and keep its run in the recording, with the estimated tokens of
     its replay as the baseline; saved after each case, so a run cut short keeps what it did."""
@@ -69,7 +67,7 @@ def record_suite(cases, model_factory, endpoint, cases_file, profile=None, attem
     for case in cases:
         if results:
             time.sleep(pause)
-        trace = replay.record_case(case, model_factory, endpoint, profile, attempts, retries, retry_wait)
+        trace = replay.record_case(case, model_factory, endpoint, attempts, retries, retry_wait)
         recorded = trace.pop("recording")
         again = replay.replay_case(case, recorded)
         recorded["tokens"] = again["tokens"]
@@ -101,10 +99,8 @@ def main(argv=None):
     parser.add_argument("--base-url", default="", help="an OpenAI-style server already running, e.g. http://localhost:11434/v1")
     parser.add_argument("--api-key", default=os.environ.get("OPENAI_STYLE_API_KEY", ""),
                         help="the key an OpenAI-style server asks for (a gateway such as OpenRouter); or OPENAI_STYLE_API_KEY")
-    parser.add_argument("--local", default="", help="a .gguf file to serve with llama.cpp as the tab's Local AI mode does")
     parser.add_argument("--vision", action="store_true", help="with --base-url: the server's model can see images")
     parser.add_argument("--repeat", type=int, default=1, help="run every case this many times")
-    parser.add_argument("--profile", default=config.DEFAULT_TOOL_PROFILE, choices=sorted(config.TOOL_PROFILES))
     parser.add_argument("--only", default="", help="comma-separated case ids")
     parser.add_argument("--cases", default=str(harness.CASES_FILE))
     parser.add_argument("--out", default="assistant-evals-{date}-{model}.jsonl",
@@ -134,63 +130,34 @@ def main(argv=None):
         results = [(by_id[t["id"]], t, harness.score(by_id[t["id"]], t)) for t in traces if t["id"] in by_id]
         return report(results)
 
-    server = None
-    if arguments.local:
-        server, endpoint = local_endpoint(arguments.local)
-        endpoints = [endpoint]
-    else:
-        endpoints = []
-        for name in [m.strip() for m in arguments.model.split(",")]:
-            endpoint = ai.Endpoint.from_preset(arguments.provider, name, api_key=arguments.api_key, base_url=arguments.base_url)
-            if arguments.vision:
-                endpoint = dataclasses.replace(endpoint, vision=True)
-            if endpoint.needs_key and not endpoint.api_key:
-                print(f"set {config.PROVIDERS[arguments.provider]['key_env']} first", file=sys.stderr)
-                return 2
-            endpoints.append(endpoint)
+    endpoints = []
+    for name in [m.strip() for m in arguments.model.split(",")]:
+        endpoint = ai.Endpoint.from_preset(arguments.provider, name, api_key=arguments.api_key, base_url=arguments.base_url)
+        if arguments.vision:
+            endpoint = dataclasses.replace(endpoint, vision=True)
+        if endpoint.needs_key and not endpoint.api_key:
+            print(f"set {config.PROVIDERS[arguments.provider]['key_env']} first", file=sys.stderr)
+            return 2
+        endpoints.append(endpoint)
     results = []
-    try:
-        for endpoint in endpoints:
-            out = arguments.out.format(date=dt.date.today().isoformat(), provider=endpoint.provider,
-                                       model=file_name_part(endpoint.model))
-            def model_factory(endpoint=endpoint):
-                model = ai.build_model(endpoint)
-                return harness.throttled(model, arguments.request_interval) if arguments.request_interval else model
-            if arguments.record:
-                print(f"== {endpoint.provider} {endpoint.model} -> {replay.recording_file(arguments.cases)}")
-                results += record_suite(cases, model_factory, endpoint, arguments.cases, arguments.profile, arguments.attempts,
-                                        arguments.pause, retries=arguments.retries, retry_wait=arguments.retry_wait)
-                continue
-            print(f"== {endpoint.provider} {endpoint.model} -> {out}")
-            with open(out, "a", encoding="utf-8") as sink:
-                model = model_factory()
-                results += run_suite(cases, model, endpoint, arguments.profile, sink,
-                                     repeat=arguments.repeat, pause=arguments.pause,
-                                     retries=arguments.retries, retry_wait=arguments.retry_wait)
-    finally:
-        if server is not None:
-            server.stop()
+    for endpoint in endpoints:
+        out = arguments.out.format(date=dt.date.today().isoformat(), provider=endpoint.provider,
+                                   model=file_name_part(endpoint.model))
+        def model_factory(endpoint=endpoint):
+            model = ai.build_model(endpoint)
+            return harness.throttled(model, arguments.request_interval) if arguments.request_interval else model
+        if arguments.record:
+            print(f"== {endpoint.provider} {endpoint.model} -> {replay.recording_file(arguments.cases)}")
+            results += record_suite(cases, model_factory, endpoint, arguments.cases, arguments.attempts,
+                                    arguments.pause, retries=arguments.retries, retry_wait=arguments.retry_wait)
+            continue
+        print(f"== {endpoint.provider} {endpoint.model} -> {out}")
+        with open(out, "a", encoding="utf-8") as sink:
+            model = model_factory()
+            results += run_suite(cases, model, endpoint, sink,
+                                 repeat=arguments.repeat, pause=arguments.pause,
+                                 retries=arguments.retries, retry_wait=arguments.retry_wait)
     return report(results)
-
-
-def local_endpoint(path, timeout_s=None, poll_s=0.5, log=print):
-    """Serve the GGUF at `path` as the tab does and wait until it answers. Returns the server (to
-    stop afterwards) and the endpoint to evaluate; the model may see images when a projector file
-    for its family lies beside it."""
-    from mesoSPIM.src.ai_assistant.local import LocalModelServer, projector_for
-    folder, name = os.path.split(path)
-    projector = projector_for(folder or ".", os.path.splitext(name)[0])
-    server = LocalModelServer(path, projector=projector)
-    server.start()
-    log(f"== serving {name} on {server.base_url}" + (f" with {os.path.basename(projector)}" if projector else "") + " ...")
-    deadline = time.monotonic() + (timeout_s or config.LOCAL_SERVER_TIMEOUT_S)
-    while not server.ready():
-        if time.monotonic() > deadline:
-            server.stop()
-            raise SystemExit(f"the model did not answer within {timeout_s or config.LOCAL_SERVER_TIMEOUT_S} s; see {server.log_path}")
-        time.sleep(poll_s)
-    endpoint = ai.Endpoint.from_preset("OpenAI-style", model=server.model, base_url=server.base_url)
-    return server, dataclasses.replace(endpoint, vision=projector is not None)
 
 
 if __name__ == "__main__":

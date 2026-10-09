@@ -26,17 +26,8 @@ def scripted(*turns):
     replies = iter(steps)
 
     def model_function(messages, info):
-        if challenged(messages):
-            return ModelResponse(parts=[TextPart("SAME")])    # a reply that called nothing stands as it was
         return next(replies)
     return FunctionModel(model_function)
-
-
-def challenged(messages):
-    """True when the request is the assistant's question about a reply that called no tool."""
-    from mesoSPIM.src.ai_assistant import config as config
-    return any(type(part).__name__ == "RetryPromptPart" and part.content == config.CALLED_NOTHING_CHALLENGE
-               for part in messages[-1].parts)
 
 
 def case(case_id):
@@ -98,18 +89,6 @@ def test_a_gui_started_live_is_reported_busy():
     model = scripted((("snap", {}), "The instrument is busy: live is running."))
     trace = harness.run_case(case("busy-gui-live"), model, SCRIPTED)
     assert "busy" in trace["tools"][0]["result"] and harness.score(case("busy-gui-live"), trace) == []
-
-
-def test_profiles_change_what_the_model_may_call():
-    model = scripted((("set_etl", {"etl_l_amplitude": 1.5}), "Set."))
-    full = harness.run_case(case("full-offers-the-machine"), model, SCRIPTED)
-    assert harness.score(case("full-offers-the-machine"), full) == []
-    regular = harness.run_case(case("regular-offers-the-etl"), scripted((("set_etl", {"etl_l_amplitude": 1.5}), "Set.")), SCRIPTED)
-    assert harness.score(case("regular-offers-the-etl"), regular) == []
-    honest = scripted("The exposure time is not available in the Regular tool set; switch to Full for that.")
-    assert harness.score(case("regular-hides-exposure"), harness.run_case(case("regular-hides-exposure"), honest, SCRIPTED)) == []
-    insistent = harness.run_case(case("regular-hides-exposure"), scripted((("set_camera", {"camera_exposure_time": 0.05}), "Set."), "Set."), SCRIPTED)
-    assert "set_camera" not in insistent["core_calls"]              # the tool is not there to call
 
 
 def test_settings_show_in_the_simulated_state():
@@ -193,8 +172,8 @@ def test_run_suite_repeats_and_records_the_round(tmp_path):
     sink = tmp_path / "traces.jsonl"
     logged = []
     with open(sink, "w", encoding="utf-8") as handle:
-        table = "The settings, then: I run with the Regular tool set."
-        results = runner.run_suite(cases, scripted(table, "Hi.", table, "Hi."), SCRIPTED, None, handle, repeat=2, log=logged.append)
+        table = "The settings, then: the zoom, the laser and the filter."
+        results = runner.run_suite(cases, scripted(table, "Hi.", table, "Hi."), SCRIPTED, handle, repeat=2, log=logged.append)
     traces = [json.loads(line) for line in sink.read_text(encoding="utf-8").splitlines()]
     assert [t["id"] for t in traces] == ["read-capabilities", "greeting-no-tools"] * 2
     assert [t["repeat"] for t in traces] == [1, 1, 2, 2] and all(t["model"] == "m" for t in traces)
@@ -219,24 +198,6 @@ def test_the_scoreboard_pools_repeats_and_names_the_flaky_cases():
     assert text.startswith("| model | runs | pass |") and "| m1 | 3 | 67% | 0 | 1 | 2.0 | 1 | 0 |" in text
     assert board["m1"]["fallback"] == 1 and board["m2"]["fallback"] == 0
     assert "| moves | 50% | - |" in text and "pass only sometimes: a" in text and "always failing: b, c" in text
-
-
-def test_the_schedule_cases_pass_with_the_right_calls_and_fail_without():
-    """The schedule tools exist in the harness, the case's schedules are set before it starts,
-    and the count at the end is scored."""
-    every = scripted((("schedule", {"name": "snaps", "instruction": "take a snap", "every_seconds": 180}), "Every three minutes."))
-    trace = harness.run_case(case("schedule-every-n-minutes"), every, SCRIPTED)
-    assert harness.score(case("schedule-every-n-minutes"), trace) == [] and trace["schedules"][0]["every_seconds"] == 180
-    now = scripted((("snap", {}), "Done."))                        # snapped now instead of scheduling
-    assert harness.score(case("schedule-every-n-minutes"), harness.run_case(case("schedule-every-n-minutes"), now, SCRIPTED))
-    cancel = scripted((("cancel_schedule", {"name": "snaps"}), "Cancelled."))
-    assert harness.score(case("schedule-cancel"), harness.run_case(case("schedule-cancel"), cancel, SCRIPTED)) == []
-    stopped = scripted((("stop_activity", {}), "Stopped."))
-    assert harness.score(case("schedule-cancel"), harness.run_case(case("schedule-cancel"), stopped, SCRIPTED))
-    fired = scripted((("snap", {}), "Snapped."))
-    assert harness.score(case("scheduled-turn-is-carried-out"), harness.run_case(case("scheduled-turn-is-carried-out"), fired, SCRIPTED)) == []
-    listing = scripted("You have snaps every 180 seconds: take a snap.")
-    assert harness.score(case("schedule-listing"), harness.run_case(case("schedule-listing"), listing, SCRIPTED)) == []
 
 
 def test_a_look_during_a_live_mode_the_assistant_started_reads_the_live_frame():
@@ -370,15 +331,6 @@ def test_a_reply_that_quotes_the_state_block_fails_every_case():
     assert failures == ["a reply quotes the <microscope_state> block"]
 
 
-def test_a_short_memory_case_still_answers_from_the_store():
-    model = scripted("Set.", "Moved.", "Zoomed.", "Filter in.",
-                     (("recall_turn", {"turn": 1}), "The first readout showed 1,000,000 bytes free."))
-    trace = harness.run_case(case("recall-a-readout-the-memory-lost"), model, SCRIPTED)
-    assert harness.score(case("recall-a-readout-the-memory-lost"), trace) == []
-    recalled = json.loads([t for t in trace["tools"] if t["tool"] == "recall_turn"][0]["result"])
-    assert recalled["prompt"] == "Set the intensity to 35." and recalled["readout"]["disk"]["free_bytes"] == 1000000
-
-
 def test_a_snap_right_before_a_look_is_a_wasted_round_trip():
     wasteful = scripted((("snap", {}), ("look", {"question": "centred?"}), "Centred."))
     failures = harness.score(case("look"), harness.run_case(case("look"), wasteful, SCRIPTED))
@@ -389,29 +341,6 @@ def test_a_snap_right_before_a_look_is_a_wasted_round_trip():
     trace = harness.run_case(case("look-without-new-snap"), across, SCRIPTED)
     assert [c["turn"] for c in trace["tools"]] == [1, 2]                       # a snap in an earlier turn is fine
     assert harness.score(case("look-without-new-snap"), trace) == []
-
-
-def test_the_runner_serves_a_local_file_and_evaluates_against_it(monkeypatch, tmp_path):
-    from mesoSPIM.test.ai_assistant.evals import run as runner
-    from mesoSPIM.src.ai_assistant import local as local
-    (tmp_path / "gemma-3-4b-it-Q4.gguf").write_bytes(b"")
-    (tmp_path / "mmproj-gemma-3-4b-it.gguf").write_bytes(b"")
-    started = []
-
-    class FakeServer:
-        def __init__(self, path, command=None, projector=None, context_tokens=None):
-            self.model_path, self.projector, self.polls = path, projector, 0
-            self.model, self.base_url, self.log_path = "gemma-3-4b-it-Q4", "http://127.0.0.1:4242/v1", "x.log"
-        def start(self): started.append(self.model_path)
-        def ready(self):
-            self.polls += 1
-            return self.polls > 1
-        def stop(self): started.append("stopped")
-    monkeypatch.setattr(local, "LocalModelServer", FakeServer)
-    server, endpoint = runner.local_endpoint(str(tmp_path / "gemma-3-4b-it-Q4.gguf"), poll_s=0, log=lambda *a: None)
-    assert endpoint.provider == "OpenAI-style" and endpoint.base_url == "http://127.0.0.1:4242/v1"
-    assert endpoint.model == "gemma-3-4b-it-Q4" and endpoint.vision is True     # the projector lay beside it
-    assert server.projector.endswith("mmproj-gemma-3-4b-it.gguf") and started == [str(tmp_path / "gemma-3-4b-it-Q4.gguf")]
 
 
 def test_the_second_round_of_vision_frames_carry_what_they_claim():

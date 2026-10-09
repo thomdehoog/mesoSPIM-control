@@ -26,9 +26,9 @@ def test_every_case_is_sound_and_every_group_is_there():
     cases = multistep.smoke() + multistep.generated()
     assert harness.check_cases(cases) == []
     groups = {c["category"] for c in cases}
-    assert groups == set(multistep.PHRASINGS) and len(groups) == 9
+    assert groups == set(multistep.PHRASINGS) and len(groups) == 8
     assert all("sample" in c["setup"] for c in cases)                       # all on the simulator over time
-    assert len(multistep.smoke()) == 54 and len(multistep.generated()) == 180
+    assert len(multistep.smoke()) == 48 and len(multistep.generated()) == 160
 
 
 RIGHT = {   # the calls that reach each smoke case's outcome, from its canonical parameters
@@ -53,22 +53,6 @@ def test_the_right_calls_reach_the_outcome_and_saying_so_does_not(case_id):
     if case["expect"].get("truth"):
         claimed = harness.run_case(case, scripted("Done, it is all set."), SCRIPTED)
         assert any("expected" in f for f in harness.score(case, claimed))
-
-
-def test_a_time_lapse_by_schedule_that_refocuses_each_run_passes():
-    """Every three minutes for fifteen, with the focus drifting 5 um a minute: five runs, each
-    after a 15 um correction, and the schedules gone at the end."""
-    case = smoke("ms-time-lapse-by-schedule-1")
-    setup = (("schedule", {"name": "runs", "instruction": "refocus and run the acquisition list", "every_seconds": 180}),
-             ("schedule", {"name": "end", "instruction": "cancel the schedule runs", "in_seconds": 900}), "Scheduled.")
-    run = (("move_relative", {"deltas": {"f": 15}}), ("run_acquisition_list", {}), "Refocused and running.")
-    trace = harness.run_case(case, scripted(setup, *[run] * 5, (("cancel_schedule", {"name": "all"}), "Stopped.")),
-                             SCRIPTED)
-    assert harness.score(case, trace) == [], (trace["core_calls"].count("start"), trace["truth"], trace["schedules"])
-    never = harness.run_case(case, scripted(setup[:1] + ("Scheduled.",), *[(("run_acquisition_list", {}), "Running.")] * 9),
-                             SCRIPTED)
-    failures = harness.score(case, never)
-    assert any("focus_error_um" in f for f in failures) and any("start" in f or "schedules" in f for f in failures)
 
 
 def test_the_refusal_cases_hold_what_was_refused():

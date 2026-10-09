@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from mesoSPIM.test.remote_control import conftest as _rc_conftest    # noqa: F401,E402 (installs it)
 
-collect_ignore = ["test_real_pyqt_assistant_smoke.py", "test_real_pyqt_scheduler_smoke.py"]  # scripts for real PyQt; run.py pyqt runs them
+collect_ignore = ["test_real_pyqt_assistant_smoke.py"]  # scripts for real PyQt; run.py pyqt runs them
 
 from PyQt5 import QtCore, QtWidgets                                  # noqa: E402 (the substitute)
 

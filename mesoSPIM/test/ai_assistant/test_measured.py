@@ -23,7 +23,7 @@ def guarded(core, tmp_path, measured=True, prompt="a turn"):
     store = ai.SessionStore(core.clock, fh.Calibration(tmp_path / "calibration.json"))
     gate = ai.ConfirmationGate(on_ask=lambda name, args: gate.answer(False))
     tools = {t.name: t for t in ai.build_tools(acceptor, threading.Event(), endpoint=SCRIPTED, gate=gate, store=store,
-                                               axes=dict(config.DEFAULT_AXES), profile="Full", measured=measured)}
+                                               axes=dict(config.DEFAULT_AXES), measured=measured)}
     ai.with_state(acceptor, prompt, store)
     return acceptor, store, tools
 
