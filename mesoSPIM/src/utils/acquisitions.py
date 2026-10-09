@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 from ..plugins.utils import get_image_writer_name_for_file_extension, get_image_writer_from_name
 
 
+def value_from_state(state, key):
+    ''' The value an acquisition row's `key` takes from the microscope's current state ("mark current"):
+    positions rounded as the table shows them, the focus range at the current focus. '''
+    if key in ('x_pos', 'y_pos', 'z_pos', 'f_pos'):
+        return round(state['position'][key], 2)
+    elif key == 'rot':
+        return round(state['position']['theta_pos'], 1)
+    elif key in ('f_start', 'f_end'):
+        return state['position']['f_pos']
+    return state[key]
+
+
 class Acquisition(indexed.IndexedOrderedDict):
     '''
     Custom acquisition dictionary. Contains all the information to run a single
