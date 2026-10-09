@@ -27,8 +27,9 @@ gemini-3.5-flash-lite. No hardware.
   is the `pip freeze` of the conda env before the AI Assistant was installed into it.
 - `tools/drive_gui.py`: drives the real demo GUI (Remote Control and AI Assistant tabs) through its
   own widgets with the Gemini preset, and checks Core's state and the window after each step.
-  `--steps a,...,g` is step 2 of the brief, `--steps m` the measured-values check, `--serve TCP|MCP`
-  keeps a demo running for the walkthrough and live suites. It refuses anything but DemoStage.
+  `--steps a,...,g` is step 2 of the brief, `--steps m` the measured-values check, `--steps r` sets
+  every setting by tool and reads its widget back (no model turn), `--serve TCP|MCP` keeps a demo
+  running for the walkthrough and live suites. It refuses anything but DemoStage.
   Needs `GEMINI_API_KEY` in the environment (not for `--serve`).
 - `tools/snapshot.py`: prints position and settings over TCP, to compare before and after a run.
 - `tools/demo_config_measured.py`: a copy of demo_config.py with `ai_assistant_measured_values = True`

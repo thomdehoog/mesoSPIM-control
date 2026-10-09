@@ -6,6 +6,7 @@ through their own widgets and slots, with the model the Gemini preset names. Eve
 Core's state, the main window's widgets, the tab's transcript and request line.
 
     python drive_gui.py --steps a,b,c,d,e,f,g [--config path] [--probe folder]   # step 2 (and m: step 4)
+    python drive_gui.py --steps r                                                 # every setting by tool shows in the window
     python drive_gui.py --serve TCP|MCP                                           # a demo for step 3
 
 The key comes from GEMINI_API_KEY in the environment only. Refuses anything but DemoStage.
@@ -444,7 +445,64 @@ def step_m(d):
            f"reply '{(d.last_turn().get('reply') or '').strip()[:300]}'")
 
 
-STEPS = {"m": step_m, "a": step_a, "b": step_b, "c": step_c, "d": step_d, "e": step_e, "f": step_f, "g": step_g}
+def step_r(d):
+    """Every setting made by tool (no model: the Remote Control commands through the tab's acceptor)
+    shows in the main window's widget within READ_BACK_S, and the window sends nothing back to Core."""
+    from mesoSPIM.src.remote_control import config as rc_config
+    say("\n== r: every setting made by tool shows in the window ==")
+    w, cfg, state = d.window, d.core.cfg, d.core.state
+
+    def other(options, current):
+        return next(option for option in options if option != current)
+
+    start = {key: state[key] for key in ("camera_exposure_time", "camera_binning", "camera_display_live_subsampling",
+                                         "intensity", "etl_l_offset", "galvo_l_frequency", "galvo_amp_scale_w_zoom",
+                                         "zoom", "laser", "filter", "shutterconfig")}
+    target = {"camera_exposure_time": round(start["camera_exposure_time"] * 2, 4),
+              "camera_binning": other(list(cfg.binning_dict), start["camera_binning"]),
+              "camera_display_live_subsampling": other(cfg.camera_parameters["subsampling"], start["camera_display_live_subsampling"]),
+              "intensity": 20 if start["intensity"] != 20 else 30,
+              "etl_l_offset": round(start["etl_l_offset"] + 0.1, 3),
+              "galvo_l_frequency": round(start["galvo_l_frequency"] + 1, 2),
+              "galvo_amp_scale_w_zoom": not start["galvo_amp_scale_w_zoom"],
+              "zoom": other(list(cfg.zoomdict), start["zoom"]),
+              "laser": other(list(cfg.laserdict), start["laser"]),
+              "filter": other(list(cfg.filterdict), start["filter"]),
+              "shutterconfig": other(list(cfg.shutteroptions), start["shutterconfig"])}
+    # (what the tool is called, its arguments, the widget's reading, what it should read)
+    probes = lambda values: [  # noqa: E731
+        ("set_camera", {k: values[k] for k in ("camera_exposure_time", "camera_binning", "camera_display_live_subsampling")},
+         lambda: (w.CameraExposureTimeSpinBox.value(), w.BinningComboBox.currentText(), w.LiveSubSamplingComboBox.currentText()),
+         (values["camera_exposure_time"] * 1000, values["camera_binning"], str(values["camera_display_live_subsampling"]))),
+        ("set_intensity", {"intensity": values["intensity"]},
+         lambda: (w.LaserIntensitySlider.value(), w.LaserIntensitySpinBox.value()), (values["intensity"],) * 2),
+        ("set_etl", {"etl_l_offset": values["etl_l_offset"]}, lambda: w.LeftETLOffsetSpinBox.value(), values["etl_l_offset"]),
+        ("set_galvo", {"galvo_l_frequency": values["galvo_l_frequency"]}, lambda: w.GalvoFrequencySpinBox.value(), values["galvo_l_frequency"]),
+        ("set_state", {"settings": {"galvo_amp_scale_w_zoom": values["galvo_amp_scale_w_zoom"]}},
+         lambda: w.checkBoxScaleWZoom.isChecked(), values["galvo_amp_scale_w_zoom"]),
+        ("set_zoom", {"zoom": values["zoom"]}, lambda: w.ZoomComboBox.currentText(), values["zoom"]),
+        ("set_laser", {"laser": values["laser"]}, lambda: w.LaserComboBox.currentText(), values["laser"]),
+        ("set_filter", {"filter": values["filter"]}, lambda: w.FilterComboBox.currentText(), values["filter"]),
+        ("set_shutterconfig", {"shutterconfig": values["shutterconfig"]}, lambda: w.ShutterComboBox.currentText(), values["shutterconfig"]),
+    ]
+
+    def close(shown, expected):
+        if isinstance(shown, tuple):
+            return len(shown) == len(expected) and all(close(a, b) for a, b in zip(shown, expected))
+        return abs(shown - expected) < 1e-6 if isinstance(shown, float) else shown == expected
+
+    for values, label in ((target, "r"), (start, "r: put back")):
+        d.state_requests.clear()
+        for name, args, reading, expected in probes(values):
+            result = dispatch(d, name, args)
+            followed = wait_until(lambda: close(reading(), expected), rc_config.READ_BACK_S + 2)
+            record(f"{label}: {name} shows in the window", followed,
+                   f"{args} -> widget reads {reading()!r}, expected {expected!r}; result {result}")
+        pump(3)
+        record(f"{label}: the window sent nothing back to Core", not d.state_requests, f"requests {d.state_requests}")
+
+
+STEPS = {"m": step_m, "a": step_a, "b": step_b, "c": step_c, "d": step_d, "e": step_e, "f": step_f, "g": step_g, "r": step_r}
 
 
 def main():
