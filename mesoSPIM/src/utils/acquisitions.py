@@ -25,6 +25,15 @@ def value_from_state(state, key):
     return state[key]
 
 
+def focus_at(z_1, z_2, f_1, f_2, z):
+    ''' The focus at z on the line through (z_1, f_1) and (z_2, f_2): focus tracking '''
+    if z_2 == z_1:
+        ''' Avoid division by zero '''
+        return 0
+    else:
+        return (f_2-f_1)/(z_2-z_1)*(z-z_1)+f_1
+
+
 class Acquisition(indexed.IndexedOrderedDict):
     '''
     Custom acquisition dictionary. Contains all the information to run a single
