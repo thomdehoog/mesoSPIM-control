@@ -469,22 +469,22 @@ def step_r(d):
               "laser": other(list(cfg.laserdict), start["laser"]),
               "filter": other(list(cfg.filterdict), start["filter"]),
               "shutterconfig": other(list(cfg.shutteroptions), start["shutterconfig"])}
-    # (what the tool is called, its arguments, the widget's reading, what it should read)
-    probes = lambda values: [  # noqa: E731
-        ("set_camera", {k: values[k] for k in ("camera_exposure_time", "camera_binning", "camera_display_live_subsampling")},
-         lambda: (w.CameraExposureTimeSpinBox.value(), w.BinningComboBox.currentText(), w.LiveSubSamplingComboBox.currentText()),
-         (values["camera_exposure_time"] * 1000, values["camera_binning"], str(values["camera_display_live_subsampling"]))),
-        ("set_intensity", {"intensity": values["intensity"]},
-         lambda: (w.LaserIntensitySlider.value(), w.LaserIntensitySpinBox.value()), (values["intensity"],) * 2),
-        ("set_etl", {"etl_l_offset": values["etl_l_offset"]}, lambda: w.LeftETLOffsetSpinBox.value(), values["etl_l_offset"]),
-        ("set_galvo", {"galvo_l_frequency": values["galvo_l_frequency"]}, lambda: w.GalvoFrequencySpinBox.value(), values["galvo_l_frequency"]),
-        ("set_state", {"settings": {"galvo_amp_scale_w_zoom": values["galvo_amp_scale_w_zoom"]}},
-         lambda: w.checkBoxScaleWZoom.isChecked(), values["galvo_amp_scale_w_zoom"]),
-        ("set_zoom", {"zoom": values["zoom"]}, lambda: w.ZoomComboBox.currentText(), values["zoom"]),
-        ("set_laser", {"laser": values["laser"]}, lambda: w.LaserComboBox.currentText(), values["laser"]),
-        ("set_filter", {"filter": values["filter"]}, lambda: w.FilterComboBox.currentText(), values["filter"]),
-        ("set_shutterconfig", {"shutterconfig": values["shutterconfig"]}, lambda: w.ShutterComboBox.currentText(), values["shutterconfig"]),
-    ]
+    def probes(values):
+        """(the tool, its arguments, the widget's reading, what it should read)"""
+        return [
+            ("set_camera", {k: values[k] for k in ("camera_exposure_time", "camera_binning", "camera_display_live_subsampling")},
+             lambda: (w.CameraExposureTimeSpinBox.value(), w.BinningComboBox.currentText(), w.LiveSubSamplingComboBox.currentText()),
+             (values["camera_exposure_time"] * 1000, values["camera_binning"], str(values["camera_display_live_subsampling"]))),
+            ("set_intensity", {"intensity": values["intensity"]},
+             lambda: (w.LaserIntensitySlider.value(), w.LaserIntensitySpinBox.value()), (values["intensity"],) * 2),
+            ("set_etl", {"etl_l_offset": values["etl_l_offset"]}, lambda: w.LeftETLOffsetSpinBox.value(), values["etl_l_offset"]),
+            ("set_galvo", {"galvo_l_frequency": values["galvo_l_frequency"]}, lambda: w.GalvoFrequencySpinBox.value(), values["galvo_l_frequency"]),
+            ("set_state", {"settings": {"galvo_amp_scale_w_zoom": values["galvo_amp_scale_w_zoom"]}},
+             lambda: w.checkBoxScaleWZoom.isChecked(), values["galvo_amp_scale_w_zoom"]),
+            ("set_zoom", {"zoom": values["zoom"]}, lambda: w.ZoomComboBox.currentText(), values["zoom"]),
+            ("set_laser", {"laser": values["laser"]}, lambda: w.LaserComboBox.currentText(), values["laser"]),
+            ("set_filter", {"filter": values["filter"]}, lambda: w.FilterComboBox.currentText(), values["filter"]),
+            ("set_shutterconfig", {"shutterconfig": values["shutterconfig"]}, lambda: w.ShutterComboBox.currentText(), values["shutterconfig"])]
 
     def close(shown, expected):
         if isinstance(shown, tuple):
@@ -495,7 +495,7 @@ def step_r(d):
         d.state_requests.clear()
         for name, args, reading, expected in probes(values):
             result = dispatch(d, name, args)
-            followed = wait_until(lambda: close(reading(), expected), rc_config.READ_BACK_S + 2)
+            followed = wait_until(lambda reading=reading, expected=expected: close(reading(), expected), rc_config.READ_BACK_S + 2)
             record(f"{label}: {name} shows in the window", followed,
                    f"{args} -> widget reads {reading()!r}, expected {expected!r}; result {result}")
         pump(3)
