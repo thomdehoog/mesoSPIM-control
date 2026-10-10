@@ -1,25 +1,26 @@
-"""The Data viewer window, in its two forms.
+"""The Data viewer window.
 
-    python -m mesoSPIM.src.mesospim_viewer.window /path/to/data            # live
-    python -m mesoSPIM.src.mesospim_viewer.window --acquired /path/to/dataset
+    python -m mesoSPIM.src.mesospim_viewer.window /path/to/data
+    python -m mesoSPIM.src.mesospim_viewer.window /path/to/Sample.ome.zarr
 
-**The live data viewer** shows the acquisition being written. It is given the
-data folder, and follows the newest acquisition in it automatically -- a new one
-appearing while the window is open is switched to, and every tile or time point
-that lands in it is shown within a second -- unless an older one was picked from
-the dropdown at the top of the viewer's own panel, which stays until the current
-one is picked again. The following itself is
-:class:`~mesoSPIM.src.mesospim_viewer.watch.Follower`; this file only gives it a
-window and a timer.
+One window for looking at data, whether it is being acquired or was acquired
+last year. Its panel lists acquisitions; what the window is given decides what
+is on the list:
 
-**An acquired dataset** is shown as it is on disk, with no timer and nothing
-followed: see :class:`~mesoSPIM.src.mesospim_viewer.watch.Opened` for what can
-be opened. More datasets can be dragged onto this window from the file manager,
-one or several folders at once: each is shown beside what is there, and each
-acquisition's block in the panel has a button that takes it off the view again.
-The live window takes no drops, so what it shows is always the microscope's.
+- a **data folder** the microscope writes into is watched: its acquisitions are
+  listed, the newest is shown, and one that starts later is shown in its place,
+  growing on screen as it is acquired;
+- a **dataset** (a tile, an acquisition, or a folder of acquisitions) is opened
+  beside whatever is there, through the panel's Open button, by dropping its
+  folder onto the window, or from the command line.
 
-The window title says which of the two a window is, so the two are never confused.
+Inside mesoSPIM-control the window is also fed the camera's frames
+(:meth:`begin_stack`, :meth:`add_plane`, :meth:`end_stack`), so the stack being
+acquired is on screen plane by plane, long before it is on disk.
+
+What is shown is decided by :class:`~mesoSPIM.src.mesospim_viewer.watch.Library`;
+this file gives it a window, a timer and the two things only Qt can do: ask for a
+folder, and take one that is dropped.
 
 Written against the Qt binding mesoSPIM-control uses (PyQt5), through the same
 small helper the plain widget uses, so PyQt6 and PySide work as well.
@@ -29,17 +30,22 @@ from __future__ import annotations
 
 import argparse
 import logging
+import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
+from .live import Stack, thin
 from .omezarr import NotAStore
 from .viewer import Viewer, _qt
-from .watch import Follower, Opened
+from .watch import PLANES_PER_S, Library
 
 logger = logging.getLogger(__name__)
 
 POLL_MS = 1000
+# Frames are passed over while this many wait to be taken in.
+WAITING_PLANES = 8
 
 
 def make_window_class():
@@ -48,47 +54,20 @@ def make_window_class():
     QtCore, QtWidgets = qt.QtCore, qt.QtWidgets
     events = getattr(QtCore.QEvent, "Type", QtCore.QEvent)
     DRAGGING = (events.DragEnter, events.DragMove, events.DragLeave, events.Drop)
+    Signal = getattr(QtCore, "pyqtSignal", None) or QtCore.Signal
 
     class DataViewerWindow(QtWidgets.QWidget):
-        """The viewer over a data folder (live) or over one dataset from disk (acquired).
+        """The viewer, over a data folder that is watched and any datasets opened beside it."""
 
-        With ``live=False``, a folder that cannot be shown raises
-        :class:`~mesoSPIM.src.mesospim_viewer.omezarr.NotAStore` before any window appears.
-        """
+        # The page asks from one of the server's threads; Qt answers in its own.
+        open_requested = Signal()
 
-        def __init__(
-            self,
-            root: str | Path,
-            parent=None,
-            *,
-            viewer: Viewer | None = None,
-            live: bool = True,
-        ) -> None:
-            # The data is looked at before the window exists, so a folder that cannot be
-            # shown leaves nothing half-built behind.
-            viewer = viewer or Viewer(ui="simple")
-            opened: Opened | None = None
-            if live:
-                follower: Follower | None = Follower(viewer, root)
-            else:
-                try:
-                    opened = Opened(viewer, root)
-                except Exception:
-                    viewer.stop()
-                    raise
-                follower = opened.follower
+        def __init__(self, folder: str | Path | None = None, parent=None, *, viewer: Viewer | None = None) -> None:
             super().__init__(parent)
-            self.live = live
-            self._viewer = viewer
-            self.follower = follower
-            self.opened = opened
-            path = Path(root).expanduser()
-            if live:
-                self.setWindowTitle(f"Live data viewer \u2014 {path}")
-                self.setToolTip(f"Following the newest acquisition in {path}")
-            else:
-                self.setWindowTitle(f"Acquired dataset \u2014 {path.name}")
-                self.setToolTip(f"Showing {path} as it is on disk; nothing new is followed")
+            self._viewer = viewer or Viewer(ui="simple")
+            self.library = Library(self._viewer)
+            self.setWindowTitle("Data viewer")
+            self.setAcceptDrops(True)
 
             layout = QtWidgets.QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -99,52 +78,149 @@ def make_window_class():
             # surface passes every drag up to it.
             self.web.installEventFilter(self)
 
-            # Only the live window looks at the disk again; an acquired dataset is read once.
-            # The look itself runs off the GUI thread: it walks the stores' folders
-            # and decodes a sample of a store for its contrast, which on a big tile
-            # takes long enough to be felt in the window.
-            self.timer = QtCore.QTimer(self)
-            self._polling: threading.Thread | None = None
+            self.open_requested.connect(self.ask_and_open)
+            self.viewer.on_open(self.open_requested.emit)
+
+            # Everything that touches the disk runs off the GUI thread: the look
+            # at the watched folder once a second, and whatever the microscope
+            # feeds in. Neither may ever hold up the window, or the acquisition.
             self._closing = False
-            if live:
-                self.timer.timeout.connect(self.poll)
-                self.timer.start(POLL_MS)
+            self._polling: threading.Thread | None = None
+            # Unbounded, so that handing something over never waits: the start and
+            # the end of a stack are few, and frames are passed over when the
+            # viewer falls behind (see add_plane).
+            self._feed: queue.Queue = queue.Queue()
+            self._feeder = threading.Thread(target=self._feed_on, name="mesospim-view-feed", daemon=True)
+            self._feeder.start()
+            self._plane_at = 0.0
+            self.timer = QtCore.QTimer(self)
+            self.timer.timeout.connect(self.poll)
+            self.timer.start(POLL_MS)
+            if folder is not None:
+                self.watch(folder)
+            else:
                 self.poll()
 
         @property
         def viewer(self) -> Viewer:
             return self._viewer
 
+        # -- what is shown ---------------------------------------------------------
+
+        def watch(self, folder: str | Path | None) -> None:
+            """Follow the folder the microscope writes into (see :meth:`Library.watch`)."""
+            self._later(lambda: self.library.watch(folder))
+
+        def open(self, path: str | Path) -> None:
+            """Show a dataset from disk beside what is shown.
+
+            One that cannot be shown is said so on the picture, in a sentence.
+            """
+            self.drop([Path(path)])
+
+        def drop(self, paths: list[Path]) -> None:
+            """Show each folder beside what is shown; a folder that cannot be shown does
+            not stop the others, and the picture says why it was not opened."""
+
+            def opening() -> None:
+                refused = []
+                for path in paths:
+                    try:
+                        self.library.open(path)
+                    except (NotAStore, OSError) as why:
+                        refused.append(refusal(path, why))
+                self.viewer.say("\n".join(refused))
+
+            self._later(opening)
+
+        def ask_and_open(self) -> None:
+            """Ask for a dataset on disk, as the panel's Open button does."""
+            start = str(self.library.root) if self.library.root is not None else ""
+            path = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Open a dataset (a .ome.zarr folder, or a folder of acquisitions)", start
+            )
+            if path:
+                self.open(path)
+
+        # -- the microscope's feed ---------------------------------------------------
+
+        def begin_stack(self, stack: Stack) -> None:
+            """The microscope is about to acquire a stack (see :meth:`Library.begin_stack`)."""
+            self._plane_at = 0.0
+            self._enqueue(("begin", stack))
+
+        def add_plane(self, index: int, frame) -> None:
+            """A camera frame of the running stack, as it is written.
+
+            Returns at once: the frame is thinned out here (a copy of every few
+            pixels) and everything else happens off the GUI thread. Frames
+            arriving faster than the preview takes them are passed over.
+            """
+            now = time.monotonic()
+            if now - self._plane_at < 1.0 / PLANES_PER_S or self._feed.qsize() > WAITING_PLANES:
+                return
+            self._plane_at = now
+            self._enqueue(("plane", index, thin(frame)))
+
+        def end_stack(self) -> None:
+            self._enqueue(("end",))
+
+        def end_run(self) -> None:
+            """The whole run is over (see :meth:`Library.end_run`)."""
+            self._later(self.library.end_run)
+
+        def _enqueue(self, item: tuple) -> None:
+            self._feed.put_nowait(item)
+
+        def _later(self, work) -> None:
+            self._enqueue(("call", work))
+
+        def _feed_on(self) -> None:
+            while True:
+                item = self._feed.get()
+                if item[0] == "stop":
+                    return
+                try:
+                    if item[0] == "plane":
+                        self.library.add_plane(item[1], item[2])
+                    elif item[0] == "begin":
+                        self.library.begin_stack(item[1])
+                    elif item[0] == "end":
+                        self.library.end_stack()
+                    elif item[0] == "call":
+                        item[1]()
+                except Exception:  # noqa: BLE001 -- the viewer must never take the acquisition down
+                    logger.exception("the Data viewer could not take in %s", item[0])
+
+        # -- the look at the disk ------------------------------------------------------
+
         def poll(self) -> None:
             """One look at the disk, in the background; a look still going on is left to finish."""
-            if not self.live or self.follower is None or self._closing:
+            if self._closing:
                 return
             if self._polling is not None and self._polling.is_alive():
                 return
-            self._polling = threading.Thread(
-                target=self._poll_now, name="mesospim-view-poll", daemon=True
-            )
+            self._polling = threading.Thread(target=self._poll_now, name="mesospim-view-poll", daemon=True)
             self._polling.start()
 
         def _poll_now(self) -> None:
             try:
                 if not self._closing:
-                    self.follower.poll()
+                    self.library.poll()
             except Exception:  # noqa: BLE001 -- the next look may well succeed
-                logger.exception("looking at %s failed", self.follower.root)
+                logger.exception("looking at the data folder failed")
+
+        # -- Qt's own ---------------------------------------------------------------------
 
         def eventFilter(self, watched, event) -> bool:  # noqa: N802 -- Qt's name
-            """Take folders dragged onto the picture, and keep every drag from the page.
-
-            The page never sees a drag: it could do nothing with a folder
-            without its path. The live window refuses every drop.
-            """
+            """Take folders dragged onto the picture, and keep every drag from the page:
+            the page could do nothing with a folder without its path."""
             if watched is not self.web or event.type() not in DRAGGING:
                 return super().eventFilter(watched, event)
             if event.type() == events.DragLeave:
                 return True
             paths = _local_paths(event.mimeData())
-            if self.opened is None or not paths:
+            if not paths:
                 event.ignore()
                 return True
             event.acceptProposedAction()
@@ -152,25 +228,16 @@ def make_window_class():
                 self.drop(paths)
             return True
 
-        def drop(self, paths: list[Path]) -> None:
-            """Show each dropped folder beside what is shown.
-
-            A folder that cannot be shown does not stop the others: the picture
-            says in a sentence why it was not opened, until the next drop.
-            """
-            refused = []
-            for path in paths:
-                try:
-                    self.opened.add(path)
-                except (NotAStore, OSError) as why:
-                    refused.append(refusal(path, why))
-            self.viewer.say("\n".join(refused))
-
         def closeEvent(self, event) -> None:  # noqa: N802 -- Qt's name
             self._closing = True
             self.timer.stop()
+            # Nothing is waited for long: a look at a slow disk that is still
+            # going on finds the library closed and does nothing more.
+            self.library.close()
+            self._feed.put_nowait(("stop",))
+            self._feeder.join(timeout=1.0)
             if self._polling is not None:
-                self._polling.join(timeout=5.0)
+                self._polling.join(timeout=1.0)
             self.viewer.stop()
             super().closeEvent(event)
 
@@ -178,7 +245,7 @@ def make_window_class():
 
 
 def refusal(path: Path, error: Exception) -> str:
-    """One short sentence saying why a dropped folder was not shown, naming only the folder.
+    """One short sentence saying why a folder was not shown, naming only the folder.
 
     A store the viewer recognises but cannot show says why in a few words; for
     anything else it is enough to know that the folder is not one the viewer opens.
@@ -196,26 +263,43 @@ def _local_paths(mime) -> list[Path]:
     return [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
 
 
+def is_data_folder(path: Path) -> bool:
+    """Whether a folder is one acquisitions are written into, rather than a dataset itself."""
+    return path.is_dir() and not path.name.endswith(".ome.zarr") and not (
+        (path / "zarr.json").is_file() or (path / ".zgroup").is_file() or (path / ".zattrs").is_file()
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="The Data viewer window: live over a data folder, or over an acquired dataset."
+        description="The Data viewer window: over a data folder that is being acquired into, "
+        "or over datasets from disk."
     )
     parser.add_argument(
-        "folder",
-        help="the folder the microscope writes acquisitions into, or with --acquired the dataset",
+        "paths",
+        nargs="*",
+        help="a folder the microscope writes acquisitions into (it is watched), "
+        "or datasets to open: .ome.zarr folders",
     )
     parser.add_argument(
-        "--acquired",
+        "--open",
         action="store_true",
-        help="show the folder as it is on disk, without following new acquisitions",
+        help="open the first folder as a dataset even if it looks like a data folder: "
+        "its acquisitions are listed, and none that starts later is followed",
     )
     args = parser.parse_args(argv)
     qt = _qt()
     app = qt.QtWidgets.QApplication.instance() or qt.QtWidgets.QApplication(sys.argv)
-    window = make_window_class()(args.folder, live=not args.acquired)
-    window.resize(1200, 800)
+    paths = [Path(path).expanduser() for path in args.paths]
+    watched = paths[0] if paths and not args.open and is_data_folder(paths[0]) else None
+    window = make_window_class()(watched)
+    for path in paths:
+        if path != watched:
+            window.open(path)
+    window.resize(1280, 820)
     window.show()
     return app.exec() if hasattr(app, "exec") else app.exec_()
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

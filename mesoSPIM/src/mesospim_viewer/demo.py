@@ -1,14 +1,22 @@
-"""Pretend mesoSPIM tiles, written with numpy alone, and a demo that shows them.
+"""Pretend mesoSPIM data, and demos that show it.
 
-    python -m mesoSPIM.src.mesospim_viewer.demo            # writes tiles, opens a browser
+    python -m mesoSPIM.src.mesospim_viewer.demo            # four small tiles in a browser
     python -m mesoSPIM.src.mesospim_viewer.demo --no-open  # just serve, print the address
-    python -m mesoSPIM.src.mesospim_viewer.demo --live     # a run being written, followed as it lands
-    python -m mesoSPIM.src.mesospim_viewer.demo --live --window   # the same in the Data viewer window (Qt)
+    python -m mesoSPIM.src.mesospim_viewer.demo --live     # a run being acquired, followed live
+    python -m mesoSPIM.src.mesospim_viewer.demo --live --window    # the same in the Data viewer window (Qt)
+    python -m mesoSPIM.src.mesospim_viewer.demo --live --from-disk # followed from disk alone, without the camera's frames
 
-Four two-channel tiles are laid out two by two with a small overlap, each an
-ordinary OME-Zarr 0.4 store (zarr v2, uncompressed chunks) carrying its stage
-position as a translation. The demo places them once by that metadata and once
-more shifted, to show both ways of putting a tile somewhere.
+The plain demo writes four two-channel tiles with numpy alone, two by two with
+a small overlap, each an ordinary OME-Zarr 0.4 store (zarr v2, uncompressed
+chunks) carrying its stage position as a translation, and shows them placed by
+that metadata and once more shifted.
+
+The live demo is a rehearsal of a real run. It writes with the microscope's
+own writer -- the pipeline of the ``MP_OME_Zarr_TCZYX_Writer``: zarr v3, zstd,
+slabs of 64 planes, the pyramid built as it goes -- frame by frame at a camera's
+pace, and hands the viewer the frames the way mesoSPIM-control does. What is on
+screen is then what the operator will see at the microscope, including how
+late the disk is compared with the camera (``--from-disk`` shows that alone).
 """
 
 from __future__ import annotations
@@ -350,15 +358,166 @@ def write_a_run(
             time.sleep(pause_s)
 
 
+# -- a run the way the microscope does it ------------------------------------------------
+
+
+class _Specimen:
+    """A cheap pretend specimen: blobs on a coarse grid, enlarged for each frame, plus
+    camera noise on a camera's offset."""
+
+    def __init__(self, seed: int, planes: int, size: int, channel: int) -> None:
+        import numpy as np
+
+        rng = np.random.default_rng(seed * 7 + channel)
+        coarse, keys = 64, 10
+        zz, yy, xx = np.ogrid[0:keys, 0:coarse, 0:coarse]
+        volume = np.zeros((keys, coarse, coarse), np.float32)
+        for _ in range(60):
+            cz, cy, cx = rng.uniform([0, 0, 0], [keys, coarse, coarse])
+            radius = rng.uniform(1.0, 3.5)
+            volume += np.exp(
+                -0.5 * (((zz - cz) / 1.2) ** 2 + ((yy - cy) / radius) ** 2 + ((xx - cx) / radius) ** 2)
+            )
+        self.volume = volume * (3000.0 / max(float(volume.max()), 1e-6))
+        self.planes, self.keys, self.factor = planes, keys, max(1, size // coarse)
+        self.noise = rng.normal(0, 12, size=(4, size, size)).astype(np.float32)
+        self.size = size
+
+    def frame(self, z: int):
+        import numpy as np
+
+        at = z / max(1, self.planes - 1) * (self.keys - 1)
+        below = int(np.floor(at))
+        above = min(self.keys - 1, below + 1)
+        coarse = (1 - (at - below)) * self.volume[below] + (at - below) * self.volume[above]
+        image = np.repeat(np.repeat(coarse, self.factor, axis=0), self.factor, axis=1)
+        image = image[: self.size, : self.size] + 110.0 + self.noise[z % len(self.noise)]
+        return np.clip(image, 0, 65535).astype(np.uint16)
+
+
+def acquire(
+    root: Path,
+    name: str,
+    *,
+    feed=None,
+    tiles: tuple[int, int] = (2, 2),
+    channels: tuple[str, ...] = ("488", "561"),
+    planes: int = 128,
+    size: int = 512,
+    frames_per_s: float = 20.0,
+    voxel_um: tuple[float, float, float] = (5.0, 1.0, 1.0),
+    say=print,
+) -> Path:
+    """Write an acquisition the way the microscope does, and return its folder.
+
+    Stack after stack -- tile by tile, channel by channel -- frames are pushed at
+    ``frames_per_s`` into the writer the ``MP_OME_Zarr_TCZYX_Writer`` uses, set up
+    as that plugin sets it up. ``feed`` is told what mesoSPIM-control tells the
+    Data viewer: ``begin_stack``, ``add_plane`` for every other frame,
+    ``end_stack``, and ``end_run`` (a :class:`~.watch.Library`, or the window).
+    """
+    import zarr
+
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
+        BloscCodec,
+        BloscShuffle,
+        ChunkScheme,
+        FlushPad,
+        PyramidSpec,
+        compute_xy_only_levels,
+        plan_levels,
+    )
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer_tczyx import (
+        TCZYX,
+        Live3DPyramidWriterTCZYX,
+    )
+
+    from .live import Stack
+    from .state import WAVELENGTH_COLOURS
+
+    root.mkdir(parents=True, exist_ok=True)
+    folder = root / f"{name}.ome.zarr"
+    zarr.open_group(str(folder), mode="a", zarr_format=3)
+    rows, columns = tiles
+    step = size * voxel_um[2] * 0.9  # a tenth of overlap
+    for tile in range(rows * columns):
+        row, column = divmod(tile, columns)
+        origin = (0.0, row * step, column * step)
+        store = folder / f"Mag1_Tile{tile}_Sh0_Rot0.ome.zarr"
+        for index, channel in enumerate(channels):
+            writer = Live3DPyramidWriterTCZYX(
+                spec=PyramidSpec(
+                    z_size_estimate=planes,
+                    y=size,
+                    x=size,
+                    levels=plan_levels(size, size, planes, compute_xy_only_levels(voxel_um), min_dim=64),
+                ),
+                tczyx=TCZYX(
+                    t=0,
+                    c=index,
+                    n_channels=len(channels),
+                    channel_labels=tuple(channels),
+                    channel_colors=tuple(
+                        WAVELENGTH_COLOURS.get(label, "#ffffff").lstrip("#").upper() for label in channels
+                    ),
+                ),
+                voxel_size=voxel_um,
+                path=str(store),
+                ingest_queue_size=256,
+                max_workers=2,
+                max_inflight_chunks=8,
+                chunk_scheme=ChunkScheme(base=(64, 256, 256), target=(64, 64, 64)),
+                compressor=BloscCodec(cname="zstd", clevel=5, shuffle=BloscShuffle.bitshuffle),
+                shard_shape=None,
+                flush_pad=FlushPad.DUPLICATE_LAST,
+                async_close=False,
+                translation=origin,
+                ome_version="0.5",
+            )
+            if feed is not None:
+                feed.begin_stack(
+                    Stack(
+                        acquisition=name,
+                        channel=channel,
+                        channels=tuple(channels),
+                        planes=planes,
+                        frame=(size, size),
+                        voxel_um=voxel_um,
+                        origin_um=origin,
+                        tile=f"Tile {tile + 1}",
+                        tiles=rows * columns,
+                        folder=folder,
+                        store=store,
+                    )
+                )
+            specimen = _Specimen(tile, planes, size, index)
+            began = time.time()
+            for z in range(planes):
+                frame = specimen.frame(z)
+                writer.push_slice(frame)
+                if feed is not None and z % 2 == 0:
+                    feed.add_plane(z, frame)
+                wait = began + (z + 1) / frames_per_s - time.time()
+                if wait > 0:
+                    time.sleep(wait)
+            if feed is not None:
+                feed.end_stack()
+            writer.close()
+            say(f"  acquired {name}, tile {tile + 1} of {rows * columns}, {channel}")
+    if feed is not None:
+        feed.end_run()
+    return folder
+
+
 def live(args) -> int:
-    """A folder being written into, shown as it grows."""
+    """A folder being acquired into, shown as it grows."""
     import threading
 
     root = Path(args.folder)
     root.mkdir(parents=True, exist_ok=True)
     existing = len([p for p in root.iterdir() if p.name.endswith(".ome.zarr")])
     name = f"run_{existing:02d}"
-    writer = threading.Thread(target=write_a_run, args=(root, name), daemon=True)
+
     if args.window:
         from .viewer import _qt
         from .window import make_window_class
@@ -366,23 +525,26 @@ def live(args) -> int:
         qt = _qt()
         app = qt.QtWidgets.QApplication.instance() or qt.QtWidgets.QApplication([])
         window = make_window_class()(root)
-        window.resize(1200, 800)
+        window.resize(1280, 820)
         window.show()
-        writer.start()
+        feed = None if args.from_disk else window
+        threading.Thread(target=acquire, args=(root, name), kwargs={"feed": feed}, daemon=True).start()
         return app.exec() if hasattr(app, "exec") else app.exec_()
 
-    from .watch import Follower
+    from .watch import Library
 
-    view = Viewer(port=args.port)
-    follower = Follower(view, root)
+    view = Viewer(port=args.port, ui=args.ui)
+    library = Library(view)
+    library.watch(root)
     url = view.start()
     print(f"following {root} at {url}")
     if not args.no_open:
         view.open_in_browser()
-    writer.start()
+    feed = None if args.from_disk else library
+    threading.Thread(target=acquire, args=(root, name), kwargs={"feed": feed}, daemon=True).start()
     try:
         while True:
-            follower.poll()
+            library.poll()
             time.sleep(1.0)
     except KeyboardInterrupt:
         view.stop()
@@ -399,10 +561,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--transparent", action="store_true", help="transparent 2D ground")
     parser.add_argument("--ui", choices=("full", "simple", "bare"), default="simple")
     parser.add_argument(
-        "--live", action="store_true", help="write a run tile by tile and follow it"
+        "--live",
+        action="store_true",
+        help="acquire a run with the microscope's own writer and follow it as mesoSPIM-control would",
     )
     parser.add_argument(
         "--window", action="store_true", help="with --live: the Qt Data viewer window"
+    )
+    parser.add_argument(
+        "--from-disk",
+        action="store_true",
+        help="with --live: follow the run from disk alone, without the camera's frames",
     )
     args = parser.parse_args(argv)
     if args.live:

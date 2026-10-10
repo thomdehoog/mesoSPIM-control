@@ -29,11 +29,11 @@
  *    annotations and scale bars. Without the flag the engine behaves exactly
  *    as shipped.
  *
- * 3. Every tile laid over the picture the same way. The engine draws each
- *    tile of a layer on its own and stock neuroglancer draws the first one
- *    without blending; the page's channels carry their brightness in the
- *    alpha, so that first tile looked brighter than the others. Here every
- *    tile of a layer with the default blending is blended, the first one too.
+ * 3. Channels and tiles mixed by the brighter of the two. For a layer with the
+ *    default blending, what is laid over the picture replaces, colour by
+ *    colour, only what is darker than itself: a structure lit in two channels
+ *    shows in both colours, and two overlapping tiles do not add up along the
+ *    join. Every tile of a layer is blended so, the first one too.
  *
  * Only frontend modules are touched: nothing here reaches the workers.
  *
@@ -47,6 +47,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const lib = join(here, "..", "node_modules", "neuroglancer", "lib");
 const shims = join(here, "..", "src", "legacy_browser.js");
+// Added to the chunk worker only: reading again just the chunks that landed.
+const landed = join(here, "..", "src", "engine", "worker_landed.js");
 
 const WORKERS = ["chunk_worker.bundle.js", "async_computation.bundle.js"];
 
@@ -91,22 +93,44 @@ if (uBackgroundColor.a == 0.0) sampledColor.a = float(sampledColor.a > 0.0);
 emit(sampledColor * uColorFactor, 0u);`,
   },
   {
-    // Every tile is laid over what is already drawn, the first one too. The
-    // engine draws each tile of a layer on its own, and stock neuroglancer
-    // draws the very first of them without blending, as if it were opaque:
-    // with brightness in the alpha (state.py), that first tile came out
-    // brighter, with larger cells, than every other tile of the layer. Over
-    // the empty picture, blending gives what an opaque first tile gave
-    // before, so opaque layers look exactly as shipped. The alpha is
-    // accumulated as coverage, so a dark pixel still counts as imaged.
+    // Channels and tiles are mixed by taking, for each of red, green and blue,
+    // the brighter of what is already drawn and what is laid over it ("lighten").
+    // Stock neuroglancer either lays a layer over the ones beneath, so a bright
+    // channel hides the same structure in the channel under it, or adds them,
+    // so two tiles of one acquisition that overlap come out twice as bright
+    // along the join. With the brighter of the two, a structure lit in two
+    // channels shows in both colours at once, an overlap of two tiles looks
+    // like either tile alone, and nothing ever clips to white that was not
+    // white in a channel already. The engine draws each tile of a layer on its
+    // own, and stock neuroglancer draws the very first one without blending:
+    // here every tile is blended, the first one too. The alpha is accumulated
+    // as coverage, so a dark pixel still counts as imaged.
     module: "sliceview/volume/image_renderlayer.js",
     anchor: `    if (blendModeValue === BLEND_MODES.ADDITIVE || renderLayerNum > 0) {`,
-    replacement: (anchor) => `    if (blendModeValue === BLEND_MODES.DEFAULT) {
+    replacement: (anchor) => `    gl.blendEquation(gl.FUNC_ADD);
+    if (blendModeValue === BLEND_MODES.DEFAULT) {
       gl.enable(gl.BLEND);
-      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendEquationSeparate(gl.MAX, gl.FUNC_ADD);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       return;
     }
 ${anchor}`,
+  },
+  {
+    // The histogram of a layer is counted right after the layer is drawn, by
+    // adding one for every sample: adding, whatever the layer was mixed with.
+    module: "webgl/empirical_cdf.js",
+    anchor: `    gl.blendFunc(WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE);`,
+    replacement: (anchor) => `    gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);\n${anchor}`,
+  },
+  {
+    // ...and what the engine draws after the layers is blended as it expects.
+    module: "sliceview/frontend.js",
+    anchor: `      ++renderLayerNum;
+    }
+    gl.disable(WebGL2RenderingContext.BLEND);`,
+    replacement: (anchor) => `${anchor}
+    gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);`,
   },
   {
     // The chunk worker is the one compiled here, at the page's root.
@@ -130,7 +154,7 @@ async function compileWorker(name) {
     conditions: ["default"],
     legalComments: "none",
     target: "chrome83",
-    inject: [shims],
+    inject: name === "chunk_worker.bundle.js" ? [shims, landed] : [shims],
   });
   const text = result.outputFiles[0].text;
   if (text.length < 50 * 1024) {

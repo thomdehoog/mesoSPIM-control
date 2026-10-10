@@ -3969,18 +3969,18 @@ Est. timelapse duration (hh:mm:ss): --:--:--</string>
   </action>
   <action name="actionOpen_Data_Viewer">
    <property name="text">
-    <string>Open Live Data Viewer</string>
+    <string>Open Data Viewer</string>
    </property>
    <property name="toolTip">
-    <string>Show the acquisition being written, tile by tile and time point by time point, as it lands</string>
+    <string>Look at the data: the running acquisition as the camera delivers it, and earlier ones from disk</string>
    </property>
   </action>
   <action name="actionOpen_Acquired_Dataset">
    <property name="text">
-    <string>Open Acquired Dataset...</string>
+    <string>Open Dataset in Data Viewer...</string>
    </property>
    <property name="toolTip">
-    <string>Show a dataset already on disk (a .ome.zarr folder), as it is, in a window of its own</string>
+    <string>Show a dataset already on disk (a .ome.zarr folder) in the Data viewer, beside what it shows</string>
    </property>
   </action>
  </widget>

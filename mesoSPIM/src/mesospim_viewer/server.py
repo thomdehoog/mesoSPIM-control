@@ -1,14 +1,16 @@
 """One local HTTP address that serves the page, the stores' bytes and the scene.
 
-Three kinds of request, kept deliberately plain:
+Four kinds of request, kept deliberately plain:
 
 - ``/`` and the page's own files, from the built ``dist`` folder;
 - ``/data/<key>/...`` -- the files of a registered store, with byte ranges
   (sharded zarr v3 needs them) and revalidation by ETag;
-- ``/api/...`` -- the scene as JSON, long-polled by the page, and four short
-  reports the page posts back: where the camera is, what was clicked, which
-  acquisition was chosen from the panel's dropdown, and which one the operator
-  asked to take off the view.
+- ``/live/<name>/...`` -- a stack being acquired, served from memory as a
+  small zarr store (``live.py``);
+- ``/api/...`` -- the scene as JSON and the events since, long-polled by the
+  page, and the short reports the page posts back: where the camera is, what
+  was clicked, which acquisition was ticked on or off in the panel's list or
+  taken off the view, and a press of the panel's Open button.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import os
 import sys
 import threading
 import time
+from collections import deque
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,10 +29,28 @@ from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
 LONGEST_WAIT_S = 25.0
+# How many events are kept for a page to catch up on; one that falls further
+# behind reads everything it found missing again.
+EVENT_LOG = 512
 
 
 class Scene:
-    """What the page should show, versioned so it can wait for a change."""
+    """What the page should show, and what has happened since it last asked.
+
+    Two things reach the page, both through one waiting request:
+
+    - the **scene**, which is state: the layers, the acquisitions on offer, the
+      message on the picture. It has a version, and the page is sent it again
+      only when that has moved;
+    - **events**, which are not state: files that landed in a store, to be read
+      once by the page that is open. They are numbered and kept in a short log,
+      and a page that asks from a number the log no longer reaches is told to
+      catch up on its own (``resync``).
+
+    Where the live view should be looking (``follow``) is state too, but it
+    moves with every plane, so it travels beside the scene rather than in it:
+    a new plane then costs a few bytes, not the whole scene again.
+    """
 
     def __init__(self) -> None:
         self._changed = threading.Condition()
@@ -38,70 +59,121 @@ class Scene:
         self.state: dict = {"layers": [], "layout": "xy"}
         self.camera: dict = {}
         self.ui: dict = {}
-        # The acquisitions the panel offers in its dropdown, and which is shown.
-        self.choices: dict = {"names": [], "current": -1, "live": True}
+        # The acquisitions the panel lists, shown or not.
+        self.acquisitions: list[dict] = []
         # A message for the operator, shown on the picture until the next one or
         # until they close it. The count tells the page that a message is new,
         # so the same sentence said twice is shown twice.
         self.notice: dict = {"text": "", "count": 0}
+        # Where a live view should be looking, and how often that has moved.
+        self.follow: dict = {"count": 0}
+        self.sequence = 0
+        self._events: deque[tuple[int, dict]] = deque(maxlen=EVENT_LOG)
+
+    def _moved(self) -> int:
+        self.version += 1
+        self._changed.notify_all()
+        return self.version
 
     def publish(self, state: dict) -> int:
         with self._changed:
-            self.version += 1
+            if state == self.state:
+                return self.version
             self.state = state
-            self._changed.notify_all()
-            return self.version
+            return self._moved()
 
-    def offer(self, names: list[str], current: int, live: bool = True) -> int:
+    def offer(self, acquisitions: list[dict]) -> int:
         with self._changed:
-            self.version += 1
-            self.choices = {"names": list(names), "current": current, "live": live}
-            self._changed.notify_all()
-            return self.version
+            if acquisitions == self.acquisitions:
+                return self.version
+            self.acquisitions = acquisitions
+            return self._moved()
 
     def dress(self, **ui) -> int:
         """Change how the page dresses itself while it is open."""
         with self._changed:
-            self.version += 1
+            if all(self.ui.get(key) == value for key, value in ui.items()):
+                return self.version
             self.ui = {**self.ui, **ui}
-            self._changed.notify_all()
-            return self.version
+            return self._moved()
 
     def say(self, text: str) -> int:
         with self._changed:
-            self.version += 1
             self.notice = {"text": text, "count": self.notice["count"] + 1}
-            self._changed.notify_all()
-            return self.version
+            return self._moved()
 
     def move_camera(self, camera: dict) -> int:
         with self._changed:
             self.camera_version += 1
             self.camera = camera
-            self.version += 1
-            self._changed.notify_all()
-            return self.version
+            return self._moved()
 
-    def wait_past(self, version: int, timeout: float) -> dict:
+    def look_at_newest(self, position: dict | None) -> None:
+        """Where the newest data is, by axis name, or None when nothing is being written.
+
+        ``await`` may name the chunk that holds it (``{"store": ..., "chunk": [...]}``):
+        the page then steps there once that chunk is loaded."""
         with self._changed:
-            self._changed.wait_for(lambda: self.version != version, timeout=timeout)
-            return {
+            held = {key: value for key, value in self.follow.items() if key != "count"}
+            wanted = dict(position or {})
+            if held == wanted:
+                return
+            self.follow = {**wanted, "count": self.follow["count"] + 1}
+            self._changed.notify_all()
+
+    def emit(self, event: dict) -> int:
+        """Tell the page something that happened, once."""
+        with self._changed:
+            self.sequence += 1
+            self._events.append((self.sequence, event))
+            self._changed.notify_all()
+            return self.sequence
+
+    def wait_past(self, version: int, timeout: float, sequence: int = -1, follow: int = -1) -> dict:
+        """What is new for a page that holds ``version``, has heard events up to
+        ``sequence`` and has followed up to ``follow``; waits until something is."""
+        with self._changed:
+            self._changed.wait_for(
+                lambda: self.version != version
+                or (sequence >= 0 and self.sequence != sequence)
+                or (follow >= 0 and self.follow["count"] != follow),
+                timeout=timeout,
+            )
+            answer: dict = {
                 "version": self.version,
-                "cameraVersion": self.camera_version,
-                "state": self.state,
-                "camera": self.camera,
-                "ui": self.ui,
-                "choices": self.choices,
-                "notice": self.notice,
+                "sequence": self.sequence,
+                "follow": self.follow,
             }
+            if self.version != version:
+                answer.update(
+                    cameraVersion=self.camera_version,
+                    state=self.state,
+                    camera=self.camera,
+                    ui=self.ui,
+                    acquisitions=self.acquisitions,
+                    notice=self.notice,
+                )
+            if 0 <= sequence < self.sequence:
+                oldest = self._events[0][0] if self._events else self.sequence + 1
+                if sequence + 1 < oldest:
+                    answer["resync"] = True
+                answer["events"] = [event for number, event in self._events if number > sequence]
+            return answer
 
 
 class Stores:
-    """The folders the page may read, each behind a short key."""
+    """The folders the page may read, each behind a short key.
+
+    A store can be given a *guard*: a function that says, for a file of the
+    store, whether the page may not have it yet. The live view uses it to keep
+    a stack that is being written off the picture until all of it is on disk,
+    while the stack's preview is shown in its place (``live.py``).
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._roots: dict[str, Path] = {}
+        self._guards: dict[str, Callable[[str], bool]] = {}
         self._next = 0
 
     def register(self, root: Path) -> str:
@@ -115,17 +187,35 @@ class Stores:
             self._roots[key] = root
             return key
 
+    def key_of(self, root: Path) -> str | None:
+        root = root.resolve()
+        with self._lock:
+            return next((key for key, held in self._roots.items() if held == root), None)
+
+    def guard(self, root: Path, held_back: Callable[[str], bool] | None) -> None:
+        """Hold files of a store back from the page (``held_back(path below the root)``),
+        or with None let all of it through again."""
+        key = self.register(root)
+        with self._lock:
+            if held_back is None:
+                self._guards.pop(key, None)
+            else:
+                self._guards[key] = held_back
+
     def resolve(self, key: str, relative: str) -> Path | None:
         """The file ``relative`` of the store registered under ``key``.
 
-        ``<key>.<revision>`` names the same store: a store that has grown on disk
-        is given to the page under a new address (see ``Viewer._url_for``), so
-        that the engine reads it afresh instead of from what it remembers of the
-        old one, chunks and shard indexes it found missing included.
+        ``<key>.<revision>`` names the same store: a store whose shape has changed
+        on disk is given to the page under a new address (see ``Viewer._url_for``),
+        so that the engine reads its description afresh.
         """
+        key = key.partition(".")[0]
         with self._lock:
-            root = self._roots.get(key.partition(".")[0])
+            root = self._roots.get(key)
+            guard = self._guards.get(key)
         if root is None:
+            return None
+        if guard is not None and relative and guard(relative):
             return None
         target = (root / relative).resolve() if relative else root
         try:
@@ -157,17 +247,27 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         route = urlsplit(self.path).path
         payload = self._read_json()
+        # Only the viewer's own page may report: another page open in a browser
+        # on this computer must not be able to tick acquisitions or ask for a
+        # file dialog. A browser names the page a request comes from.
+        origin = self.headers.get("Origin")
+        if origin is not None and origin.rstrip("/") != self.server.url.rstrip("/"):
+            self._send_empty(HTTPStatus.FORBIDDEN)
+            return
         if route == "/api/view":
             self.server.scene_reported(payload)
             self._send_json({"ok": True})
         elif route == "/api/pick":
             self.server.pick_reported(payload)
             self._send_json({"ok": True})
-        elif route == "/api/choose":
-            self.server.choice_reported(payload)
-            self._send_json({"ok": True})
         elif route == "/api/remove":
             self.server.remove_reported(payload)
+            self._send_json({"ok": True})
+        elif route == "/api/show":
+            self.server.show_reported(payload)
+            self._send_json({"ok": True})
+        elif route == "/api/open":
+            self.server.open_reported()
             self._send_json({"ok": True})
         else:
             self._send_empty(HTTPStatus.NOT_FOUND)
@@ -185,11 +285,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send_file(target, head=head, cache="no-cache")
             return
+        if route.startswith("/live/"):
+            pieces = route[len("/live/") :].split("/", 1)
+            source = self.server.live.get(pieces[0])
+            body = source.read(pieces[1] if len(pieces) > 1 else "") if source is not None else None
+            if body is None:
+                self._send_empty(HTTPStatus.NOT_FOUND)
+            else:
+                self._send_bytes(body, head=head)
+            return
         if route == "/api/state":
             query = parse_qs(parts.query)
-            since = int(query.get("since", ["-1"])[0])
+
+            def number(name: str) -> int:
+                try:
+                    return int(query.get(name, ["-1"])[0])
+                except ValueError:
+                    return -1
+
             wait = min(float(query.get("wait", ["0"])[0]), LONGEST_WAIT_S)
-            self._send_json(self.server.scene.wait_past(since, wait))
+            self._send_json(
+                self.server.scene.wait_past(
+                    number("since"), wait, sequence=number("events"), follow=number("follow")
+                )
+            )
             return
         if route.startswith("/api/"):
             self._send_empty(HTTPStatus.NOT_FOUND)
@@ -229,6 +348,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_bytes(self, body: bytes, *, head: bool) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
 
     def _send_empty(self, status: HTTPStatus) -> None:
         self.send_response(status)
@@ -308,8 +436,11 @@ class ViewServer(ThreadingHTTPServer):
         self.stores = Stores()
         self.view_listeners: list[Callable[[dict], None]] = []
         self.pick_listeners: list[Callable[[dict], None]] = []
-        self.choice_listeners: list[Callable[[int], None]] = []
         self.remove_listeners: list[Callable[[str], None]] = []
+        self.show_listeners: list[Callable[[str, bool, bool], None]] = []
+        self.open_listeners: list[Callable[[], None]] = []
+        # Stacks shown from memory while they are acquired, by the name in their address.
+        self.live: dict[str, object] = {}
         self.last_view: dict | None = None
         self.last_view_at: float = 0.0
 
@@ -333,11 +464,18 @@ class ViewServer(ThreadingHTTPServer):
         for listener in list(self.view_listeners):
             listener(payload)
 
-    def choice_reported(self, payload: object) -> None:
-        if not isinstance(payload, dict) or not isinstance(payload.get("index"), int):
+    def show_reported(self, payload: object) -> None:
+        """The operator ticked an acquisition in the panel's list on or off, or
+        asked for it alone (``only``)."""
+        if not isinstance(payload, dict) or not isinstance(payload.get("name"), str):
             return
-        for listener in list(self.choice_listeners):
-            listener(payload["index"])
+        for listener in list(self.show_listeners):
+            listener(payload["name"], bool(payload.get("visible", True)), bool(payload.get("only", False)))
+
+    def open_reported(self) -> None:
+        """The operator pressed Open in the panel: the window asks for a folder."""
+        for listener in list(self.open_listeners):
+            listener()
 
     def remove_reported(self, payload: object) -> None:
         if not isinstance(payload, dict) or not isinstance(payload.get("name"), str):

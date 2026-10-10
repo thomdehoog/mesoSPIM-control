@@ -1,0 +1,302 @@
+/**
+ * Where the picture looks: framing everything shown, and following a running
+ * acquisition to its newest plane.
+ *
+ * Two things the page does on its own, each until the operator takes over and
+ * each given back with one button:
+ *
+ * - **Framing.** The view frames every picture shown, again after each tile
+ *   that lands, until the operator pans or zooms: then it is theirs, until
+ *   Fit is pressed (or Python's fit(), or the 2D/3D switch).
+ * - **Following.** While the microscope is acquiring, the view sits on the
+ *   newest plane that has arrived, until the operator steps through depth or
+ *   time themselves: then it stays where they put it, until Live is pressed.
+ *
+ * They are independent: zooming into the tile being acquired does not stop the
+ * planes from coming, and stepping back through a stack does not stop the view
+ * from taking in new tiles.
+ */
+import { isLoaded, want } from "./engine/landed.js";
+
+const FIT_MARGIN = 1.08;
+// The volume is framed with more room: turned, it is wider than from the top.
+const VOLUME_MARGIN = 1.35;
+// How long the view waits for the plane it is about to step to.
+const AWAIT_MS = 600;
+// What the simple interface draws over the picture, in pixels (panel.css).
+export const KEEP_CLEAR = { top: 0, bottom: 0 };
+
+/** The layout the picture is drawn in, by name: "xy", "3d"... */
+export function layoutOf(viewer) {
+  const layout = viewer.layout.toJSON();
+  return typeof layout === "string" ? layout : layout?.type;
+}
+
+/** Change the layout, by name. */
+export function setLayout(viewer, name) {
+  viewer.layout.restoreState(name);
+}
+
+export function globalSpace(viewer) {
+  return viewer.navigationState.position.coordinateSpace.value;
+}
+
+function axisIndex(viewer, name) {
+  return globalSpace(viewer)?.names?.indexOf(name) ?? -1;
+}
+
+/** One listener list with a current value. */
+function watched(initial) {
+  return {
+    value: initial,
+    listeners: [],
+    set(next) {
+      if (next === this.value) return;
+      this.value = next;
+      for (const listener of this.listeners) listener(next);
+    },
+  };
+}
+
+// Whether the view is still framing everything shown.
+// `busy` counts the scenes being put on screen: while layers come and go the
+// engine moves the view itself, and that is not the operator.
+export const framing = { ...watched(true), fitting: false, fitted: null, busy: 0 };
+// Whether the view goes to the newest plane, and whether there is one to go to.
+export const following = { ...watched(true), moving: false, placed: null };
+export const acquiring = watched(false);
+
+// -- framing ------------------------------------------------------------------------
+
+// What the operator moves when they pan or zoom: the two axes across the
+// screen and the zoom of both views. Depth and time are left out.
+function framed(viewer) {
+  const { position, pose, zoomFactor } = viewer.navigationState;
+  const drawn = Array.from(pose.displayDimensionRenderInfo.value?.displayDimensionIndices ?? []);
+  return [
+    ...drawn.slice(0, 2).filter((axis) => axis >= 0).map((axis) => position.value[axis]),
+    zoomFactor.value,
+    viewer.perspectiveNavigationState.zoomFactor.value,
+  ];
+}
+
+const differs = (now, was) =>
+  now.length !== was.length ||
+  now.some((value, i) => Math.abs(value - was[i]) > 1e-6 * Math.max(1, Math.abs(was[i])));
+
+export function fitEverything(viewer) {
+  framing.fitting = true;
+  let done = false;
+  try {
+    done = fitCamera(viewer);
+  } finally {
+    framing.fitting = false;
+  }
+  if (done) framing.fitted = framed(viewer);
+  framing.set(true);
+  return done;
+}
+
+function fitCamera(viewer) {
+  const { position, pose, zoomFactor } = viewer.navigationState;
+  const space = globalSpace(viewer);
+  if (!space?.rank) return false;
+  const render = pose.displayDimensionRenderInfo.value;
+  const drawn = Array.from(render?.displayDimensionIndices ?? []).filter((axis) => axis >= 0);
+  const { lowerBounds, upperBounds } = space.bounds;
+  const extent = (axis) => {
+    const low = lowerBounds[axis];
+    const high = upperBounds[axis];
+    return Number.isFinite(low) && Number.isFinite(high) ? high - low : null;
+  };
+  if (drawn.slice(0, 2).some((axis) => extent(axis) === null)) return false;
+  const middle = Float32Array.from(position.value);
+  for (const axis of drawn.slice(0, 2)) {
+    middle[axis] = (lowerBounds[axis] + upperBounds[axis]) / 2;
+  }
+  position.value = middle;
+
+  let flat = null;
+  let volume = null;
+  for (const panel of viewer.display.panels) {
+    if ("sliceView" in panel) flat = panel.renderViewport;
+    else if ("sliceViews" in panel) volume = panel.renderViewport;
+  }
+  let fit = 0;
+  drawn.slice(0, 2).forEach((axis, slot) => {
+    const across = extent(axis);
+    // Upright, the picture keeps clear of the controls drawn over it: the
+    // buttons along the top and the sliders along the bottom.
+    const pixels = slot === 0 ? flat?.logicalWidth : (flat?.logicalHeight ?? 0) - (KEEP_CLEAR.top + KEEP_CLEAR.bottom);
+    if (across === null || !(pixels > 0)) return;
+    fit = Math.max(fit, (across * render.canonicalVoxelFactors[slot]) / pixels);
+  });
+  if (fit > 0) {
+    zoomFactor.value = fit * FIT_MARGIN;
+    const upright = drawn[1];
+    if (upright !== undefined && flat) {
+      // Moved up by half the difference, so the picture sits in the clear part.
+      const shifted = Float32Array.from(position.value);
+      const pixelsToVoxels = zoomFactor.value / render.canonicalVoxelFactors[1];
+      shifted[upright] += ((KEEP_CLEAR.bottom - KEEP_CLEAR.top) / 2) * pixelsToVoxels;
+      position.value = shifted;
+    }
+  }
+  let boxFit = 0;
+  const smaller = Math.min(volume?.logicalWidth ?? 0, volume?.logicalHeight ?? 0);
+  drawn.slice(0, 3).forEach((axis, slot) => {
+    const across = extent(axis);
+    if (across === null || !smaller) return;
+    boxFit = Math.max(boxFit, (across * render.canonicalVoxelFactors[slot] * volume.logicalHeight) / smaller);
+  });
+  if (boxFit > 0) viewer.perspectiveNavigationState.zoomFactor.value = boxFit * VOLUME_MARGIN;
+  return fit > 0 || boxFit > 0;
+}
+
+// -- following the newest plane --------------------------------------------------------
+
+function placedNow(viewer) {
+  const { position } = viewer.navigationState;
+  return ["z", "t"].map((name) => {
+    const at = axisIndex(viewer, name);
+    return at === -1 ? null : position.value[at];
+  });
+}
+
+/** Go to a point given by axis name: micrometres for x, y, z; the time point for t. */
+export function moveTo(viewer, named) {
+  const { position } = viewer.navigationState;
+  const space = globalSpace(viewer);
+  if (!space?.rank) return false;
+  const target = Float32Array.from(position.value);
+  let moved = false;
+  space.names.forEach((name, index) => {
+    const wanted = named[name];
+    if (typeof wanted !== "number") return;
+    // Python speaks micrometres and seconds; the engine counts voxels of a
+    // space whose scales are in metres and seconds.
+    const factor = space.units[index] === "m" ? 1e-6 : 1;
+    target[index] = (wanted * factor) / space.scales[index];
+    moved = true;
+  });
+  if (moved) position.value = target;
+  return moved;
+}
+
+let newest = null; // where Python last said the newest data is
+let awaited = null; // the plane the view is about to step to, once its chunk is loaded
+let ticking = null;
+
+/**
+ * Python says where the newest plane is (or, with nothing in it, that none is coming).
+ *
+ * `where.await` names the chunk that holds that plane, as `{ store, chunk }`:
+ * the view steps there only once the chunk is loaded, so the plane it leaves is
+ * on screen until the next one can be drawn. Planes may arrive faster than
+ * they load; the view then steps at the pace of the loading, always to the
+ * newest plane announced by the time it is free.
+ */
+export function setNewest(viewer, where) {
+  const named = {};
+  for (const name of ["z", "t"]) if (typeof where?.[name] === "number") named[name] = where[name];
+  newest = Object.keys(named).length ? { named, awaiting: where?.await ?? null } : null;
+  acquiring.set(newest !== null);
+  if (newest !== null && following.value) goToNewest(viewer);
+}
+
+function stepTo(viewer, target) {
+  following.moving = true;
+  try {
+    if (moveTo(viewer, target.named)) following.placed = placedNow(viewer);
+  } finally {
+    following.moving = false;
+  }
+}
+
+let wantedOf = null; // the store a chunk is wanted of, for the step that is awaited
+
+function tick(viewer) {
+  ticking = null;
+  if (awaited === null) return;
+  const { target, since } = awaited;
+  const { store, chunk } = target.awaiting;
+  const ready = isLoaded(viewer, store, chunk);
+  if (!ready && performance.now() - since < AWAIT_MS) {
+    ticking = setTimeout(() => tick(viewer), 30);
+    return;
+  }
+  awaited = null;
+  if (following.value) stepTo(viewer, target);
+  // Announced meanwhile: the newest plane is next.
+  if (following.value && newest !== null && newest !== target) goToNewest(viewer);
+  else {
+    want(viewer, store, []);
+    if (wantedOf === store) wantedOf = null;
+  }
+}
+
+export function goToNewest(viewer) {
+  if (newest === null) return;
+  if (newest.awaiting?.store && Array.isArray(newest.awaiting.chunk)) {
+    if (awaited !== null) return; // one step at a time: tick() takes the newest when it is free
+    awaited = { target: newest, since: performance.now() };
+    // The stack before this one is let go of: what was wanted of it stays
+    // wanted in the worker until it is told otherwise.
+    if (wantedOf !== null && wantedOf !== newest.awaiting.store) want(viewer, wantedOf, []);
+    wantedOf = newest.awaiting.store;
+    want(viewer, newest.awaiting.store, [newest.awaiting.chunk]);
+    if (ticking === null) ticking = setTimeout(() => tick(viewer), 0);
+    return;
+  }
+  stepTo(viewer, newest);
+}
+
+/** Follow again, as the Live button asks. */
+export function followAgain(viewer) {
+  following.set(true);
+  goToNewest(viewer);
+}
+
+// -- hearing the operator ---------------------------------------------------------------
+
+export function watchOperator(viewer) {
+  const moved = () => {
+    if (!framing.fitting && framing.busy === 0 && framing.fitted && differs(framed(viewer), framing.fitted)) {
+      framing.set(false);
+    }
+    if (!following.moving && following.placed && acquiring.value) {
+      const now = placedNow(viewer);
+      const stepped = now.some((value, i) => {
+        const was = following.placed[i];
+        return value !== null && was !== null && Math.abs(value - was) > 1e-3;
+      });
+      if (stepped) following.set(false);
+    }
+  };
+  viewer.navigationState.changed.add(moved);
+  viewer.perspectiveNavigationState.changed.add(moved);
+  // A new run is followed from its start, whatever was done during the last.
+  acquiring.listeners.push((running) => {
+    if (running) following.set(true);
+    else following.placed = null;
+    // The engine reads ahead of a view that moves through the planes. Ahead of
+    // a view that follows a run there is nothing yet: every such request would
+    // come back empty, and be asked again once the plane exists.
+    const ahead = viewer.chunkQueueManager?.enablePrefetch;
+    if (ahead) ahead.value = !running;
+  });
+}
+
+// An acquisition opens on its first time point. Left to itself the engine
+// starts in the middle of every axis it does not draw, which for a time-lapse
+// is a time point in the middle of the run.
+export function toFirstTimePoint(viewer) {
+  const { position } = viewer.navigationState;
+  const space = globalSpace(viewer);
+  const axis = space?.names?.indexOf("t") ?? -1;
+  if (axis === -1 || !Number.isFinite(space.bounds.lowerBounds[axis])) return;
+  const start = Float32Array.from(position.value);
+  // Time point i is drawn over i - 0.5 .. i + 0.5; the first starts at the lower bound.
+  start[axis] = space.bounds.lowerBounds[axis] + 0.5;
+  position.value = start;
+}

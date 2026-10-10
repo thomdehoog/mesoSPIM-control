@@ -175,11 +175,10002 @@ var init_legacy_browser = __esm({
   }
 });
 
+// node_modules/neuroglancer/lib/chunk_manager/base.js
+function getChunkStateStatisticIndex(state, priorityTier) {
+  return state * numChunkPriorityTiers + priorityTier;
+}
+function getChunkDownloadStatisticIndex(statistic) {
+  return numChunkStates * numChunkPriorityTiers * numChunkMemoryStatistics + statistic;
+}
+var ChunkState, numChunkStates, ChunkPriorityTier, numChunkPriorityTiers, ChunkDownloadStatistics, ChunkMemoryStatistics, numChunkMemoryStatistics, numChunkDownloadStatistics, numChunkStatistics, PREFETCH_PRIORITY_MULTIPLIER, CHUNK_QUEUE_MANAGER_RPC_ID, CHUNK_MANAGER_RPC_ID, CHUNK_SOURCE_INVALIDATE_RPC_ID, REQUEST_CHUNK_STATISTICS_RPC_ID, CHUNK_LAYER_STATISTICS_RPC_ID;
+var init_base = __esm({
+  "node_modules/neuroglancer/lib/chunk_manager/base.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    ChunkState = /* @__PURE__ */ ((ChunkState2) => {
+      ChunkState2[ChunkState2["GPU_MEMORY"] = 0] = "GPU_MEMORY";
+      ChunkState2[ChunkState2["SYSTEM_MEMORY"] = 1] = "SYSTEM_MEMORY";
+      ChunkState2[ChunkState2["SYSTEM_MEMORY_WORKER"] = 2] = "SYSTEM_MEMORY_WORKER";
+      ChunkState2[ChunkState2["DOWNLOADING"] = 3] = "DOWNLOADING";
+      ChunkState2[ChunkState2["QUEUED"] = 4] = "QUEUED";
+      ChunkState2[ChunkState2["NEW"] = 5] = "NEW";
+      ChunkState2[ChunkState2["FAILED"] = 6] = "FAILED";
+      ChunkState2[ChunkState2["EXPIRED"] = 7] = "EXPIRED";
+      return ChunkState2;
+    })(ChunkState || {});
+    numChunkStates = 8;
+    ChunkPriorityTier = /* @__PURE__ */ ((ChunkPriorityTier2) => {
+      ChunkPriorityTier2[ChunkPriorityTier2["FIRST_TIER"] = 0] = "FIRST_TIER";
+      ChunkPriorityTier2[ChunkPriorityTier2["FIRST_ORDERED_TIER"] = 0] = "FIRST_ORDERED_TIER";
+      ChunkPriorityTier2[ChunkPriorityTier2["VISIBLE"] = 0] = "VISIBLE";
+      ChunkPriorityTier2[ChunkPriorityTier2["PREFETCH"] = 1] = "PREFETCH";
+      ChunkPriorityTier2[ChunkPriorityTier2["LAST_ORDERED_TIER"] = 1] = "LAST_ORDERED_TIER";
+      ChunkPriorityTier2[ChunkPriorityTier2["RECENT"] = 2] = "RECENT";
+      ChunkPriorityTier2[ChunkPriorityTier2["LAST_TIER"] = 2] = "LAST_TIER";
+      return ChunkPriorityTier2;
+    })(ChunkPriorityTier || {});
+    numChunkPriorityTiers = 3;
+    ChunkDownloadStatistics = /* @__PURE__ */ ((ChunkDownloadStatistics2) => {
+      ChunkDownloadStatistics2[ChunkDownloadStatistics2["totalTime"] = 0] = "totalTime";
+      ChunkDownloadStatistics2[ChunkDownloadStatistics2["totalChunks"] = 1] = "totalChunks";
+      return ChunkDownloadStatistics2;
+    })(ChunkDownloadStatistics || {});
+    ChunkMemoryStatistics = /* @__PURE__ */ ((ChunkMemoryStatistics2) => {
+      ChunkMemoryStatistics2[ChunkMemoryStatistics2["numChunks"] = 0] = "numChunks";
+      ChunkMemoryStatistics2[ChunkMemoryStatistics2["systemMemoryBytes"] = 1] = "systemMemoryBytes";
+      ChunkMemoryStatistics2[ChunkMemoryStatistics2["gpuMemoryBytes"] = 2] = "gpuMemoryBytes";
+      return ChunkMemoryStatistics2;
+    })(ChunkMemoryStatistics || {});
+    numChunkMemoryStatistics = 3;
+    numChunkDownloadStatistics = 2;
+    numChunkStatistics = numChunkStates * numChunkPriorityTiers * numChunkMemoryStatistics + numChunkDownloadStatistics;
+    PREFETCH_PRIORITY_MULTIPLIER = 1e13;
+    CHUNK_QUEUE_MANAGER_RPC_ID = "ChunkQueueManager";
+    CHUNK_MANAGER_RPC_ID = "ChunkManager";
+    CHUNK_SOURCE_INVALIDATE_RPC_ID = "ChunkSource.invalidate";
+    REQUEST_CHUNK_STATISTICS_RPC_ID = "ChunkQueueManager.requestChunkStatistics";
+    CHUNK_LAYER_STATISTICS_RPC_ID = "ChunkManager.chunkLayerStatistics";
+  }
+});
+
+// node_modules/neuroglancer/lib/async_computation/index.js
+function asyncComputation(id) {
+  return { id };
+}
+var init_async_computation = __esm({
+  "node_modules/neuroglancer/lib/async_computation/index.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/async_computation/decode_blosc_request.js
+var decodeBlosc;
+var init_decode_blosc_request = __esm({
+  "node_modules/neuroglancer/lib/async_computation/decode_blosc_request.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_async_computation();
+    decodeBlosc = asyncComputation(
+      "decodeBlosc"
+    );
+  }
+});
+
+// node_modules/neuroglancer/lib/async_computation/request.js
+function returnWorker(worker) {
+  var _a;
+  for (const [id, task] of pendingTasks) {
+    pendingTasks.delete(id);
+    (_a = task.cleanup) == null ? void 0 : _a.call(task);
+    worker.postMessage(task.msg, task.transfer);
+    return;
+  }
+  freeWorkers.push(worker);
+}
+function launchWorker() {
+  ++numWorkers;
+  const worker = new Worker(
+    /* webpackChunkName: "neuroglancer_async_computation" */
+    new URL("../async_computation.bundle.js", import.meta.url),
+    { type: "module" }
+  );
+  let ready = false;
+  worker.onmessage = (msg) => {
+    if (!ready) {
+      ready = true;
+      returnWorker(worker);
+      return;
+    }
+    const { id, value, error } = msg.data;
+    returnWorker(worker);
+    const callbacks = tasks.get(id);
+    tasks.delete(id);
+    if (callbacks === void 0) return;
+    if (error !== void 0) {
+      callbacks.reject(error);
+    } else {
+      callbacks.resolve(value);
+    }
+  };
+}
+function requestAsyncComputation(request, signal, transfer, ...args) {
+  const id = nextTaskId++;
+  const msg = { t: request.id, id, args };
+  signal == null ? void 0 : signal.throwIfAborted();
+  const promise = new Promise((resolve, reject) => {
+    tasks.set(id, { resolve, reject });
+  });
+  if (freeWorkers.length !== 0) {
+    freeWorkers.pop().postMessage(msg, transfer);
+  } else {
+    let cleanup;
+    if (signal !== void 0) {
+      let abortHandler2 = function() {
+        pendingTasks.delete(id);
+        const task = tasks.get(id);
+        tasks.delete(id);
+        task.reject(signal.reason);
+      };
+      var abortHandler = abortHandler2;
+      signal.addEventListener("abort", abortHandler2, { once: true });
+      cleanup = () => {
+        signal.removeEventListener("abort", abortHandler2);
+      };
+    }
+    pendingTasks.set(id, { msg, transfer, cleanup });
+    if (tasks.size > numWorkers && numWorkers < maxWorkers) {
+      launchWorker();
+    }
+  }
+  return promise;
+}
+var numWorkers, freeWorkers, pendingTasks, tasks, maxWorkers, nextTaskId;
+var init_request = __esm({
+  "node_modules/neuroglancer/lib/async_computation/request.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    numWorkers = 0;
+    freeWorkers = [];
+    pendingTasks = /* @__PURE__ */ new Map();
+    tasks = /* @__PURE__ */ new Map();
+    maxWorkers = typeof navigator.hardwareConcurrency === "undefined" ? 4 : Math.min(12, navigator.hardwareConcurrency);
+    nextTaskId = 0;
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/index.js
+var CodecKind;
+var init_codec = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/index.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    CodecKind = /* @__PURE__ */ ((CodecKind2) => {
+      CodecKind2[CodecKind2["arrayToArray"] = 0] = "arrayToArray";
+      CodecKind2[CodecKind2["arrayToBytes"] = 1] = "arrayToBytes";
+      CodecKind2[CodecKind2["bytesToBytes"] = 2] = "bytesToBytes";
+      return CodecKind2;
+    })(CodecKind || {});
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/decode.js
+function registerCodec(codec) {
+  if (codec.kind === CodecKind.arrayToBytes && "getShardedKvStore" in codec) {
+    codecRegistry.sharding.set(codec.name, codec);
+  } else {
+    codecRegistry[codec.kind].set(codec.name, codec);
+  }
+}
+async function decodeArray(codecs, encoded, signal) {
+  const bytesToBytes = codecs[CodecKind.bytesToBytes];
+  for (let i = bytesToBytes.length; i--; ) {
+    const codec = bytesToBytes[i];
+    const impl = codecRegistry[CodecKind.bytesToBytes].get(codec.name);
+    if (impl === void 0) {
+      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
+    }
+    encoded = await impl.decode(codec.configuration, encoded, signal);
+  }
+  let decoded;
+  {
+    const codec = codecs[CodecKind.arrayToBytes];
+    const impl = codecRegistry[CodecKind.arrayToBytes].get(codec.name);
+    if (impl === void 0) {
+      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
+    }
+    decoded = await impl.decode(
+      codec.configuration,
+      codecs.arrayInfo[codecs.arrayInfo.length - 1],
+      encoded,
+      signal
+    );
+  }
+  const arrayToArray = codecs[CodecKind.arrayToArray];
+  for (let i = arrayToArray.length; i--; ) {
+    const codec = arrayToArray[i];
+    const impl = codecRegistry[CodecKind.arrayToArray].get(codec.name);
+    if (impl === void 0) {
+      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
+    }
+    decoded = await impl.decode(
+      codec.configuration,
+      codecs.arrayInfo[i],
+      decoded,
+      signal
+    );
+  }
+  return decoded;
+}
+function applySharding(chunkManager, codecs, baseKvStore) {
+  let kvStore = baseKvStore.store;
+  let curCodecs = codecs;
+  while (true) {
+    const { shardingInfo } = curCodecs;
+    if (shardingInfo === void 0) break;
+    const codec = curCodecs[CodecKind.arrayToBytes];
+    const impl = codecRegistry.sharding.get(codec.name);
+    if (impl === void 0) {
+      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
+    }
+    kvStore = impl.getShardedKvStore(
+      codec.configuration,
+      chunkManager,
+      kvStore
+    );
+    curCodecs = shardingInfo.subChunkCodecs;
+  }
+  const decodeCodecs = curCodecs;
+  const pathPrefix = baseKvStore.path;
+  function getChunkKey(chunkGridPosition, baseKey) {
+    let key = pathPrefix + baseKey;
+    const rank = chunkGridPosition.length;
+    let curCodecs2 = codecs;
+    while (curCodecs2.shardingInfo !== void 0) {
+      const layoutInfo = codecs.layoutInfo[codecs.layoutInfo.length - 1];
+      const { physicalToLogicalDimension, readChunkShape } = layoutInfo;
+      const { subChunkShape, subChunkGridShape, subChunkCodecs } = curCodecs2.shardingInfo;
+      const subChunk = new Array(rank);
+      for (let fOrderPhysicalDim = 0; fOrderPhysicalDim < rank; ++fOrderPhysicalDim) {
+        const subChunkDim = physicalToLogicalDimension[rank - 1 - fOrderPhysicalDim];
+        subChunk[subChunkDim] = Math.floor(
+          chunkGridPosition[fOrderPhysicalDim] * readChunkShape[subChunkDim] / subChunkShape[subChunkDim]
+        ) % subChunkGridShape[subChunkDim];
+      }
+      key = { base: key, subChunk };
+      curCodecs2 = subChunkCodecs;
+    }
+    return key;
+  }
+  return { kvStore, getChunkKey, decodeCodecs };
+}
+var codecRegistry;
+var init_decode = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_codec();
+    codecRegistry = {
+      [CodecKind.arrayToArray]: /* @__PURE__ */ new Map(),
+      [CodecKind.arrayToBytes]: /* @__PURE__ */ new Map(),
+      [CodecKind.bytesToBytes]: /* @__PURE__ */ new Map(),
+      sharding: /* @__PURE__ */ new Map()
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/blosc/decode.js
+var init_decode2 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/blosc/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode_blosc_request();
+    init_request();
+    init_decode();
+    init_codec();
+    registerCodec({
+      name: "blosc",
+      kind: CodecKind.bytesToBytes,
+      decode(configuration, encoded, signal) {
+        configuration;
+        return requestAsyncComputation(
+          decodeBlosc,
+          signal,
+          [encoded.buffer],
+          encoded
+        );
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/async_computation/decode_zstd_request.js
+var decodeZstd;
+var init_decode_zstd_request = __esm({
+  "node_modules/neuroglancer/lib/async_computation/decode_zstd_request.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_async_computation();
+    decodeZstd = asyncComputation(
+      "decodeZstd"
+    );
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/zstd/decode.js
+var init_decode3 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/zstd/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode_zstd_request();
+    init_request();
+    init_decode();
+    init_codec();
+    registerCodec({
+      name: "zstd",
+      kind: CodecKind.bytesToBytes,
+      decode(configuration, encoded, signal) {
+        configuration;
+        return requestAsyncComputation(
+          decodeZstd,
+          signal,
+          [encoded.buffer],
+          encoded
+        );
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/util/data_type.js
+function makeDataTypeArrayView(dataType, buffer, byteOffset = 0, byteLength = buffer.byteLength) {
+  const bytesPerElement = DATA_TYPE_BYTES[dataType];
+  return new DATA_TYPE_ARRAY_CONSTRUCTOR[dataType](
+    buffer,
+    byteOffset,
+    byteLength / bytesPerElement
+  );
+}
+var DataType, DATA_TYPE_BYTES, DATA_TYPE_ARRAY_CONSTRUCTOR;
+var init_data_type = __esm({
+  "node_modules/neuroglancer/lib/util/data_type.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    DataType = /* @__PURE__ */ ((DataType2) => {
+      DataType2[DataType2["UINT8"] = 0] = "UINT8";
+      DataType2[DataType2["INT8"] = 1] = "INT8";
+      DataType2[DataType2["UINT16"] = 2] = "UINT16";
+      DataType2[DataType2["INT16"] = 3] = "INT16";
+      DataType2[DataType2["UINT32"] = 4] = "UINT32";
+      DataType2[DataType2["INT32"] = 5] = "INT32";
+      DataType2[DataType2["UINT64"] = 6] = "UINT64";
+      DataType2[DataType2["FLOAT32"] = 7] = "FLOAT32";
+      return DataType2;
+    })(DataType || {});
+    DATA_TYPE_BYTES = {
+      [
+        0
+        /* UINT8 */
+      ]: 1,
+      [
+        1
+        /* INT8 */
+      ]: 1,
+      [
+        2
+        /* UINT16 */
+      ]: 2,
+      [
+        3
+        /* INT16 */
+      ]: 2,
+      [
+        4
+        /* UINT32 */
+      ]: 4,
+      [
+        5
+        /* INT32 */
+      ]: 4,
+      [
+        6
+        /* UINT64 */
+      ]: 8,
+      [
+        7
+        /* FLOAT32 */
+      ]: 4
+    };
+    DATA_TYPE_ARRAY_CONSTRUCTOR = {
+      [
+        0
+        /* UINT8 */
+      ]: Uint8Array,
+      [
+        1
+        /* INT8 */
+      ]: Int8Array,
+      [
+        2
+        /* UINT16 */
+      ]: Uint16Array,
+      [
+        3
+        /* INT16 */
+      ]: Int16Array,
+      [
+        4
+        /* UINT32 */
+      ]: Uint32Array,
+      [
+        5
+        /* INT32 */
+      ]: Int32Array,
+      [
+        6
+        /* UINT64 */
+      ]: BigUint64Array,
+      [
+        7
+        /* FLOAT32 */
+      ]: Float32Array
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/endian.js
+function determineEndianness() {
+  const a = Uint16Array.of(4386);
+  const b = new Uint8Array(a.buffer);
+  return b[0] === 17 ? 1 : 0;
+}
+function swapEndian16(array2) {
+  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
+  for (let i = 0, length6 = view.length; i < length6; i += 2) {
+    const temp = view[i];
+    view[i] = view[i + 1];
+    view[i + 1] = temp;
+  }
+}
+function swapEndian32(array2) {
+  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
+  for (let i = 0, length6 = view.length; i < length6; i += 4) {
+    let temp = view[i];
+    view[i] = view[i + 3];
+    view[i + 3] = temp;
+    temp = view[i + 1];
+    view[i + 1] = view[i + 2];
+    view[i + 2] = temp;
+  }
+}
+function swapEndian64(array2) {
+  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
+  for (let i = 0, length6 = view.length; i < length6; i += 8) {
+    let temp = view[i];
+    view[i] = view[i + 7];
+    view[i + 7] = temp;
+    temp = view[i + 1];
+    view[i + 1] = view[i + 6];
+    view[i + 6] = temp;
+    temp = view[i + 2];
+    view[i + 2] = view[i + 5];
+    view[i + 5] = temp;
+    temp = view[i + 3];
+    view[i + 3] = view[i + 4];
+    view[i + 4] = temp;
+  }
+}
+function convertEndian16(array2, source, target2 = ENDIANNESS) {
+  if (source !== target2) {
+    swapEndian16(array2);
+  }
+}
+function convertEndian32(array2, source, target2 = ENDIANNESS) {
+  if (source !== target2) {
+    swapEndian32(array2);
+  }
+}
+function convertEndian64(array2, source, target2 = ENDIANNESS) {
+  if (source !== target2) {
+    swapEndian64(array2);
+  }
+}
+function convertEndian(array2, source, elementBytes, target2 = ENDIANNESS) {
+  if (source === target2 || elementBytes === 1) return;
+  switch (elementBytes) {
+    case 2:
+      swapEndian16(array2);
+      break;
+    case 4:
+      swapEndian32(array2);
+      break;
+    case 8:
+      swapEndian64(array2);
+      break;
+  }
+}
+var Endianness, ENDIANNESS;
+var init_endian = __esm({
+  "node_modules/neuroglancer/lib/util/endian.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    Endianness = /* @__PURE__ */ ((Endianness2) => {
+      Endianness2[Endianness2["LITTLE"] = 0] = "LITTLE";
+      Endianness2[Endianness2["BIG"] = 1] = "BIG";
+      return Endianness2;
+    })(Endianness || {});
+    ENDIANNESS = determineEndianness();
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/bytes/decode.js
+var init_decode4 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/bytes/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode();
+    init_codec();
+    init_data_type();
+    init_endian();
+    registerCodec({
+      name: "bytes",
+      kind: CodecKind.arrayToBytes,
+      async decode(configuration, decodedArrayInfo, encoded, signal) {
+        signal;
+        const { dataType, chunkShape } = decodedArrayInfo;
+        const numElements = chunkShape.reduce((a, b) => a * b, 1);
+        const bytesPerElement = DATA_TYPE_BYTES[dataType];
+        const expectedBytes = numElements * bytesPerElement;
+        if (encoded.byteLength !== expectedBytes) {
+          throw new Error(
+            `Raw-format chunk is ${encoded.byteLength} bytes, but ${numElements} * ${bytesPerElement} = ${expectedBytes} bytes are expected.`
+          );
+        }
+        const data = makeDataTypeArrayView(
+          dataType,
+          encoded.buffer,
+          encoded.byteOffset,
+          encoded.byteLength
+        );
+        convertEndian(data, configuration.endian, bytesPerElement);
+        return data;
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/crc32c/decode.js
+var checksumSize;
+var init_decode5 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/crc32c/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode();
+    init_codec();
+    checksumSize = 4;
+    registerCodec({
+      name: "crc32c",
+      kind: CodecKind.bytesToBytes,
+      async decode(configuration, encoded, signal) {
+        configuration;
+        signal;
+        if (encoded.length < checksumSize) {
+          throw new Error(
+            `Expected buffer of size at least ${checksumSize} bytes but received: ${encoded.length} bytes`
+          );
+        }
+        return encoded.subarray(0, encoded.length - checksumSize);
+      }
+    });
+  }
+});
+
+// node_modules/lodash-es/_freeGlobal.js
+var freeGlobal, freeGlobal_default;
+var init_freeGlobal = __esm({
+  "node_modules/lodash-es/_freeGlobal.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    freeGlobal = typeof global == "object" && global && global.Object === Object && global;
+    freeGlobal_default = freeGlobal;
+  }
+});
+
+// node_modules/lodash-es/_root.js
+var freeSelf, root, root_default;
+var init_root = __esm({
+  "node_modules/lodash-es/_root.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_freeGlobal();
+    freeSelf = typeof self == "object" && self && self.Object === Object && self;
+    root = freeGlobal_default || freeSelf || Function("return this")();
+    root_default = root;
+  }
+});
+
+// node_modules/lodash-es/_Symbol.js
+var Symbol2, Symbol_default;
+var init_Symbol = __esm({
+  "node_modules/lodash-es/_Symbol.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_root();
+    Symbol2 = root_default.Symbol;
+    Symbol_default = Symbol2;
+  }
+});
+
+// node_modules/lodash-es/_getRawTag.js
+function getRawTag(value) {
+  var isOwn = hasOwnProperty.call(value, symToStringTag), tag = value[symToStringTag];
+  try {
+    value[symToStringTag] = void 0;
+    var unmasked = true;
+  } catch (e) {
+  }
+  var result = nativeObjectToString.call(value);
+  if (unmasked) {
+    if (isOwn) {
+      value[symToStringTag] = tag;
+    } else {
+      delete value[symToStringTag];
+    }
+  }
+  return result;
+}
+var objectProto, hasOwnProperty, nativeObjectToString, symToStringTag, getRawTag_default;
+var init_getRawTag = __esm({
+  "node_modules/lodash-es/_getRawTag.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_Symbol();
+    objectProto = Object.prototype;
+    hasOwnProperty = objectProto.hasOwnProperty;
+    nativeObjectToString = objectProto.toString;
+    symToStringTag = Symbol_default ? Symbol_default.toStringTag : void 0;
+    getRawTag_default = getRawTag;
+  }
+});
+
+// node_modules/lodash-es/_objectToString.js
+function objectToString(value) {
+  return nativeObjectToString2.call(value);
+}
+var objectProto2, nativeObjectToString2, objectToString_default;
+var init_objectToString = __esm({
+  "node_modules/lodash-es/_objectToString.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    objectProto2 = Object.prototype;
+    nativeObjectToString2 = objectProto2.toString;
+    objectToString_default = objectToString;
+  }
+});
+
+// node_modules/lodash-es/_baseGetTag.js
+function baseGetTag(value) {
+  if (value == null) {
+    return value === void 0 ? undefinedTag : nullTag;
+  }
+  return symToStringTag2 && symToStringTag2 in Object(value) ? getRawTag_default(value) : objectToString_default(value);
+}
+var nullTag, undefinedTag, symToStringTag2, baseGetTag_default;
+var init_baseGetTag = __esm({
+  "node_modules/lodash-es/_baseGetTag.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_Symbol();
+    init_getRawTag();
+    init_objectToString();
+    nullTag = "[object Null]";
+    undefinedTag = "[object Undefined]";
+    symToStringTag2 = Symbol_default ? Symbol_default.toStringTag : void 0;
+    baseGetTag_default = baseGetTag;
+  }
+});
+
+// node_modules/lodash-es/isObjectLike.js
+function isObjectLike(value) {
+  return value != null && typeof value == "object";
+}
+var isObjectLike_default;
+var init_isObjectLike = __esm({
+  "node_modules/lodash-es/isObjectLike.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    isObjectLike_default = isObjectLike;
+  }
+});
+
+// node_modules/lodash-es/isSymbol.js
+function isSymbol(value) {
+  return typeof value == "symbol" || isObjectLike_default(value) && baseGetTag_default(value) == symbolTag;
+}
+var symbolTag, isSymbol_default;
+var init_isSymbol = __esm({
+  "node_modules/lodash-es/isSymbol.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_baseGetTag();
+    init_isObjectLike();
+    symbolTag = "[object Symbol]";
+    isSymbol_default = isSymbol;
+  }
+});
+
+// node_modules/lodash-es/_trimmedEndIndex.js
+function trimmedEndIndex(string2) {
+  var index = string2.length;
+  while (index-- && reWhitespace.test(string2.charAt(index))) {
+  }
+  return index;
+}
+var reWhitespace, trimmedEndIndex_default;
+var init_trimmedEndIndex = __esm({
+  "node_modules/lodash-es/_trimmedEndIndex.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    reWhitespace = /\s/;
+    trimmedEndIndex_default = trimmedEndIndex;
+  }
+});
+
+// node_modules/lodash-es/_baseTrim.js
+function baseTrim(string2) {
+  return string2 ? string2.slice(0, trimmedEndIndex_default(string2) + 1).replace(reTrimStart, "") : string2;
+}
+var reTrimStart, baseTrim_default;
+var init_baseTrim = __esm({
+  "node_modules/lodash-es/_baseTrim.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_trimmedEndIndex();
+    reTrimStart = /^\s+/;
+    baseTrim_default = baseTrim;
+  }
+});
+
+// node_modules/lodash-es/isObject.js
+function isObject(value) {
+  var type = typeof value;
+  return value != null && (type == "object" || type == "function");
+}
+var isObject_default;
+var init_isObject = __esm({
+  "node_modules/lodash-es/isObject.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    isObject_default = isObject;
+  }
+});
+
+// node_modules/lodash-es/toNumber.js
+function toNumber(value) {
+  if (typeof value == "number") {
+    return value;
+  }
+  if (isSymbol_default(value)) {
+    return NAN;
+  }
+  if (isObject_default(value)) {
+    var other = typeof value.valueOf == "function" ? value.valueOf() : value;
+    value = isObject_default(other) ? other + "" : other;
+  }
+  if (typeof value != "string") {
+    return value === 0 ? value : +value;
+  }
+  value = baseTrim_default(value);
+  var isBinary = reIsBinary.test(value);
+  return isBinary || reIsOctal.test(value) ? freeParseInt(value.slice(2), isBinary ? 2 : 8) : reIsBadHex.test(value) ? NAN : +value;
+}
+var NAN, reIsBadHex, reIsBinary, reIsOctal, freeParseInt, toNumber_default;
+var init_toNumber = __esm({
+  "node_modules/lodash-es/toNumber.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_baseTrim();
+    init_isObject();
+    init_isSymbol();
+    NAN = 0 / 0;
+    reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
+    reIsBinary = /^0b[01]+$/i;
+    reIsOctal = /^0o[0-7]+$/i;
+    freeParseInt = parseInt;
+    toNumber_default = toNumber;
+  }
+});
+
+// node_modules/lodash-es/now.js
+var now, now_default;
+var init_now = __esm({
+  "node_modules/lodash-es/now.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_root();
+    now = function() {
+      return root_default.Date.now();
+    };
+    now_default = now;
+  }
+});
+
+// node_modules/lodash-es/debounce.js
+function debounce(func, wait, options) {
+  var lastArgs, lastThis, maxWait, result, timerId, lastCallTime, lastInvokeTime = 0, leading = false, maxing = false, trailing = true;
+  if (typeof func != "function") {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  wait = toNumber_default(wait) || 0;
+  if (isObject_default(options)) {
+    leading = !!options.leading;
+    maxing = "maxWait" in options;
+    maxWait = maxing ? nativeMax(toNumber_default(options.maxWait) || 0, wait) : maxWait;
+    trailing = "trailing" in options ? !!options.trailing : trailing;
+  }
+  function invokeFunc(time) {
+    var args = lastArgs, thisArg = lastThis;
+    lastArgs = lastThis = void 0;
+    lastInvokeTime = time;
+    result = func.apply(thisArg, args);
+    return result;
+  }
+  function leadingEdge(time) {
+    lastInvokeTime = time;
+    timerId = setTimeout(timerExpired, wait);
+    return leading ? invokeFunc(time) : result;
+  }
+  function remainingWait(time) {
+    var timeSinceLastCall = time - lastCallTime, timeSinceLastInvoke = time - lastInvokeTime, timeWaiting = wait - timeSinceLastCall;
+    return maxing ? nativeMin(timeWaiting, maxWait - timeSinceLastInvoke) : timeWaiting;
+  }
+  function shouldInvoke(time) {
+    var timeSinceLastCall = time - lastCallTime, timeSinceLastInvoke = time - lastInvokeTime;
+    return lastCallTime === void 0 || timeSinceLastCall >= wait || timeSinceLastCall < 0 || maxing && timeSinceLastInvoke >= maxWait;
+  }
+  function timerExpired() {
+    var time = now_default();
+    if (shouldInvoke(time)) {
+      return trailingEdge(time);
+    }
+    timerId = setTimeout(timerExpired, remainingWait(time));
+  }
+  function trailingEdge(time) {
+    timerId = void 0;
+    if (trailing && lastArgs) {
+      return invokeFunc(time);
+    }
+    lastArgs = lastThis = void 0;
+    return result;
+  }
+  function cancel() {
+    if (timerId !== void 0) {
+      clearTimeout(timerId);
+    }
+    lastInvokeTime = 0;
+    lastArgs = lastCallTime = lastThis = timerId = void 0;
+  }
+  function flush() {
+    return timerId === void 0 ? result : trailingEdge(now_default());
+  }
+  function debounced() {
+    var time = now_default(), isInvoking = shouldInvoke(time);
+    lastArgs = arguments;
+    lastThis = this;
+    lastCallTime = time;
+    if (isInvoking) {
+      if (timerId === void 0) {
+        return leadingEdge(lastCallTime);
+      }
+      if (maxing) {
+        clearTimeout(timerId);
+        timerId = setTimeout(timerExpired, wait);
+        return invokeFunc(lastCallTime);
+      }
+    }
+    if (timerId === void 0) {
+      timerId = setTimeout(timerExpired, wait);
+    }
+    return result;
+  }
+  debounced.cancel = cancel;
+  debounced.flush = flush;
+  return debounced;
+}
+var FUNC_ERROR_TEXT, nativeMax, nativeMin, debounce_default;
+var init_debounce = __esm({
+  "node_modules/lodash-es/debounce.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_isObject();
+    init_now();
+    init_toNumber();
+    FUNC_ERROR_TEXT = "Expected a function";
+    nativeMax = Math.max;
+    nativeMin = Math.min;
+    debounce_default = debounce;
+  }
+});
+
+// node_modules/lodash-es/throttle.js
+function throttle(func, wait, options) {
+  var leading = true, trailing = true;
+  if (typeof func != "function") {
+    throw new TypeError(FUNC_ERROR_TEXT2);
+  }
+  if (isObject_default(options)) {
+    leading = "leading" in options ? !!options.leading : leading;
+    trailing = "trailing" in options ? !!options.trailing : trailing;
+  }
+  return debounce_default(func, wait, {
+    "leading": leading,
+    "maxWait": wait,
+    "trailing": trailing
+  });
+}
+var FUNC_ERROR_TEXT2, throttle_default;
+var init_throttle = __esm({
+  "node_modules/lodash-es/throttle.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_debounce();
+    init_isObject();
+    FUNC_ERROR_TEXT2 = "Expected a function";
+    throttle_default = throttle;
+  }
+});
+
+// node_modules/lodash-es/lodash.js
+var init_lodash = __esm({
+  "node_modules/lodash-es/lodash.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_debounce();
+    init_throttle();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/disposable.js
+function invokeDisposer(disposer) {
+  if (typeof disposer === "object") {
+    disposer.dispose();
+  } else {
+    disposer();
+  }
+}
+function invokeDisposers(disposers) {
+  for (let i = disposers.length; i > 0; --i) {
+    invokeDisposer(disposers[i - 1]);
+  }
+}
+function registerEventListener(target2, type, listener, options) {
+  target2.addEventListener(type, listener, options);
+  return () => target2.removeEventListener(type, listener, options);
+}
+var DEBUG_REF_COUNTS, RefCounted, RefCountedValue;
+var init_disposable = __esm({
+  "node_modules/neuroglancer/lib/util/disposable.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    DEBUG_REF_COUNTS = false;
+    RefCounted = class {
+      refCount = 1;
+      wasDisposed;
+      disposers;
+      addRef() {
+        ++this.refCount;
+        return this;
+      }
+      disposedStacks;
+      dispose() {
+        if (DEBUG_REF_COUNTS) {
+          (this.disposedStacks = this.disposedStacks || []).push(new Error().stack);
+        }
+        if (--this.refCount !== 0) {
+          return;
+        }
+        this.refCountReachedZero();
+      }
+      [Symbol.dispose]() {
+        this.dispose();
+      }
+      refCountReachedZero() {
+        this.disposed();
+        const { disposers } = this;
+        if (disposers !== void 0) {
+          invokeDisposers(disposers);
+          this.disposers = void 0;
+        }
+        this.wasDisposed = true;
+      }
+      disposed() {
+      }
+      registerDisposer(f) {
+        const { disposers } = this;
+        if (disposers == null) {
+          this.disposers = [f];
+        } else {
+          disposers.push(f);
+        }
+        return f;
+      }
+      unregisterDisposer(f) {
+        const { disposers } = this;
+        if (disposers != null) {
+          const index = disposers.indexOf(f);
+          if (index !== -1) {
+            disposers.splice(index, 1);
+          }
+        }
+        return f;
+      }
+      registerEventListener(target2, type, listener, options) {
+        this.registerDisposer(
+          registerEventListener(target2, type, listener, options)
+        );
+      }
+      registerCancellable(cancellable) {
+        this.registerDisposer(() => {
+          cancellable.cancel();
+        });
+        return cancellable;
+      }
+    };
+    RefCountedValue = class extends RefCounted {
+      constructor(value) {
+        super();
+        this.value = value;
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/linked_list.js
+function linkedListOperations(options) {
+  const { next: NEXT, prev: PREV } = options;
+  return {
+    insertAfter(head, x) {
+      const next = head[NEXT];
+      x[NEXT] = next;
+      x[PREV] = head;
+      head[NEXT] = x;
+      next[PREV] = x;
+    },
+    insertBefore(head, x) {
+      const prev = head[PREV];
+      x[PREV] = prev;
+      x[NEXT] = head;
+      head[PREV] = x;
+      prev[NEXT] = x;
+    },
+    front(head) {
+      const next = head[NEXT];
+      if (next === head) {
+        return null;
+      }
+      return next;
+    },
+    back(head) {
+      const next = head[PREV];
+      if (next === head) {
+        return null;
+      }
+      return next;
+    },
+    pop(x) {
+      const next = x[NEXT];
+      const prev = x[PREV];
+      next[PREV] = prev;
+      prev[NEXT] = next;
+      x[NEXT] = null;
+      x[PREV] = null;
+      return x;
+    },
+    *iterator(head) {
+      for (let x = head[NEXT]; x !== head; x = x[NEXT]) {
+        yield x;
+      }
+    },
+    *reverseIterator(head) {
+      for (let x = head[PREV]; x !== head; x = x[PREV]) {
+        yield x;
+      }
+    },
+    initializeHead(head) {
+      head[NEXT] = head[PREV] = head;
+    }
+  };
+}
+var init_linked_list = __esm({
+  "node_modules/neuroglancer/lib/util/linked_list.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/abort.js
+function scopedAbortCallback(signal, callback) {
+  if (signal === void 0) return void 0;
+  if (signal.aborted) {
+    callback(signal.reason);
+    return void 0;
+  }
+  function wrappedCallback() {
+    callback(this.reason);
+  }
+  signal.addEventListener("abort", wrappedCallback, { once: true });
+  return {
+    [Symbol.dispose]() {
+      signal.removeEventListener("abort", wrappedCallback);
+    }
+  };
+}
+function promiseWithResolversAndAbortCallback(signal, abortCallback) {
+  const { promise, resolve, reject } = Promise.withResolvers();
+  const cleanup = scopedAbortCallback(signal, abortCallback);
+  return {
+    promise,
+    resolve: (value) => {
+      cleanup == null ? void 0 : cleanup[Symbol.dispose]();
+      resolve(value);
+    },
+    reject: (reason) => {
+      cleanup == null ? void 0 : cleanup[Symbol.dispose]();
+      reject(reason);
+    }
+  };
+}
+function raceWithAbort(promise, signal) {
+  if (signal === void 0) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const cleanup = scopedAbortCallback(signal, (reason) => {
+      reject(reason);
+    });
+    promise.then(
+      (value) => {
+        cleanup == null ? void 0 : cleanup[Symbol.dispose]();
+        resolve(value);
+      },
+      (reason) => {
+        cleanup == null ? void 0 : cleanup[Symbol.dispose]();
+        reject(reason);
+      }
+    );
+  });
+}
+var SharedAbortController;
+var init_abort = __esm({
+  "node_modules/neuroglancer/lib/util/abort.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    SharedAbortController = class {
+      consumers = /* @__PURE__ */ new Map();
+      controller = new AbortController();
+      retainCount = 0;
+      get signal() {
+        return this.controller.signal;
+      }
+      addConsumer(signal) {
+        if (this.controller.signal.aborted) return void 0;
+        if (signal !== void 0) {
+          let wrappedCallback2 = function() {
+            self2.consumers.delete(wrappedCallback2);
+            if (--self2.retainCount === 0) {
+              self2.controller.abort();
+              self2[Symbol.dispose]();
+            }
+          };
+          var wrappedCallback = wrappedCallback2;
+          if (signal.aborted) return;
+          const self2 = this;
+          signal.addEventListener("abort", wrappedCallback2, { once: true });
+        }
+        ++this.retainCount;
+      }
+      [Symbol.dispose]() {
+        for (const [wrappedCallback, signal] of this.consumers) {
+          signal.removeEventListener("abort", wrappedCallback);
+        }
+        this.consumers.clear();
+        this.retainCount = 0;
+      }
+      // Marks this controller as started. Aborts if there are no consumers.
+      start() {
+        if (this.retainCount === 0) {
+          this.controller.abort();
+        }
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/bigint.js
+function bigintCompare(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function uint64FromLowHigh(low, high) {
+  return BigInt(low) | BigInt(high) << 32n;
+}
+function randomUint64() {
+  const low = Math.random() * 4294967296 >>> 0;
+  const high = Math.random() * 4294967296 >>> 0;
+  return uint64FromLowHigh(low, high);
+}
+var UINT64_MAX;
+var init_bigint = __esm({
+  "node_modules/neuroglancer/lib/util/bigint.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    UINT64_MAX = 0xffffffffffffffffn;
+  }
+});
+
+// node_modules/gl-matrix/esm/common.js
+var EPSILON, ARRAY_TYPE, RANDOM, degree;
+var init_common = __esm({
+  "node_modules/gl-matrix/esm/common.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    EPSILON = 1e-6;
+    ARRAY_TYPE = typeof Float32Array !== "undefined" ? Float32Array : Array;
+    RANDOM = Math.random;
+    degree = Math.PI / 180;
+    if (!Math.hypot) Math.hypot = function() {
+      var y = 0, i = arguments.length;
+      while (i--) {
+        y += arguments[i] * arguments[i];
+      }
+      return Math.sqrt(y);
+    };
+  }
+});
+
+// node_modules/gl-matrix/esm/mat3.js
+var mat3_exports = {};
+__export(mat3_exports, {
+  add: () => add,
+  adjoint: () => adjoint,
+  clone: () => clone2,
+  copy: () => copy,
+  create: () => create,
+  determinant: () => determinant,
+  equals: () => equals,
+  exactEquals: () => exactEquals,
+  frob: () => frob,
+  fromMat2d: () => fromMat2d,
+  fromMat4: () => fromMat4,
+  fromQuat: () => fromQuat,
+  fromRotation: () => fromRotation,
+  fromScaling: () => fromScaling,
+  fromTranslation: () => fromTranslation,
+  fromValues: () => fromValues,
+  identity: () => identity,
+  invert: () => invert,
+  mul: () => mul,
+  multiply: () => multiply,
+  multiplyScalar: () => multiplyScalar,
+  multiplyScalarAndAdd: () => multiplyScalarAndAdd,
+  normalFromMat4: () => normalFromMat4,
+  projection: () => projection,
+  rotate: () => rotate,
+  scale: () => scale,
+  set: () => set,
+  str: () => str,
+  sub: () => sub,
+  subtract: () => subtract,
+  translate: () => translate,
+  transpose: () => transpose
+});
+function create() {
+  var out = new ARRAY_TYPE(9);
+  if (ARRAY_TYPE != Float32Array) {
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    out[5] = 0;
+    out[6] = 0;
+    out[7] = 0;
+  }
+  out[0] = 1;
+  out[4] = 1;
+  out[8] = 1;
+  return out;
+}
+function fromMat4(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[4];
+  out[4] = a[5];
+  out[5] = a[6];
+  out[6] = a[8];
+  out[7] = a[9];
+  out[8] = a[10];
+  return out;
+}
+function clone2(a) {
+  var out = new ARRAY_TYPE(9);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  return out;
+}
+function copy(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  return out;
+}
+function fromValues(m00, m01, m02, m10, m11, m12, m20, m21, m22) {
+  var out = new ARRAY_TYPE(9);
+  out[0] = m00;
+  out[1] = m01;
+  out[2] = m02;
+  out[3] = m10;
+  out[4] = m11;
+  out[5] = m12;
+  out[6] = m20;
+  out[7] = m21;
+  out[8] = m22;
+  return out;
+}
+function set(out, m00, m01, m02, m10, m11, m12, m20, m21, m22) {
+  out[0] = m00;
+  out[1] = m01;
+  out[2] = m02;
+  out[3] = m10;
+  out[4] = m11;
+  out[5] = m12;
+  out[6] = m20;
+  out[7] = m21;
+  out[8] = m22;
+  return out;
+}
+function identity(out) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 1;
+  out[5] = 0;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 1;
+  return out;
+}
+function transpose(out, a) {
+  if (out === a) {
+    var a01 = a[1], a02 = a[2], a12 = a[5];
+    out[1] = a[3];
+    out[2] = a[6];
+    out[3] = a01;
+    out[5] = a[7];
+    out[6] = a02;
+    out[7] = a12;
+  } else {
+    out[0] = a[0];
+    out[1] = a[3];
+    out[2] = a[6];
+    out[3] = a[1];
+    out[4] = a[4];
+    out[5] = a[7];
+    out[6] = a[2];
+    out[7] = a[5];
+    out[8] = a[8];
+  }
+  return out;
+}
+function invert(out, a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2];
+  var a10 = a[3], a11 = a[4], a12 = a[5];
+  var a20 = a[6], a21 = a[7], a22 = a[8];
+  var b01 = a22 * a11 - a12 * a21;
+  var b11 = -a22 * a10 + a12 * a20;
+  var b21 = a21 * a10 - a11 * a20;
+  var det = a00 * b01 + a01 * b11 + a02 * b21;
+  if (!det) {
+    return null;
+  }
+  det = 1 / det;
+  out[0] = b01 * det;
+  out[1] = (-a22 * a01 + a02 * a21) * det;
+  out[2] = (a12 * a01 - a02 * a11) * det;
+  out[3] = b11 * det;
+  out[4] = (a22 * a00 - a02 * a20) * det;
+  out[5] = (-a12 * a00 + a02 * a10) * det;
+  out[6] = b21 * det;
+  out[7] = (-a21 * a00 + a01 * a20) * det;
+  out[8] = (a11 * a00 - a01 * a10) * det;
+  return out;
+}
+function adjoint(out, a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2];
+  var a10 = a[3], a11 = a[4], a12 = a[5];
+  var a20 = a[6], a21 = a[7], a22 = a[8];
+  out[0] = a11 * a22 - a12 * a21;
+  out[1] = a02 * a21 - a01 * a22;
+  out[2] = a01 * a12 - a02 * a11;
+  out[3] = a12 * a20 - a10 * a22;
+  out[4] = a00 * a22 - a02 * a20;
+  out[5] = a02 * a10 - a00 * a12;
+  out[6] = a10 * a21 - a11 * a20;
+  out[7] = a01 * a20 - a00 * a21;
+  out[8] = a00 * a11 - a01 * a10;
+  return out;
+}
+function determinant(a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2];
+  var a10 = a[3], a11 = a[4], a12 = a[5];
+  var a20 = a[6], a21 = a[7], a22 = a[8];
+  return a00 * (a22 * a11 - a12 * a21) + a01 * (-a22 * a10 + a12 * a20) + a02 * (a21 * a10 - a11 * a20);
+}
+function multiply(out, a, b) {
+  var a00 = a[0], a01 = a[1], a02 = a[2];
+  var a10 = a[3], a11 = a[4], a12 = a[5];
+  var a20 = a[6], a21 = a[7], a22 = a[8];
+  var b00 = b[0], b01 = b[1], b02 = b[2];
+  var b10 = b[3], b11 = b[4], b12 = b[5];
+  var b20 = b[6], b21 = b[7], b22 = b[8];
+  out[0] = b00 * a00 + b01 * a10 + b02 * a20;
+  out[1] = b00 * a01 + b01 * a11 + b02 * a21;
+  out[2] = b00 * a02 + b01 * a12 + b02 * a22;
+  out[3] = b10 * a00 + b11 * a10 + b12 * a20;
+  out[4] = b10 * a01 + b11 * a11 + b12 * a21;
+  out[5] = b10 * a02 + b11 * a12 + b12 * a22;
+  out[6] = b20 * a00 + b21 * a10 + b22 * a20;
+  out[7] = b20 * a01 + b21 * a11 + b22 * a21;
+  out[8] = b20 * a02 + b21 * a12 + b22 * a22;
+  return out;
+}
+function translate(out, a, v) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a10 = a[3], a11 = a[4], a12 = a[5], a20 = a[6], a21 = a[7], a22 = a[8], x = v[0], y = v[1];
+  out[0] = a00;
+  out[1] = a01;
+  out[2] = a02;
+  out[3] = a10;
+  out[4] = a11;
+  out[5] = a12;
+  out[6] = x * a00 + y * a10 + a20;
+  out[7] = x * a01 + y * a11 + a21;
+  out[8] = x * a02 + y * a12 + a22;
+  return out;
+}
+function rotate(out, a, rad) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a10 = a[3], a11 = a[4], a12 = a[5], a20 = a[6], a21 = a[7], a22 = a[8], s = Math.sin(rad), c = Math.cos(rad);
+  out[0] = c * a00 + s * a10;
+  out[1] = c * a01 + s * a11;
+  out[2] = c * a02 + s * a12;
+  out[3] = c * a10 - s * a00;
+  out[4] = c * a11 - s * a01;
+  out[5] = c * a12 - s * a02;
+  out[6] = a20;
+  out[7] = a21;
+  out[8] = a22;
+  return out;
+}
+function scale(out, a, v) {
+  var x = v[0], y = v[1];
+  out[0] = x * a[0];
+  out[1] = x * a[1];
+  out[2] = x * a[2];
+  out[3] = y * a[3];
+  out[4] = y * a[4];
+  out[5] = y * a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  return out;
+}
+function fromTranslation(out, v) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 1;
+  out[5] = 0;
+  out[6] = v[0];
+  out[7] = v[1];
+  out[8] = 1;
+  return out;
+}
+function fromRotation(out, rad) {
+  var s = Math.sin(rad), c = Math.cos(rad);
+  out[0] = c;
+  out[1] = s;
+  out[2] = 0;
+  out[3] = -s;
+  out[4] = c;
+  out[5] = 0;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 1;
+  return out;
+}
+function fromScaling(out, v) {
+  out[0] = v[0];
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = v[1];
+  out[5] = 0;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 1;
+  return out;
+}
+function fromMat2d(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = 0;
+  out[3] = a[2];
+  out[4] = a[3];
+  out[5] = 0;
+  out[6] = a[4];
+  out[7] = a[5];
+  out[8] = 1;
+  return out;
+}
+function fromQuat(out, q) {
+  var x = q[0], y = q[1], z = q[2], w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var yx = y * x2;
+  var yy = y * y2;
+  var zx = z * x2;
+  var zy = z * y2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  out[0] = 1 - yy - zz;
+  out[3] = yx - wz;
+  out[6] = zx + wy;
+  out[1] = yx + wz;
+  out[4] = 1 - xx - zz;
+  out[7] = zy - wx;
+  out[2] = zx - wy;
+  out[5] = zy + wx;
+  out[8] = 1 - xx - yy;
+  return out;
+}
+function normalFromMat4(out, a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+  var b00 = a00 * a11 - a01 * a10;
+  var b01 = a00 * a12 - a02 * a10;
+  var b02 = a00 * a13 - a03 * a10;
+  var b03 = a01 * a12 - a02 * a11;
+  var b04 = a01 * a13 - a03 * a11;
+  var b05 = a02 * a13 - a03 * a12;
+  var b06 = a20 * a31 - a21 * a30;
+  var b07 = a20 * a32 - a22 * a30;
+  var b08 = a20 * a33 - a23 * a30;
+  var b09 = a21 * a32 - a22 * a31;
+  var b10 = a21 * a33 - a23 * a31;
+  var b11 = a22 * a33 - a23 * a32;
+  var det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  if (!det) {
+    return null;
+  }
+  det = 1 / det;
+  out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
+  out[1] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
+  out[2] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
+  out[3] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+  out[4] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+  out[5] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+  out[6] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
+  out[7] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
+  out[8] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
+  return out;
+}
+function projection(out, width, height) {
+  out[0] = 2 / width;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = -2 / height;
+  out[5] = 0;
+  out[6] = -1;
+  out[7] = 1;
+  out[8] = 1;
+  return out;
+}
+function str(a) {
+  return "mat3(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ", " + a[4] + ", " + a[5] + ", " + a[6] + ", " + a[7] + ", " + a[8] + ")";
+}
+function frob(a) {
+  return Math.hypot(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]);
+}
+function add(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  out[3] = a[3] + b[3];
+  out[4] = a[4] + b[4];
+  out[5] = a[5] + b[5];
+  out[6] = a[6] + b[6];
+  out[7] = a[7] + b[7];
+  out[8] = a[8] + b[8];
+  return out;
+}
+function subtract(out, a, b) {
+  out[0] = a[0] - b[0];
+  out[1] = a[1] - b[1];
+  out[2] = a[2] - b[2];
+  out[3] = a[3] - b[3];
+  out[4] = a[4] - b[4];
+  out[5] = a[5] - b[5];
+  out[6] = a[6] - b[6];
+  out[7] = a[7] - b[7];
+  out[8] = a[8] - b[8];
+  return out;
+}
+function multiplyScalar(out, a, b) {
+  out[0] = a[0] * b;
+  out[1] = a[1] * b;
+  out[2] = a[2] * b;
+  out[3] = a[3] * b;
+  out[4] = a[4] * b;
+  out[5] = a[5] * b;
+  out[6] = a[6] * b;
+  out[7] = a[7] * b;
+  out[8] = a[8] * b;
+  return out;
+}
+function multiplyScalarAndAdd(out, a, b, scale6) {
+  out[0] = a[0] + b[0] * scale6;
+  out[1] = a[1] + b[1] * scale6;
+  out[2] = a[2] + b[2] * scale6;
+  out[3] = a[3] + b[3] * scale6;
+  out[4] = a[4] + b[4] * scale6;
+  out[5] = a[5] + b[5] * scale6;
+  out[6] = a[6] + b[6] * scale6;
+  out[7] = a[7] + b[7] * scale6;
+  out[8] = a[8] + b[8] * scale6;
+  return out;
+}
+function exactEquals(a, b) {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5] && a[6] === b[6] && a[7] === b[7] && a[8] === b[8];
+}
+function equals(a, b) {
+  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7], a8 = a[8];
+  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3], b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7], b8 = b[8];
+  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3)) && Math.abs(a4 - b4) <= EPSILON * Math.max(1, Math.abs(a4), Math.abs(b4)) && Math.abs(a5 - b5) <= EPSILON * Math.max(1, Math.abs(a5), Math.abs(b5)) && Math.abs(a6 - b6) <= EPSILON * Math.max(1, Math.abs(a6), Math.abs(b6)) && Math.abs(a7 - b7) <= EPSILON * Math.max(1, Math.abs(a7), Math.abs(b7)) && Math.abs(a8 - b8) <= EPSILON * Math.max(1, Math.abs(a8), Math.abs(b8));
+}
+var mul, sub;
+var init_mat3 = __esm({
+  "node_modules/gl-matrix/esm/mat3.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_common();
+    mul = multiply;
+    sub = subtract;
+  }
+});
+
+// node_modules/gl-matrix/esm/mat4.js
+var mat4_exports = {};
+__export(mat4_exports, {
+  add: () => add2,
+  adjoint: () => adjoint2,
+  clone: () => clone3,
+  copy: () => copy2,
+  create: () => create2,
+  determinant: () => determinant2,
+  equals: () => equals2,
+  exactEquals: () => exactEquals2,
+  frob: () => frob2,
+  fromQuat: () => fromQuat3,
+  fromQuat2: () => fromQuat2,
+  fromRotation: () => fromRotation2,
+  fromRotationTranslation: () => fromRotationTranslation,
+  fromRotationTranslationScale: () => fromRotationTranslationScale,
+  fromRotationTranslationScaleOrigin: () => fromRotationTranslationScaleOrigin,
+  fromScaling: () => fromScaling2,
+  fromTranslation: () => fromTranslation2,
+  fromValues: () => fromValues2,
+  fromXRotation: () => fromXRotation,
+  fromYRotation: () => fromYRotation,
+  fromZRotation: () => fromZRotation,
+  frustum: () => frustum,
+  getRotation: () => getRotation,
+  getScaling: () => getScaling,
+  getTranslation: () => getTranslation,
+  identity: () => identity2,
+  invert: () => invert2,
+  lookAt: () => lookAt,
+  mul: () => mul2,
+  multiply: () => multiply2,
+  multiplyScalar: () => multiplyScalar2,
+  multiplyScalarAndAdd: () => multiplyScalarAndAdd2,
+  ortho: () => ortho,
+  perspective: () => perspective,
+  perspectiveFromFieldOfView: () => perspectiveFromFieldOfView,
+  rotate: () => rotate2,
+  rotateX: () => rotateX,
+  rotateY: () => rotateY,
+  rotateZ: () => rotateZ,
+  scale: () => scale2,
+  set: () => set2,
+  str: () => str2,
+  sub: () => sub2,
+  subtract: () => subtract2,
+  targetTo: () => targetTo,
+  translate: () => translate2,
+  transpose: () => transpose2
+});
+function create2() {
+  var out = new ARRAY_TYPE(16);
+  if (ARRAY_TYPE != Float32Array) {
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    out[4] = 0;
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 0;
+    out[9] = 0;
+    out[11] = 0;
+    out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+  }
+  out[0] = 1;
+  out[5] = 1;
+  out[10] = 1;
+  out[15] = 1;
+  return out;
+}
+function clone3(a) {
+  var out = new ARRAY_TYPE(16);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  out[9] = a[9];
+  out[10] = a[10];
+  out[11] = a[11];
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+function copy2(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  out[9] = a[9];
+  out[10] = a[10];
+  out[11] = a[11];
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+function fromValues2(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
+  var out = new ARRAY_TYPE(16);
+  out[0] = m00;
+  out[1] = m01;
+  out[2] = m02;
+  out[3] = m03;
+  out[4] = m10;
+  out[5] = m11;
+  out[6] = m12;
+  out[7] = m13;
+  out[8] = m20;
+  out[9] = m21;
+  out[10] = m22;
+  out[11] = m23;
+  out[12] = m30;
+  out[13] = m31;
+  out[14] = m32;
+  out[15] = m33;
+  return out;
+}
+function set2(out, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
+  out[0] = m00;
+  out[1] = m01;
+  out[2] = m02;
+  out[3] = m03;
+  out[4] = m10;
+  out[5] = m11;
+  out[6] = m12;
+  out[7] = m13;
+  out[8] = m20;
+  out[9] = m21;
+  out[10] = m22;
+  out[11] = m23;
+  out[12] = m30;
+  out[13] = m31;
+  out[14] = m32;
+  out[15] = m33;
+  return out;
+}
+function identity2(out) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = 1;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function transpose2(out, a) {
+  if (out === a) {
+    var a01 = a[1], a02 = a[2], a03 = a[3];
+    var a12 = a[6], a13 = a[7];
+    var a23 = a[11];
+    out[1] = a[4];
+    out[2] = a[8];
+    out[3] = a[12];
+    out[4] = a01;
+    out[6] = a[9];
+    out[7] = a[13];
+    out[8] = a02;
+    out[9] = a12;
+    out[11] = a[14];
+    out[12] = a03;
+    out[13] = a13;
+    out[14] = a23;
+  } else {
+    out[0] = a[0];
+    out[1] = a[4];
+    out[2] = a[8];
+    out[3] = a[12];
+    out[4] = a[1];
+    out[5] = a[5];
+    out[6] = a[9];
+    out[7] = a[13];
+    out[8] = a[2];
+    out[9] = a[6];
+    out[10] = a[10];
+    out[11] = a[14];
+    out[12] = a[3];
+    out[13] = a[7];
+    out[14] = a[11];
+    out[15] = a[15];
+  }
+  return out;
+}
+function invert2(out, a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+  var b00 = a00 * a11 - a01 * a10;
+  var b01 = a00 * a12 - a02 * a10;
+  var b02 = a00 * a13 - a03 * a10;
+  var b03 = a01 * a12 - a02 * a11;
+  var b04 = a01 * a13 - a03 * a11;
+  var b05 = a02 * a13 - a03 * a12;
+  var b06 = a20 * a31 - a21 * a30;
+  var b07 = a20 * a32 - a22 * a30;
+  var b08 = a20 * a33 - a23 * a30;
+  var b09 = a21 * a32 - a22 * a31;
+  var b10 = a21 * a33 - a23 * a31;
+  var b11 = a22 * a33 - a23 * a32;
+  var det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  if (!det) {
+    return null;
+  }
+  det = 1 / det;
+  out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
+  out[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+  out[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
+  out[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
+  out[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
+  out[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+  out[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
+  out[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
+  out[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
+  out[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+  out[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
+  out[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
+  out[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det;
+  out[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
+  out[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det;
+  out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
+  return out;
+}
+function adjoint2(out, a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+  out[0] = a11 * (a22 * a33 - a23 * a32) - a21 * (a12 * a33 - a13 * a32) + a31 * (a12 * a23 - a13 * a22);
+  out[1] = -(a01 * (a22 * a33 - a23 * a32) - a21 * (a02 * a33 - a03 * a32) + a31 * (a02 * a23 - a03 * a22));
+  out[2] = a01 * (a12 * a33 - a13 * a32) - a11 * (a02 * a33 - a03 * a32) + a31 * (a02 * a13 - a03 * a12);
+  out[3] = -(a01 * (a12 * a23 - a13 * a22) - a11 * (a02 * a23 - a03 * a22) + a21 * (a02 * a13 - a03 * a12));
+  out[4] = -(a10 * (a22 * a33 - a23 * a32) - a20 * (a12 * a33 - a13 * a32) + a30 * (a12 * a23 - a13 * a22));
+  out[5] = a00 * (a22 * a33 - a23 * a32) - a20 * (a02 * a33 - a03 * a32) + a30 * (a02 * a23 - a03 * a22);
+  out[6] = -(a00 * (a12 * a33 - a13 * a32) - a10 * (a02 * a33 - a03 * a32) + a30 * (a02 * a13 - a03 * a12));
+  out[7] = a00 * (a12 * a23 - a13 * a22) - a10 * (a02 * a23 - a03 * a22) + a20 * (a02 * a13 - a03 * a12);
+  out[8] = a10 * (a21 * a33 - a23 * a31) - a20 * (a11 * a33 - a13 * a31) + a30 * (a11 * a23 - a13 * a21);
+  out[9] = -(a00 * (a21 * a33 - a23 * a31) - a20 * (a01 * a33 - a03 * a31) + a30 * (a01 * a23 - a03 * a21));
+  out[10] = a00 * (a11 * a33 - a13 * a31) - a10 * (a01 * a33 - a03 * a31) + a30 * (a01 * a13 - a03 * a11);
+  out[11] = -(a00 * (a11 * a23 - a13 * a21) - a10 * (a01 * a23 - a03 * a21) + a20 * (a01 * a13 - a03 * a11));
+  out[12] = -(a10 * (a21 * a32 - a22 * a31) - a20 * (a11 * a32 - a12 * a31) + a30 * (a11 * a22 - a12 * a21));
+  out[13] = a00 * (a21 * a32 - a22 * a31) - a20 * (a01 * a32 - a02 * a31) + a30 * (a01 * a22 - a02 * a21);
+  out[14] = -(a00 * (a11 * a32 - a12 * a31) - a10 * (a01 * a32 - a02 * a31) + a30 * (a01 * a12 - a02 * a11));
+  out[15] = a00 * (a11 * a22 - a12 * a21) - a10 * (a01 * a22 - a02 * a21) + a20 * (a01 * a12 - a02 * a11);
+  return out;
+}
+function determinant2(a) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+  var b00 = a00 * a11 - a01 * a10;
+  var b01 = a00 * a12 - a02 * a10;
+  var b02 = a00 * a13 - a03 * a10;
+  var b03 = a01 * a12 - a02 * a11;
+  var b04 = a01 * a13 - a03 * a11;
+  var b05 = a02 * a13 - a03 * a12;
+  var b06 = a20 * a31 - a21 * a30;
+  var b07 = a20 * a32 - a22 * a30;
+  var b08 = a20 * a33 - a23 * a30;
+  var b09 = a21 * a32 - a22 * a31;
+  var b10 = a21 * a33 - a23 * a31;
+  var b11 = a22 * a33 - a23 * a32;
+  return b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+}
+function multiply2(out, a, b) {
+  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+  out[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+  out[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+  out[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+  out[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+  b0 = b[4];
+  b1 = b[5];
+  b2 = b[6];
+  b3 = b[7];
+  out[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+  out[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+  out[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+  out[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+  b0 = b[8];
+  b1 = b[9];
+  b2 = b[10];
+  b3 = b[11];
+  out[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+  out[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+  out[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+  out[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+  b0 = b[12];
+  b1 = b[13];
+  b2 = b[14];
+  b3 = b[15];
+  out[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+  out[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+  out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+  out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+  return out;
+}
+function translate2(out, a, v) {
+  var x = v[0], y = v[1], z = v[2];
+  var a00, a01, a02, a03;
+  var a10, a11, a12, a13;
+  var a20, a21, a22, a23;
+  if (a === out) {
+    out[12] = a[0] * x + a[4] * y + a[8] * z + a[12];
+    out[13] = a[1] * x + a[5] * y + a[9] * z + a[13];
+    out[14] = a[2] * x + a[6] * y + a[10] * z + a[14];
+    out[15] = a[3] * x + a[7] * y + a[11] * z + a[15];
+  } else {
+    a00 = a[0];
+    a01 = a[1];
+    a02 = a[2];
+    a03 = a[3];
+    a10 = a[4];
+    a11 = a[5];
+    a12 = a[6];
+    a13 = a[7];
+    a20 = a[8];
+    a21 = a[9];
+    a22 = a[10];
+    a23 = a[11];
+    out[0] = a00;
+    out[1] = a01;
+    out[2] = a02;
+    out[3] = a03;
+    out[4] = a10;
+    out[5] = a11;
+    out[6] = a12;
+    out[7] = a13;
+    out[8] = a20;
+    out[9] = a21;
+    out[10] = a22;
+    out[11] = a23;
+    out[12] = a00 * x + a10 * y + a20 * z + a[12];
+    out[13] = a01 * x + a11 * y + a21 * z + a[13];
+    out[14] = a02 * x + a12 * y + a22 * z + a[14];
+    out[15] = a03 * x + a13 * y + a23 * z + a[15];
+  }
+  return out;
+}
+function scale2(out, a, v) {
+  var x = v[0], y = v[1], z = v[2];
+  out[0] = a[0] * x;
+  out[1] = a[1] * x;
+  out[2] = a[2] * x;
+  out[3] = a[3] * x;
+  out[4] = a[4] * y;
+  out[5] = a[5] * y;
+  out[6] = a[6] * y;
+  out[7] = a[7] * y;
+  out[8] = a[8] * z;
+  out[9] = a[9] * z;
+  out[10] = a[10] * z;
+  out[11] = a[11] * z;
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+function rotate2(out, a, rad, axis) {
+  var x = axis[0], y = axis[1], z = axis[2];
+  var len4 = Math.hypot(x, y, z);
+  var s, c, t;
+  var a00, a01, a02, a03;
+  var a10, a11, a12, a13;
+  var a20, a21, a22, a23;
+  var b00, b01, b02;
+  var b10, b11, b12;
+  var b20, b21, b22;
+  if (len4 < EPSILON) {
+    return null;
+  }
+  len4 = 1 / len4;
+  x *= len4;
+  y *= len4;
+  z *= len4;
+  s = Math.sin(rad);
+  c = Math.cos(rad);
+  t = 1 - c;
+  a00 = a[0];
+  a01 = a[1];
+  a02 = a[2];
+  a03 = a[3];
+  a10 = a[4];
+  a11 = a[5];
+  a12 = a[6];
+  a13 = a[7];
+  a20 = a[8];
+  a21 = a[9];
+  a22 = a[10];
+  a23 = a[11];
+  b00 = x * x * t + c;
+  b01 = y * x * t + z * s;
+  b02 = z * x * t - y * s;
+  b10 = x * y * t - z * s;
+  b11 = y * y * t + c;
+  b12 = z * y * t + x * s;
+  b20 = x * z * t + y * s;
+  b21 = y * z * t - x * s;
+  b22 = z * z * t + c;
+  out[0] = a00 * b00 + a10 * b01 + a20 * b02;
+  out[1] = a01 * b00 + a11 * b01 + a21 * b02;
+  out[2] = a02 * b00 + a12 * b01 + a22 * b02;
+  out[3] = a03 * b00 + a13 * b01 + a23 * b02;
+  out[4] = a00 * b10 + a10 * b11 + a20 * b12;
+  out[5] = a01 * b10 + a11 * b11 + a21 * b12;
+  out[6] = a02 * b10 + a12 * b11 + a22 * b12;
+  out[7] = a03 * b10 + a13 * b11 + a23 * b12;
+  out[8] = a00 * b20 + a10 * b21 + a20 * b22;
+  out[9] = a01 * b20 + a11 * b21 + a21 * b22;
+  out[10] = a02 * b20 + a12 * b21 + a22 * b22;
+  out[11] = a03 * b20 + a13 * b21 + a23 * b22;
+  if (a !== out) {
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  return out;
+}
+function rotateX(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a10 = a[4];
+  var a11 = a[5];
+  var a12 = a[6];
+  var a13 = a[7];
+  var a20 = a[8];
+  var a21 = a[9];
+  var a22 = a[10];
+  var a23 = a[11];
+  if (a !== out) {
+    out[0] = a[0];
+    out[1] = a[1];
+    out[2] = a[2];
+    out[3] = a[3];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  out[4] = a10 * c + a20 * s;
+  out[5] = a11 * c + a21 * s;
+  out[6] = a12 * c + a22 * s;
+  out[7] = a13 * c + a23 * s;
+  out[8] = a20 * c - a10 * s;
+  out[9] = a21 * c - a11 * s;
+  out[10] = a22 * c - a12 * s;
+  out[11] = a23 * c - a13 * s;
+  return out;
+}
+function rotateY(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a00 = a[0];
+  var a01 = a[1];
+  var a02 = a[2];
+  var a03 = a[3];
+  var a20 = a[8];
+  var a21 = a[9];
+  var a22 = a[10];
+  var a23 = a[11];
+  if (a !== out) {
+    out[4] = a[4];
+    out[5] = a[5];
+    out[6] = a[6];
+    out[7] = a[7];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  out[0] = a00 * c - a20 * s;
+  out[1] = a01 * c - a21 * s;
+  out[2] = a02 * c - a22 * s;
+  out[3] = a03 * c - a23 * s;
+  out[8] = a00 * s + a20 * c;
+  out[9] = a01 * s + a21 * c;
+  out[10] = a02 * s + a22 * c;
+  out[11] = a03 * s + a23 * c;
+  return out;
+}
+function rotateZ(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a00 = a[0];
+  var a01 = a[1];
+  var a02 = a[2];
+  var a03 = a[3];
+  var a10 = a[4];
+  var a11 = a[5];
+  var a12 = a[6];
+  var a13 = a[7];
+  if (a !== out) {
+    out[8] = a[8];
+    out[9] = a[9];
+    out[10] = a[10];
+    out[11] = a[11];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+  out[0] = a00 * c + a10 * s;
+  out[1] = a01 * c + a11 * s;
+  out[2] = a02 * c + a12 * s;
+  out[3] = a03 * c + a13 * s;
+  out[4] = a10 * c - a00 * s;
+  out[5] = a11 * c - a01 * s;
+  out[6] = a12 * c - a02 * s;
+  out[7] = a13 * c - a03 * s;
+  return out;
+}
+function fromTranslation2(out, v) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = 1;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 0;
+  out[12] = v[0];
+  out[13] = v[1];
+  out[14] = v[2];
+  out[15] = 1;
+  return out;
+}
+function fromScaling2(out, v) {
+  out[0] = v[0];
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = v[1];
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = v[2];
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function fromRotation2(out, rad, axis) {
+  var x = axis[0], y = axis[1], z = axis[2];
+  var len4 = Math.hypot(x, y, z);
+  var s, c, t;
+  if (len4 < EPSILON) {
+    return null;
+  }
+  len4 = 1 / len4;
+  x *= len4;
+  y *= len4;
+  z *= len4;
+  s = Math.sin(rad);
+  c = Math.cos(rad);
+  t = 1 - c;
+  out[0] = x * x * t + c;
+  out[1] = y * x * t + z * s;
+  out[2] = z * x * t - y * s;
+  out[3] = 0;
+  out[4] = x * y * t - z * s;
+  out[5] = y * y * t + c;
+  out[6] = z * y * t + x * s;
+  out[7] = 0;
+  out[8] = x * z * t + y * s;
+  out[9] = y * z * t - x * s;
+  out[10] = z * z * t + c;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function fromXRotation(out, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = c;
+  out[6] = s;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = -s;
+  out[10] = c;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function fromYRotation(out, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  out[0] = c;
+  out[1] = 0;
+  out[2] = -s;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = 1;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = s;
+  out[9] = 0;
+  out[10] = c;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function fromZRotation(out, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  out[0] = c;
+  out[1] = s;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = -s;
+  out[5] = c;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function fromRotationTranslation(out, q, v) {
+  var x = q[0], y = q[1], z = q[2], w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var xy = x * y2;
+  var xz = x * z2;
+  var yy = y * y2;
+  var yz = y * z2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  out[0] = 1 - (yy + zz);
+  out[1] = xy + wz;
+  out[2] = xz - wy;
+  out[3] = 0;
+  out[4] = xy - wz;
+  out[5] = 1 - (xx + zz);
+  out[6] = yz + wx;
+  out[7] = 0;
+  out[8] = xz + wy;
+  out[9] = yz - wx;
+  out[10] = 1 - (xx + yy);
+  out[11] = 0;
+  out[12] = v[0];
+  out[13] = v[1];
+  out[14] = v[2];
+  out[15] = 1;
+  return out;
+}
+function fromQuat2(out, a) {
+  var translation = new ARRAY_TYPE(3);
+  var bx = -a[0], by = -a[1], bz = -a[2], bw = a[3], ax = a[4], ay = a[5], az = a[6], aw = a[7];
+  var magnitude = bx * bx + by * by + bz * bz + bw * bw;
+  if (magnitude > 0) {
+    translation[0] = (ax * bw + aw * bx + ay * bz - az * by) * 2 / magnitude;
+    translation[1] = (ay * bw + aw * by + az * bx - ax * bz) * 2 / magnitude;
+    translation[2] = (az * bw + aw * bz + ax * by - ay * bx) * 2 / magnitude;
+  } else {
+    translation[0] = (ax * bw + aw * bx + ay * bz - az * by) * 2;
+    translation[1] = (ay * bw + aw * by + az * bx - ax * bz) * 2;
+    translation[2] = (az * bw + aw * bz + ax * by - ay * bx) * 2;
+  }
+  fromRotationTranslation(out, a, translation);
+  return out;
+}
+function getTranslation(out, mat) {
+  out[0] = mat[12];
+  out[1] = mat[13];
+  out[2] = mat[14];
+  return out;
+}
+function getScaling(out, mat) {
+  var m11 = mat[0];
+  var m12 = mat[1];
+  var m13 = mat[2];
+  var m21 = mat[4];
+  var m22 = mat[5];
+  var m23 = mat[6];
+  var m31 = mat[8];
+  var m32 = mat[9];
+  var m33 = mat[10];
+  out[0] = Math.hypot(m11, m12, m13);
+  out[1] = Math.hypot(m21, m22, m23);
+  out[2] = Math.hypot(m31, m32, m33);
+  return out;
+}
+function getRotation(out, mat) {
+  var scaling = new ARRAY_TYPE(3);
+  getScaling(scaling, mat);
+  var is1 = 1 / scaling[0];
+  var is2 = 1 / scaling[1];
+  var is3 = 1 / scaling[2];
+  var sm11 = mat[0] * is1;
+  var sm12 = mat[1] * is2;
+  var sm13 = mat[2] * is3;
+  var sm21 = mat[4] * is1;
+  var sm22 = mat[5] * is2;
+  var sm23 = mat[6] * is3;
+  var sm31 = mat[8] * is1;
+  var sm32 = mat[9] * is2;
+  var sm33 = mat[10] * is3;
+  var trace = sm11 + sm22 + sm33;
+  var S = 0;
+  if (trace > 0) {
+    S = Math.sqrt(trace + 1) * 2;
+    out[3] = 0.25 * S;
+    out[0] = (sm23 - sm32) / S;
+    out[1] = (sm31 - sm13) / S;
+    out[2] = (sm12 - sm21) / S;
+  } else if (sm11 > sm22 && sm11 > sm33) {
+    S = Math.sqrt(1 + sm11 - sm22 - sm33) * 2;
+    out[3] = (sm23 - sm32) / S;
+    out[0] = 0.25 * S;
+    out[1] = (sm12 + sm21) / S;
+    out[2] = (sm31 + sm13) / S;
+  } else if (sm22 > sm33) {
+    S = Math.sqrt(1 + sm22 - sm11 - sm33) * 2;
+    out[3] = (sm31 - sm13) / S;
+    out[0] = (sm12 + sm21) / S;
+    out[1] = 0.25 * S;
+    out[2] = (sm23 + sm32) / S;
+  } else {
+    S = Math.sqrt(1 + sm33 - sm11 - sm22) * 2;
+    out[3] = (sm12 - sm21) / S;
+    out[0] = (sm31 + sm13) / S;
+    out[1] = (sm23 + sm32) / S;
+    out[2] = 0.25 * S;
+  }
+  return out;
+}
+function fromRotationTranslationScale(out, q, v, s) {
+  var x = q[0], y = q[1], z = q[2], w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var xy = x * y2;
+  var xz = x * z2;
+  var yy = y * y2;
+  var yz = y * z2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  var sx = s[0];
+  var sy = s[1];
+  var sz = s[2];
+  out[0] = (1 - (yy + zz)) * sx;
+  out[1] = (xy + wz) * sx;
+  out[2] = (xz - wy) * sx;
+  out[3] = 0;
+  out[4] = (xy - wz) * sy;
+  out[5] = (1 - (xx + zz)) * sy;
+  out[6] = (yz + wx) * sy;
+  out[7] = 0;
+  out[8] = (xz + wy) * sz;
+  out[9] = (yz - wx) * sz;
+  out[10] = (1 - (xx + yy)) * sz;
+  out[11] = 0;
+  out[12] = v[0];
+  out[13] = v[1];
+  out[14] = v[2];
+  out[15] = 1;
+  return out;
+}
+function fromRotationTranslationScaleOrigin(out, q, v, s, o) {
+  var x = q[0], y = q[1], z = q[2], w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var xy = x * y2;
+  var xz = x * z2;
+  var yy = y * y2;
+  var yz = y * z2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  var sx = s[0];
+  var sy = s[1];
+  var sz = s[2];
+  var ox = o[0];
+  var oy = o[1];
+  var oz = o[2];
+  var out0 = (1 - (yy + zz)) * sx;
+  var out1 = (xy + wz) * sx;
+  var out2 = (xz - wy) * sx;
+  var out4 = (xy - wz) * sy;
+  var out5 = (1 - (xx + zz)) * sy;
+  var out6 = (yz + wx) * sy;
+  var out8 = (xz + wy) * sz;
+  var out9 = (yz - wx) * sz;
+  var out10 = (1 - (xx + yy)) * sz;
+  out[0] = out0;
+  out[1] = out1;
+  out[2] = out2;
+  out[3] = 0;
+  out[4] = out4;
+  out[5] = out5;
+  out[6] = out6;
+  out[7] = 0;
+  out[8] = out8;
+  out[9] = out9;
+  out[10] = out10;
+  out[11] = 0;
+  out[12] = v[0] + ox - (out0 * ox + out4 * oy + out8 * oz);
+  out[13] = v[1] + oy - (out1 * ox + out5 * oy + out9 * oz);
+  out[14] = v[2] + oz - (out2 * ox + out6 * oy + out10 * oz);
+  out[15] = 1;
+  return out;
+}
+function fromQuat3(out, q) {
+  var x = q[0], y = q[1], z = q[2], w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var yx = y * x2;
+  var yy = y * y2;
+  var zx = z * x2;
+  var zy = z * y2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  out[0] = 1 - yy - zz;
+  out[1] = yx + wz;
+  out[2] = zx - wy;
+  out[3] = 0;
+  out[4] = yx - wz;
+  out[5] = 1 - xx - zz;
+  out[6] = zy + wx;
+  out[7] = 0;
+  out[8] = zx + wy;
+  out[9] = zy - wx;
+  out[10] = 1 - xx - yy;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+function frustum(out, left, right, bottom, top, near, far) {
+  var rl = 1 / (right - left);
+  var tb = 1 / (top - bottom);
+  var nf = 1 / (near - far);
+  out[0] = near * 2 * rl;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = near * 2 * tb;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = (right + left) * rl;
+  out[9] = (top + bottom) * tb;
+  out[10] = (far + near) * nf;
+  out[11] = -1;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = far * near * 2 * nf;
+  out[15] = 0;
+  return out;
+}
+function perspective(out, fovy, aspect, near, far) {
+  var f = 1 / Math.tan(fovy / 2), nf;
+  out[0] = f / aspect;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = f;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[11] = -1;
+  out[12] = 0;
+  out[13] = 0;
+  out[15] = 0;
+  if (far != null && far !== Infinity) {
+    nf = 1 / (near - far);
+    out[10] = (far + near) * nf;
+    out[14] = 2 * far * near * nf;
+  } else {
+    out[10] = -1;
+    out[14] = -2 * near;
+  }
+  return out;
+}
+function perspectiveFromFieldOfView(out, fov, near, far) {
+  var upTan = Math.tan(fov.upDegrees * Math.PI / 180);
+  var downTan = Math.tan(fov.downDegrees * Math.PI / 180);
+  var leftTan = Math.tan(fov.leftDegrees * Math.PI / 180);
+  var rightTan = Math.tan(fov.rightDegrees * Math.PI / 180);
+  var xScale = 2 / (leftTan + rightTan);
+  var yScale = 2 / (upTan + downTan);
+  out[0] = xScale;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = yScale;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = -((leftTan - rightTan) * xScale * 0.5);
+  out[9] = (upTan - downTan) * yScale * 0.5;
+  out[10] = far / (near - far);
+  out[11] = -1;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = far * near / (near - far);
+  out[15] = 0;
+  return out;
+}
+function ortho(out, left, right, bottom, top, near, far) {
+  var lr = 1 / (left - right);
+  var bt = 1 / (bottom - top);
+  var nf = 1 / (near - far);
+  out[0] = -2 * lr;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = -2 * bt;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 2 * nf;
+  out[11] = 0;
+  out[12] = (left + right) * lr;
+  out[13] = (top + bottom) * bt;
+  out[14] = (far + near) * nf;
+  out[15] = 1;
+  return out;
+}
+function lookAt(out, eye, center, up) {
+  var x0, x1, x2, y0, y1, y2, z0, z1, z2, len4;
+  var eyex = eye[0];
+  var eyey = eye[1];
+  var eyez = eye[2];
+  var upx = up[0];
+  var upy = up[1];
+  var upz = up[2];
+  var centerx = center[0];
+  var centery = center[1];
+  var centerz = center[2];
+  if (Math.abs(eyex - centerx) < EPSILON && Math.abs(eyey - centery) < EPSILON && Math.abs(eyez - centerz) < EPSILON) {
+    return identity2(out);
+  }
+  z0 = eyex - centerx;
+  z1 = eyey - centery;
+  z2 = eyez - centerz;
+  len4 = 1 / Math.hypot(z0, z1, z2);
+  z0 *= len4;
+  z1 *= len4;
+  z2 *= len4;
+  x0 = upy * z2 - upz * z1;
+  x1 = upz * z0 - upx * z2;
+  x2 = upx * z1 - upy * z0;
+  len4 = Math.hypot(x0, x1, x2);
+  if (!len4) {
+    x0 = 0;
+    x1 = 0;
+    x2 = 0;
+  } else {
+    len4 = 1 / len4;
+    x0 *= len4;
+    x1 *= len4;
+    x2 *= len4;
+  }
+  y0 = z1 * x2 - z2 * x1;
+  y1 = z2 * x0 - z0 * x2;
+  y2 = z0 * x1 - z1 * x0;
+  len4 = Math.hypot(y0, y1, y2);
+  if (!len4) {
+    y0 = 0;
+    y1 = 0;
+    y2 = 0;
+  } else {
+    len4 = 1 / len4;
+    y0 *= len4;
+    y1 *= len4;
+    y2 *= len4;
+  }
+  out[0] = x0;
+  out[1] = y0;
+  out[2] = z0;
+  out[3] = 0;
+  out[4] = x1;
+  out[5] = y1;
+  out[6] = z1;
+  out[7] = 0;
+  out[8] = x2;
+  out[9] = y2;
+  out[10] = z2;
+  out[11] = 0;
+  out[12] = -(x0 * eyex + x1 * eyey + x2 * eyez);
+  out[13] = -(y0 * eyex + y1 * eyey + y2 * eyez);
+  out[14] = -(z0 * eyex + z1 * eyey + z2 * eyez);
+  out[15] = 1;
+  return out;
+}
+function targetTo(out, eye, target2, up) {
+  var eyex = eye[0], eyey = eye[1], eyez = eye[2], upx = up[0], upy = up[1], upz = up[2];
+  var z0 = eyex - target2[0], z1 = eyey - target2[1], z2 = eyez - target2[2];
+  var len4 = z0 * z0 + z1 * z1 + z2 * z2;
+  if (len4 > 0) {
+    len4 = 1 / Math.sqrt(len4);
+    z0 *= len4;
+    z1 *= len4;
+    z2 *= len4;
+  }
+  var x0 = upy * z2 - upz * z1, x1 = upz * z0 - upx * z2, x2 = upx * z1 - upy * z0;
+  len4 = x0 * x0 + x1 * x1 + x2 * x2;
+  if (len4 > 0) {
+    len4 = 1 / Math.sqrt(len4);
+    x0 *= len4;
+    x1 *= len4;
+    x2 *= len4;
+  }
+  out[0] = x0;
+  out[1] = x1;
+  out[2] = x2;
+  out[3] = 0;
+  out[4] = z1 * x2 - z2 * x1;
+  out[5] = z2 * x0 - z0 * x2;
+  out[6] = z0 * x1 - z1 * x0;
+  out[7] = 0;
+  out[8] = z0;
+  out[9] = z1;
+  out[10] = z2;
+  out[11] = 0;
+  out[12] = eyex;
+  out[13] = eyey;
+  out[14] = eyez;
+  out[15] = 1;
+  return out;
+}
+function str2(a) {
+  return "mat4(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ", " + a[4] + ", " + a[5] + ", " + a[6] + ", " + a[7] + ", " + a[8] + ", " + a[9] + ", " + a[10] + ", " + a[11] + ", " + a[12] + ", " + a[13] + ", " + a[14] + ", " + a[15] + ")";
+}
+function frob2(a) {
+  return Math.hypot(a[0], a[1], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]);
+}
+function add2(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  out[3] = a[3] + b[3];
+  out[4] = a[4] + b[4];
+  out[5] = a[5] + b[5];
+  out[6] = a[6] + b[6];
+  out[7] = a[7] + b[7];
+  out[8] = a[8] + b[8];
+  out[9] = a[9] + b[9];
+  out[10] = a[10] + b[10];
+  out[11] = a[11] + b[11];
+  out[12] = a[12] + b[12];
+  out[13] = a[13] + b[13];
+  out[14] = a[14] + b[14];
+  out[15] = a[15] + b[15];
+  return out;
+}
+function subtract2(out, a, b) {
+  out[0] = a[0] - b[0];
+  out[1] = a[1] - b[1];
+  out[2] = a[2] - b[2];
+  out[3] = a[3] - b[3];
+  out[4] = a[4] - b[4];
+  out[5] = a[5] - b[5];
+  out[6] = a[6] - b[6];
+  out[7] = a[7] - b[7];
+  out[8] = a[8] - b[8];
+  out[9] = a[9] - b[9];
+  out[10] = a[10] - b[10];
+  out[11] = a[11] - b[11];
+  out[12] = a[12] - b[12];
+  out[13] = a[13] - b[13];
+  out[14] = a[14] - b[14];
+  out[15] = a[15] - b[15];
+  return out;
+}
+function multiplyScalar2(out, a, b) {
+  out[0] = a[0] * b;
+  out[1] = a[1] * b;
+  out[2] = a[2] * b;
+  out[3] = a[3] * b;
+  out[4] = a[4] * b;
+  out[5] = a[5] * b;
+  out[6] = a[6] * b;
+  out[7] = a[7] * b;
+  out[8] = a[8] * b;
+  out[9] = a[9] * b;
+  out[10] = a[10] * b;
+  out[11] = a[11] * b;
+  out[12] = a[12] * b;
+  out[13] = a[13] * b;
+  out[14] = a[14] * b;
+  out[15] = a[15] * b;
+  return out;
+}
+function multiplyScalarAndAdd2(out, a, b, scale6) {
+  out[0] = a[0] + b[0] * scale6;
+  out[1] = a[1] + b[1] * scale6;
+  out[2] = a[2] + b[2] * scale6;
+  out[3] = a[3] + b[3] * scale6;
+  out[4] = a[4] + b[4] * scale6;
+  out[5] = a[5] + b[5] * scale6;
+  out[6] = a[6] + b[6] * scale6;
+  out[7] = a[7] + b[7] * scale6;
+  out[8] = a[8] + b[8] * scale6;
+  out[9] = a[9] + b[9] * scale6;
+  out[10] = a[10] + b[10] * scale6;
+  out[11] = a[11] + b[11] * scale6;
+  out[12] = a[12] + b[12] * scale6;
+  out[13] = a[13] + b[13] * scale6;
+  out[14] = a[14] + b[14] * scale6;
+  out[15] = a[15] + b[15] * scale6;
+  return out;
+}
+function exactEquals2(a, b) {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5] && a[6] === b[6] && a[7] === b[7] && a[8] === b[8] && a[9] === b[9] && a[10] === b[10] && a[11] === b[11] && a[12] === b[12] && a[13] === b[13] && a[14] === b[14] && a[15] === b[15];
+}
+function equals2(a, b) {
+  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+  var a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7];
+  var a8 = a[8], a9 = a[9], a10 = a[10], a11 = a[11];
+  var a12 = a[12], a13 = a[13], a14 = a[14], a15 = a[15];
+  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+  var b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7];
+  var b8 = b[8], b9 = b[9], b10 = b[10], b11 = b[11];
+  var b12 = b[12], b13 = b[13], b14 = b[14], b15 = b[15];
+  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3)) && Math.abs(a4 - b4) <= EPSILON * Math.max(1, Math.abs(a4), Math.abs(b4)) && Math.abs(a5 - b5) <= EPSILON * Math.max(1, Math.abs(a5), Math.abs(b5)) && Math.abs(a6 - b6) <= EPSILON * Math.max(1, Math.abs(a6), Math.abs(b6)) && Math.abs(a7 - b7) <= EPSILON * Math.max(1, Math.abs(a7), Math.abs(b7)) && Math.abs(a8 - b8) <= EPSILON * Math.max(1, Math.abs(a8), Math.abs(b8)) && Math.abs(a9 - b9) <= EPSILON * Math.max(1, Math.abs(a9), Math.abs(b9)) && Math.abs(a10 - b10) <= EPSILON * Math.max(1, Math.abs(a10), Math.abs(b10)) && Math.abs(a11 - b11) <= EPSILON * Math.max(1, Math.abs(a11), Math.abs(b11)) && Math.abs(a12 - b12) <= EPSILON * Math.max(1, Math.abs(a12), Math.abs(b12)) && Math.abs(a13 - b13) <= EPSILON * Math.max(1, Math.abs(a13), Math.abs(b13)) && Math.abs(a14 - b14) <= EPSILON * Math.max(1, Math.abs(a14), Math.abs(b14)) && Math.abs(a15 - b15) <= EPSILON * Math.max(1, Math.abs(a15), Math.abs(b15));
+}
+var mul2, sub2;
+var init_mat4 = __esm({
+  "node_modules/gl-matrix/esm/mat4.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_common();
+    mul2 = multiply2;
+    sub2 = subtract2;
+  }
+});
+
+// node_modules/gl-matrix/esm/vec3.js
+var vec3_exports = {};
+__export(vec3_exports, {
+  add: () => add3,
+  angle: () => angle,
+  bezier: () => bezier,
+  ceil: () => ceil,
+  clone: () => clone4,
+  copy: () => copy3,
+  create: () => create3,
+  cross: () => cross,
+  dist: () => dist,
+  distance: () => distance,
+  div: () => div,
+  divide: () => divide,
+  dot: () => dot,
+  equals: () => equals3,
+  exactEquals: () => exactEquals3,
+  floor: () => floor,
+  forEach: () => forEach,
+  fromValues: () => fromValues3,
+  hermite: () => hermite,
+  inverse: () => inverse,
+  len: () => len,
+  length: () => length2,
+  lerp: () => lerp,
+  max: () => max,
+  min: () => min,
+  mul: () => mul3,
+  multiply: () => multiply3,
+  negate: () => negate,
+  normalize: () => normalize,
+  random: () => random,
+  rotateX: () => rotateX2,
+  rotateY: () => rotateY2,
+  rotateZ: () => rotateZ2,
+  round: () => round,
+  scale: () => scale3,
+  scaleAndAdd: () => scaleAndAdd,
+  set: () => set3,
+  sqrDist: () => sqrDist,
+  sqrLen: () => sqrLen,
+  squaredDistance: () => squaredDistance,
+  squaredLength: () => squaredLength,
+  str: () => str3,
+  sub: () => sub3,
+  subtract: () => subtract3,
+  transformMat3: () => transformMat3,
+  transformMat4: () => transformMat4,
+  transformQuat: () => transformQuat,
+  zero: () => zero
+});
+function create3() {
+  var out = new ARRAY_TYPE(3);
+  if (ARRAY_TYPE != Float32Array) {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+  }
+  return out;
+}
+function clone4(a) {
+  var out = new ARRAY_TYPE(3);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
+function length2(a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  return Math.hypot(x, y, z);
+}
+function fromValues3(x, y, z) {
+  var out = new ARRAY_TYPE(3);
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  return out;
+}
+function copy3(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
+function set3(out, x, y, z) {
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  return out;
+}
+function add3(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  return out;
+}
+function subtract3(out, a, b) {
+  out[0] = a[0] - b[0];
+  out[1] = a[1] - b[1];
+  out[2] = a[2] - b[2];
+  return out;
+}
+function multiply3(out, a, b) {
+  out[0] = a[0] * b[0];
+  out[1] = a[1] * b[1];
+  out[2] = a[2] * b[2];
+  return out;
+}
+function divide(out, a, b) {
+  out[0] = a[0] / b[0];
+  out[1] = a[1] / b[1];
+  out[2] = a[2] / b[2];
+  return out;
+}
+function ceil(out, a) {
+  out[0] = Math.ceil(a[0]);
+  out[1] = Math.ceil(a[1]);
+  out[2] = Math.ceil(a[2]);
+  return out;
+}
+function floor(out, a) {
+  out[0] = Math.floor(a[0]);
+  out[1] = Math.floor(a[1]);
+  out[2] = Math.floor(a[2]);
+  return out;
+}
+function min(out, a, b) {
+  out[0] = Math.min(a[0], b[0]);
+  out[1] = Math.min(a[1], b[1]);
+  out[2] = Math.min(a[2], b[2]);
+  return out;
+}
+function max(out, a, b) {
+  out[0] = Math.max(a[0], b[0]);
+  out[1] = Math.max(a[1], b[1]);
+  out[2] = Math.max(a[2], b[2]);
+  return out;
+}
+function round(out, a) {
+  out[0] = Math.round(a[0]);
+  out[1] = Math.round(a[1]);
+  out[2] = Math.round(a[2]);
+  return out;
+}
+function scale3(out, a, b) {
+  out[0] = a[0] * b;
+  out[1] = a[1] * b;
+  out[2] = a[2] * b;
+  return out;
+}
+function scaleAndAdd(out, a, b, scale6) {
+  out[0] = a[0] + b[0] * scale6;
+  out[1] = a[1] + b[1] * scale6;
+  out[2] = a[2] + b[2] * scale6;
+  return out;
+}
+function distance(a, b) {
+  var x = b[0] - a[0];
+  var y = b[1] - a[1];
+  var z = b[2] - a[2];
+  return Math.hypot(x, y, z);
+}
+function squaredDistance(a, b) {
+  var x = b[0] - a[0];
+  var y = b[1] - a[1];
+  var z = b[2] - a[2];
+  return x * x + y * y + z * z;
+}
+function squaredLength(a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  return x * x + y * y + z * z;
+}
+function negate(out, a) {
+  out[0] = -a[0];
+  out[1] = -a[1];
+  out[2] = -a[2];
+  return out;
+}
+function inverse(out, a) {
+  out[0] = 1 / a[0];
+  out[1] = 1 / a[1];
+  out[2] = 1 / a[2];
+  return out;
+}
+function normalize(out, a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  var len4 = x * x + y * y + z * z;
+  if (len4 > 0) {
+    len4 = 1 / Math.sqrt(len4);
+  }
+  out[0] = a[0] * len4;
+  out[1] = a[1] * len4;
+  out[2] = a[2] * len4;
+  return out;
+}
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+function cross(out, a, b) {
+  var ax = a[0], ay = a[1], az = a[2];
+  var bx = b[0], by = b[1], bz = b[2];
+  out[0] = ay * bz - az * by;
+  out[1] = az * bx - ax * bz;
+  out[2] = ax * by - ay * bx;
+  return out;
+}
+function lerp(out, a, b, t) {
+  var ax = a[0];
+  var ay = a[1];
+  var az = a[2];
+  out[0] = ax + t * (b[0] - ax);
+  out[1] = ay + t * (b[1] - ay);
+  out[2] = az + t * (b[2] - az);
+  return out;
+}
+function hermite(out, a, b, c, d, t) {
+  var factorTimes2 = t * t;
+  var factor1 = factorTimes2 * (2 * t - 3) + 1;
+  var factor2 = factorTimes2 * (t - 2) + t;
+  var factor3 = factorTimes2 * (t - 1);
+  var factor4 = factorTimes2 * (3 - 2 * t);
+  out[0] = a[0] * factor1 + b[0] * factor2 + c[0] * factor3 + d[0] * factor4;
+  out[1] = a[1] * factor1 + b[1] * factor2 + c[1] * factor3 + d[1] * factor4;
+  out[2] = a[2] * factor1 + b[2] * factor2 + c[2] * factor3 + d[2] * factor4;
+  return out;
+}
+function bezier(out, a, b, c, d, t) {
+  var inverseFactor = 1 - t;
+  var inverseFactorTimesTwo = inverseFactor * inverseFactor;
+  var factorTimes2 = t * t;
+  var factor1 = inverseFactorTimesTwo * inverseFactor;
+  var factor2 = 3 * t * inverseFactorTimesTwo;
+  var factor3 = 3 * factorTimes2 * inverseFactor;
+  var factor4 = factorTimes2 * t;
+  out[0] = a[0] * factor1 + b[0] * factor2 + c[0] * factor3 + d[0] * factor4;
+  out[1] = a[1] * factor1 + b[1] * factor2 + c[1] * factor3 + d[1] * factor4;
+  out[2] = a[2] * factor1 + b[2] * factor2 + c[2] * factor3 + d[2] * factor4;
+  return out;
+}
+function random(out, scale6) {
+  scale6 = scale6 || 1;
+  var r = RANDOM() * 2 * Math.PI;
+  var z = RANDOM() * 2 - 1;
+  var zScale = Math.sqrt(1 - z * z) * scale6;
+  out[0] = Math.cos(r) * zScale;
+  out[1] = Math.sin(r) * zScale;
+  out[2] = z * scale6;
+  return out;
+}
+function transformMat4(out, a, m) {
+  var x = a[0], y = a[1], z = a[2];
+  var w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  w = w || 1;
+  out[0] = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
+  out[1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+  out[2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) / w;
+  return out;
+}
+function transformMat3(out, a, m) {
+  var x = a[0], y = a[1], z = a[2];
+  out[0] = x * m[0] + y * m[3] + z * m[6];
+  out[1] = x * m[1] + y * m[4] + z * m[7];
+  out[2] = x * m[2] + y * m[5] + z * m[8];
+  return out;
+}
+function transformQuat(out, a, q) {
+  var qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+  var x = a[0], y = a[1], z = a[2];
+  var uvx = qy * z - qz * y, uvy = qz * x - qx * z, uvz = qx * y - qy * x;
+  var uuvx = qy * uvz - qz * uvy, uuvy = qz * uvx - qx * uvz, uuvz = qx * uvy - qy * uvx;
+  var w2 = qw * 2;
+  uvx *= w2;
+  uvy *= w2;
+  uvz *= w2;
+  uuvx *= 2;
+  uuvy *= 2;
+  uuvz *= 2;
+  out[0] = x + uvx + uuvx;
+  out[1] = y + uvy + uuvy;
+  out[2] = z + uvz + uuvz;
+  return out;
+}
+function rotateX2(out, a, b, c) {
+  var p = [], r = [];
+  p[0] = a[0] - b[0];
+  p[1] = a[1] - b[1];
+  p[2] = a[2] - b[2];
+  r[0] = p[0];
+  r[1] = p[1] * Math.cos(c) - p[2] * Math.sin(c);
+  r[2] = p[1] * Math.sin(c) + p[2] * Math.cos(c);
+  out[0] = r[0] + b[0];
+  out[1] = r[1] + b[1];
+  out[2] = r[2] + b[2];
+  return out;
+}
+function rotateY2(out, a, b, c) {
+  var p = [], r = [];
+  p[0] = a[0] - b[0];
+  p[1] = a[1] - b[1];
+  p[2] = a[2] - b[2];
+  r[0] = p[2] * Math.sin(c) + p[0] * Math.cos(c);
+  r[1] = p[1];
+  r[2] = p[2] * Math.cos(c) - p[0] * Math.sin(c);
+  out[0] = r[0] + b[0];
+  out[1] = r[1] + b[1];
+  out[2] = r[2] + b[2];
+  return out;
+}
+function rotateZ2(out, a, b, c) {
+  var p = [], r = [];
+  p[0] = a[0] - b[0];
+  p[1] = a[1] - b[1];
+  p[2] = a[2] - b[2];
+  r[0] = p[0] * Math.cos(c) - p[1] * Math.sin(c);
+  r[1] = p[0] * Math.sin(c) + p[1] * Math.cos(c);
+  r[2] = p[2];
+  out[0] = r[0] + b[0];
+  out[1] = r[1] + b[1];
+  out[2] = r[2] + b[2];
+  return out;
+}
+function angle(a, b) {
+  var tempA = fromValues3(a[0], a[1], a[2]);
+  var tempB = fromValues3(b[0], b[1], b[2]);
+  normalize(tempA, tempA);
+  normalize(tempB, tempB);
+  var cosine = dot(tempA, tempB);
+  if (cosine > 1) {
+    return 0;
+  } else if (cosine < -1) {
+    return Math.PI;
+  } else {
+    return Math.acos(cosine);
+  }
+}
+function zero(out) {
+  out[0] = 0;
+  out[1] = 0;
+  out[2] = 0;
+  return out;
+}
+function str3(a) {
+  return "vec3(" + a[0] + ", " + a[1] + ", " + a[2] + ")";
+}
+function exactEquals3(a, b) {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+}
+function equals3(a, b) {
+  var a0 = a[0], a1 = a[1], a2 = a[2];
+  var b0 = b[0], b1 = b[1], b2 = b[2];
+  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2));
+}
+var sub3, mul3, div, dist, sqrDist, len, sqrLen, forEach;
+var init_vec3 = __esm({
+  "node_modules/gl-matrix/esm/vec3.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_common();
+    sub3 = subtract3;
+    mul3 = multiply3;
+    div = divide;
+    dist = distance;
+    sqrDist = squaredDistance;
+    len = length2;
+    sqrLen = squaredLength;
+    forEach = (function() {
+      var vec = create3();
+      return function(a, stride, offset, count, fn, arg) {
+        var i, l;
+        if (!stride) {
+          stride = 3;
+        }
+        if (!offset) {
+          offset = 0;
+        }
+        if (count) {
+          l = Math.min(count * stride + offset, a.length);
+        } else {
+          l = a.length;
+        }
+        for (i = offset; i < l; i += stride) {
+          vec[0] = a[i];
+          vec[1] = a[i + 1];
+          vec[2] = a[i + 2];
+          fn(vec, vec, arg);
+          a[i] = vec[0];
+          a[i + 1] = vec[1];
+          a[i + 2] = vec[2];
+        }
+        return a;
+      };
+    })();
+  }
+});
+
+// node_modules/gl-matrix/esm/vec4.js
+var vec4_exports = {};
+__export(vec4_exports, {
+  add: () => add4,
+  ceil: () => ceil2,
+  clone: () => clone5,
+  copy: () => copy4,
+  create: () => create4,
+  cross: () => cross2,
+  dist: () => dist2,
+  distance: () => distance2,
+  div: () => div2,
+  divide: () => divide2,
+  dot: () => dot2,
+  equals: () => equals4,
+  exactEquals: () => exactEquals4,
+  floor: () => floor2,
+  forEach: () => forEach2,
+  fromValues: () => fromValues4,
+  inverse: () => inverse2,
+  len: () => len2,
+  length: () => length3,
+  lerp: () => lerp2,
+  max: () => max2,
+  min: () => min2,
+  mul: () => mul4,
+  multiply: () => multiply4,
+  negate: () => negate2,
+  normalize: () => normalize2,
+  random: () => random2,
+  round: () => round2,
+  scale: () => scale4,
+  scaleAndAdd: () => scaleAndAdd2,
+  set: () => set4,
+  sqrDist: () => sqrDist2,
+  sqrLen: () => sqrLen2,
+  squaredDistance: () => squaredDistance2,
+  squaredLength: () => squaredLength2,
+  str: () => str4,
+  sub: () => sub4,
+  subtract: () => subtract4,
+  transformMat4: () => transformMat42,
+  transformQuat: () => transformQuat2,
+  zero: () => zero2
+});
+function create4() {
+  var out = new ARRAY_TYPE(4);
+  if (ARRAY_TYPE != Float32Array) {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+  }
+  return out;
+}
+function clone5(a) {
+  var out = new ARRAY_TYPE(4);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  return out;
+}
+function fromValues4(x, y, z, w) {
+  var out = new ARRAY_TYPE(4);
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  out[3] = w;
+  return out;
+}
+function copy4(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  return out;
+}
+function set4(out, x, y, z, w) {
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  out[3] = w;
+  return out;
+}
+function add4(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  out[3] = a[3] + b[3];
+  return out;
+}
+function subtract4(out, a, b) {
+  out[0] = a[0] - b[0];
+  out[1] = a[1] - b[1];
+  out[2] = a[2] - b[2];
+  out[3] = a[3] - b[3];
+  return out;
+}
+function multiply4(out, a, b) {
+  out[0] = a[0] * b[0];
+  out[1] = a[1] * b[1];
+  out[2] = a[2] * b[2];
+  out[3] = a[3] * b[3];
+  return out;
+}
+function divide2(out, a, b) {
+  out[0] = a[0] / b[0];
+  out[1] = a[1] / b[1];
+  out[2] = a[2] / b[2];
+  out[3] = a[3] / b[3];
+  return out;
+}
+function ceil2(out, a) {
+  out[0] = Math.ceil(a[0]);
+  out[1] = Math.ceil(a[1]);
+  out[2] = Math.ceil(a[2]);
+  out[3] = Math.ceil(a[3]);
+  return out;
+}
+function floor2(out, a) {
+  out[0] = Math.floor(a[0]);
+  out[1] = Math.floor(a[1]);
+  out[2] = Math.floor(a[2]);
+  out[3] = Math.floor(a[3]);
+  return out;
+}
+function min2(out, a, b) {
+  out[0] = Math.min(a[0], b[0]);
+  out[1] = Math.min(a[1], b[1]);
+  out[2] = Math.min(a[2], b[2]);
+  out[3] = Math.min(a[3], b[3]);
+  return out;
+}
+function max2(out, a, b) {
+  out[0] = Math.max(a[0], b[0]);
+  out[1] = Math.max(a[1], b[1]);
+  out[2] = Math.max(a[2], b[2]);
+  out[3] = Math.max(a[3], b[3]);
+  return out;
+}
+function round2(out, a) {
+  out[0] = Math.round(a[0]);
+  out[1] = Math.round(a[1]);
+  out[2] = Math.round(a[2]);
+  out[3] = Math.round(a[3]);
+  return out;
+}
+function scale4(out, a, b) {
+  out[0] = a[0] * b;
+  out[1] = a[1] * b;
+  out[2] = a[2] * b;
+  out[3] = a[3] * b;
+  return out;
+}
+function scaleAndAdd2(out, a, b, scale6) {
+  out[0] = a[0] + b[0] * scale6;
+  out[1] = a[1] + b[1] * scale6;
+  out[2] = a[2] + b[2] * scale6;
+  out[3] = a[3] + b[3] * scale6;
+  return out;
+}
+function distance2(a, b) {
+  var x = b[0] - a[0];
+  var y = b[1] - a[1];
+  var z = b[2] - a[2];
+  var w = b[3] - a[3];
+  return Math.hypot(x, y, z, w);
+}
+function squaredDistance2(a, b) {
+  var x = b[0] - a[0];
+  var y = b[1] - a[1];
+  var z = b[2] - a[2];
+  var w = b[3] - a[3];
+  return x * x + y * y + z * z + w * w;
+}
+function length3(a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  var w = a[3];
+  return Math.hypot(x, y, z, w);
+}
+function squaredLength2(a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  var w = a[3];
+  return x * x + y * y + z * z + w * w;
+}
+function negate2(out, a) {
+  out[0] = -a[0];
+  out[1] = -a[1];
+  out[2] = -a[2];
+  out[3] = -a[3];
+  return out;
+}
+function inverse2(out, a) {
+  out[0] = 1 / a[0];
+  out[1] = 1 / a[1];
+  out[2] = 1 / a[2];
+  out[3] = 1 / a[3];
+  return out;
+}
+function normalize2(out, a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  var w = a[3];
+  var len4 = x * x + y * y + z * z + w * w;
+  if (len4 > 0) {
+    len4 = 1 / Math.sqrt(len4);
+  }
+  out[0] = x * len4;
+  out[1] = y * len4;
+  out[2] = z * len4;
+  out[3] = w * len4;
+  return out;
+}
+function dot2(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+}
+function cross2(out, u, v, w) {
+  var A = v[0] * w[1] - v[1] * w[0], B = v[0] * w[2] - v[2] * w[0], C = v[0] * w[3] - v[3] * w[0], D = v[1] * w[2] - v[2] * w[1], E = v[1] * w[3] - v[3] * w[1], F = v[2] * w[3] - v[3] * w[2];
+  var G = u[0];
+  var H = u[1];
+  var I = u[2];
+  var J = u[3];
+  out[0] = H * F - I * E + J * D;
+  out[1] = -(G * F) + I * C - J * B;
+  out[2] = G * E - H * C + J * A;
+  out[3] = -(G * D) + H * B - I * A;
+  return out;
+}
+function lerp2(out, a, b, t) {
+  var ax = a[0];
+  var ay = a[1];
+  var az = a[2];
+  var aw = a[3];
+  out[0] = ax + t * (b[0] - ax);
+  out[1] = ay + t * (b[1] - ay);
+  out[2] = az + t * (b[2] - az);
+  out[3] = aw + t * (b[3] - aw);
+  return out;
+}
+function random2(out, scale6) {
+  scale6 = scale6 || 1;
+  var v1, v2, v3, v4;
+  var s1, s2;
+  do {
+    v1 = RANDOM() * 2 - 1;
+    v2 = RANDOM() * 2 - 1;
+    s1 = v1 * v1 + v2 * v2;
+  } while (s1 >= 1);
+  do {
+    v3 = RANDOM() * 2 - 1;
+    v4 = RANDOM() * 2 - 1;
+    s2 = v3 * v3 + v4 * v4;
+  } while (s2 >= 1);
+  var d = Math.sqrt((1 - s1) / s2);
+  out[0] = scale6 * v1;
+  out[1] = scale6 * v2;
+  out[2] = scale6 * v3 * d;
+  out[3] = scale6 * v4 * d;
+  return out;
+}
+function transformMat42(out, a, m) {
+  var x = a[0], y = a[1], z = a[2], w = a[3];
+  out[0] = m[0] * x + m[4] * y + m[8] * z + m[12] * w;
+  out[1] = m[1] * x + m[5] * y + m[9] * z + m[13] * w;
+  out[2] = m[2] * x + m[6] * y + m[10] * z + m[14] * w;
+  out[3] = m[3] * x + m[7] * y + m[11] * z + m[15] * w;
+  return out;
+}
+function transformQuat2(out, a, q) {
+  var x = a[0], y = a[1], z = a[2];
+  var qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+  var ix = qw * x + qy * z - qz * y;
+  var iy = qw * y + qz * x - qx * z;
+  var iz = qw * z + qx * y - qy * x;
+  var iw = -qx * x - qy * y - qz * z;
+  out[0] = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+  out[1] = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+  out[2] = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+  out[3] = a[3];
+  return out;
+}
+function zero2(out) {
+  out[0] = 0;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  return out;
+}
+function str4(a) {
+  return "vec4(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ")";
+}
+function exactEquals4(a, b) {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+}
+function equals4(a, b) {
+  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3));
+}
+var sub4, mul4, div2, dist2, sqrDist2, len2, sqrLen2, forEach2;
+var init_vec4 = __esm({
+  "node_modules/gl-matrix/esm/vec4.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_common();
+    sub4 = subtract4;
+    mul4 = multiply4;
+    div2 = divide2;
+    dist2 = distance2;
+    sqrDist2 = squaredDistance2;
+    len2 = length3;
+    sqrLen2 = squaredLength2;
+    forEach2 = (function() {
+      var vec = create4();
+      return function(a, stride, offset, count, fn, arg) {
+        var i, l;
+        if (!stride) {
+          stride = 4;
+        }
+        if (!offset) {
+          offset = 0;
+        }
+        if (count) {
+          l = Math.min(count * stride + offset, a.length);
+        } else {
+          l = a.length;
+        }
+        for (i = offset; i < l; i += stride) {
+          vec[0] = a[i];
+          vec[1] = a[i + 1];
+          vec[2] = a[i + 2];
+          vec[3] = a[i + 3];
+          fn(vec, vec, arg);
+          a[i] = vec[0];
+          a[i + 1] = vec[1];
+          a[i + 2] = vec[2];
+          a[i + 3] = vec[3];
+        }
+        return a;
+      };
+    })();
+  }
+});
+
+// node_modules/gl-matrix/esm/quat.js
+var quat_exports = {};
+__export(quat_exports, {
+  add: () => add5,
+  calculateW: () => calculateW,
+  clone: () => clone6,
+  conjugate: () => conjugate,
+  copy: () => copy5,
+  create: () => create5,
+  dot: () => dot3,
+  equals: () => equals5,
+  exactEquals: () => exactEquals5,
+  exp: () => exp,
+  fromEuler: () => fromEuler,
+  fromMat3: () => fromMat3,
+  fromValues: () => fromValues5,
+  getAngle: () => getAngle,
+  getAxisAngle: () => getAxisAngle,
+  identity: () => identity3,
+  invert: () => invert3,
+  len: () => len3,
+  length: () => length4,
+  lerp: () => lerp3,
+  ln: () => ln,
+  mul: () => mul5,
+  multiply: () => multiply5,
+  normalize: () => normalize3,
+  pow: () => pow,
+  random: () => random3,
+  rotateX: () => rotateX3,
+  rotateY: () => rotateY3,
+  rotateZ: () => rotateZ3,
+  rotationTo: () => rotationTo,
+  scale: () => scale5,
+  set: () => set5,
+  setAxes: () => setAxes,
+  setAxisAngle: () => setAxisAngle,
+  slerp: () => slerp,
+  sqlerp: () => sqlerp,
+  sqrLen: () => sqrLen3,
+  squaredLength: () => squaredLength3,
+  str: () => str5
+});
+function create5() {
+  var out = new ARRAY_TYPE(4);
+  if (ARRAY_TYPE != Float32Array) {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+  }
+  out[3] = 1;
+  return out;
+}
+function identity3(out) {
+  out[0] = 0;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 1;
+  return out;
+}
+function setAxisAngle(out, axis, rad) {
+  rad = rad * 0.5;
+  var s = Math.sin(rad);
+  out[0] = s * axis[0];
+  out[1] = s * axis[1];
+  out[2] = s * axis[2];
+  out[3] = Math.cos(rad);
+  return out;
+}
+function getAxisAngle(out_axis, q) {
+  var rad = Math.acos(q[3]) * 2;
+  var s = Math.sin(rad / 2);
+  if (s > EPSILON) {
+    out_axis[0] = q[0] / s;
+    out_axis[1] = q[1] / s;
+    out_axis[2] = q[2] / s;
+  } else {
+    out_axis[0] = 1;
+    out_axis[1] = 0;
+    out_axis[2] = 0;
+  }
+  return rad;
+}
+function getAngle(a, b) {
+  var dotproduct = dot3(a, b);
+  return Math.acos(2 * dotproduct * dotproduct - 1);
+}
+function multiply5(out, a, b) {
+  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  var bx = b[0], by = b[1], bz = b[2], bw = b[3];
+  out[0] = ax * bw + aw * bx + ay * bz - az * by;
+  out[1] = ay * bw + aw * by + az * bx - ax * bz;
+  out[2] = az * bw + aw * bz + ax * by - ay * bx;
+  out[3] = aw * bw - ax * bx - ay * by - az * bz;
+  return out;
+}
+function rotateX3(out, a, rad) {
+  rad *= 0.5;
+  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  var bx = Math.sin(rad), bw = Math.cos(rad);
+  out[0] = ax * bw + aw * bx;
+  out[1] = ay * bw + az * bx;
+  out[2] = az * bw - ay * bx;
+  out[3] = aw * bw - ax * bx;
+  return out;
+}
+function rotateY3(out, a, rad) {
+  rad *= 0.5;
+  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  var by = Math.sin(rad), bw = Math.cos(rad);
+  out[0] = ax * bw - az * by;
+  out[1] = ay * bw + aw * by;
+  out[2] = az * bw + ax * by;
+  out[3] = aw * bw - ay * by;
+  return out;
+}
+function rotateZ3(out, a, rad) {
+  rad *= 0.5;
+  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  var bz = Math.sin(rad), bw = Math.cos(rad);
+  out[0] = ax * bw + ay * bz;
+  out[1] = ay * bw - ax * bz;
+  out[2] = az * bw + aw * bz;
+  out[3] = aw * bw - az * bz;
+  return out;
+}
+function calculateW(out, a) {
+  var x = a[0], y = a[1], z = a[2];
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  out[3] = Math.sqrt(Math.abs(1 - x * x - y * y - z * z));
+  return out;
+}
+function exp(out, a) {
+  var x = a[0], y = a[1], z = a[2], w = a[3];
+  var r = Math.sqrt(x * x + y * y + z * z);
+  var et = Math.exp(w);
+  var s = r > 0 ? et * Math.sin(r) / r : 0;
+  out[0] = x * s;
+  out[1] = y * s;
+  out[2] = z * s;
+  out[3] = et * Math.cos(r);
+  return out;
+}
+function ln(out, a) {
+  var x = a[0], y = a[1], z = a[2], w = a[3];
+  var r = Math.sqrt(x * x + y * y + z * z);
+  var t = r > 0 ? Math.atan2(r, w) / r : 0;
+  out[0] = x * t;
+  out[1] = y * t;
+  out[2] = z * t;
+  out[3] = 0.5 * Math.log(x * x + y * y + z * z + w * w);
+  return out;
+}
+function pow(out, a, b) {
+  ln(out, a);
+  scale5(out, out, b);
+  exp(out, out);
+  return out;
+}
+function slerp(out, a, b, t) {
+  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  var bx = b[0], by = b[1], bz = b[2], bw = b[3];
+  var omega, cosom, sinom, scale0, scale1;
+  cosom = ax * bx + ay * by + az * bz + aw * bw;
+  if (cosom < 0) {
+    cosom = -cosom;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+    bw = -bw;
+  }
+  if (1 - cosom > EPSILON) {
+    omega = Math.acos(cosom);
+    sinom = Math.sin(omega);
+    scale0 = Math.sin((1 - t) * omega) / sinom;
+    scale1 = Math.sin(t * omega) / sinom;
+  } else {
+    scale0 = 1 - t;
+    scale1 = t;
+  }
+  out[0] = scale0 * ax + scale1 * bx;
+  out[1] = scale0 * ay + scale1 * by;
+  out[2] = scale0 * az + scale1 * bz;
+  out[3] = scale0 * aw + scale1 * bw;
+  return out;
+}
+function random3(out) {
+  var u1 = RANDOM();
+  var u2 = RANDOM();
+  var u3 = RANDOM();
+  var sqrt1MinusU1 = Math.sqrt(1 - u1);
+  var sqrtU1 = Math.sqrt(u1);
+  out[0] = sqrt1MinusU1 * Math.sin(2 * Math.PI * u2);
+  out[1] = sqrt1MinusU1 * Math.cos(2 * Math.PI * u2);
+  out[2] = sqrtU1 * Math.sin(2 * Math.PI * u3);
+  out[3] = sqrtU1 * Math.cos(2 * Math.PI * u3);
+  return out;
+}
+function invert3(out, a) {
+  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+  var dot4 = a0 * a0 + a1 * a1 + a2 * a2 + a3 * a3;
+  var invDot = dot4 ? 1 / dot4 : 0;
+  out[0] = -a0 * invDot;
+  out[1] = -a1 * invDot;
+  out[2] = -a2 * invDot;
+  out[3] = a3 * invDot;
+  return out;
+}
+function conjugate(out, a) {
+  out[0] = -a[0];
+  out[1] = -a[1];
+  out[2] = -a[2];
+  out[3] = a[3];
+  return out;
+}
+function fromMat3(out, m) {
+  var fTrace = m[0] + m[4] + m[8];
+  var fRoot;
+  if (fTrace > 0) {
+    fRoot = Math.sqrt(fTrace + 1);
+    out[3] = 0.5 * fRoot;
+    fRoot = 0.5 / fRoot;
+    out[0] = (m[5] - m[7]) * fRoot;
+    out[1] = (m[6] - m[2]) * fRoot;
+    out[2] = (m[1] - m[3]) * fRoot;
+  } else {
+    var i = 0;
+    if (m[4] > m[0]) i = 1;
+    if (m[8] > m[i * 3 + i]) i = 2;
+    var j = (i + 1) % 3;
+    var k = (i + 2) % 3;
+    fRoot = Math.sqrt(m[i * 3 + i] - m[j * 3 + j] - m[k * 3 + k] + 1);
+    out[i] = 0.5 * fRoot;
+    fRoot = 0.5 / fRoot;
+    out[3] = (m[j * 3 + k] - m[k * 3 + j]) * fRoot;
+    out[j] = (m[j * 3 + i] + m[i * 3 + j]) * fRoot;
+    out[k] = (m[k * 3 + i] + m[i * 3 + k]) * fRoot;
+  }
+  return out;
+}
+function fromEuler(out, x, y, z) {
+  var halfToRad = 0.5 * Math.PI / 180;
+  x *= halfToRad;
+  y *= halfToRad;
+  z *= halfToRad;
+  var sx = Math.sin(x);
+  var cx = Math.cos(x);
+  var sy = Math.sin(y);
+  var cy = Math.cos(y);
+  var sz = Math.sin(z);
+  var cz = Math.cos(z);
+  out[0] = sx * cy * cz - cx * sy * sz;
+  out[1] = cx * sy * cz + sx * cy * sz;
+  out[2] = cx * cy * sz - sx * sy * cz;
+  out[3] = cx * cy * cz + sx * sy * sz;
+  return out;
+}
+function str5(a) {
+  return "quat(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ")";
+}
+var clone6, fromValues5, copy5, set5, add5, mul5, scale5, dot3, lerp3, length4, len3, squaredLength3, sqrLen3, normalize3, exactEquals5, equals5, rotationTo, sqlerp, setAxes;
+var init_quat = __esm({
+  "node_modules/gl-matrix/esm/quat.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_common();
+    init_mat3();
+    init_vec3();
+    init_vec4();
+    clone6 = clone5;
+    fromValues5 = fromValues4;
+    copy5 = copy4;
+    set5 = set4;
+    add5 = add4;
+    mul5 = multiply5;
+    scale5 = scale4;
+    dot3 = dot2;
+    lerp3 = lerp2;
+    length4 = length3;
+    len3 = length4;
+    squaredLength3 = squaredLength2;
+    sqrLen3 = squaredLength3;
+    normalize3 = normalize2;
+    exactEquals5 = exactEquals4;
+    equals5 = equals4;
+    rotationTo = (function() {
+      var tmpvec3 = create3();
+      var xUnitVec3 = fromValues3(1, 0, 0);
+      var yUnitVec3 = fromValues3(0, 1, 0);
+      return function(out, a, b) {
+        var dot4 = dot(a, b);
+        if (dot4 < -0.999999) {
+          cross(tmpvec3, xUnitVec3, a);
+          if (len(tmpvec3) < 1e-6) cross(tmpvec3, yUnitVec3, a);
+          normalize(tmpvec3, tmpvec3);
+          setAxisAngle(out, tmpvec3, Math.PI);
+          return out;
+        } else if (dot4 > 0.999999) {
+          out[0] = 0;
+          out[1] = 0;
+          out[2] = 0;
+          out[3] = 1;
+          return out;
+        } else {
+          cross(tmpvec3, a, b);
+          out[0] = tmpvec3[0];
+          out[1] = tmpvec3[1];
+          out[2] = tmpvec3[2];
+          out[3] = 1 + dot4;
+          return normalize3(out, out);
+        }
+      };
+    })();
+    sqlerp = (function() {
+      var temp1 = create5();
+      var temp2 = create5();
+      return function(out, a, b, c, d, t) {
+        slerp(temp1, a, d, t);
+        slerp(temp2, b, c, t);
+        slerp(out, temp1, temp2, 2 * t * (1 - t));
+        return out;
+      };
+    })();
+    setAxes = (function() {
+      var matr = create();
+      return function(out, view, right, up) {
+        matr[0] = right[0];
+        matr[3] = right[1];
+        matr[6] = right[2];
+        matr[1] = up[0];
+        matr[4] = up[1];
+        matr[7] = up[2];
+        matr[2] = -view[0];
+        matr[5] = -view[1];
+        matr[8] = -view[2];
+        return normalize3(out, fromMat3(out, matr));
+      };
+    })();
+  }
+});
+
+// node_modules/gl-matrix/esm/index.js
+var init_esm = __esm({
+  "node_modules/gl-matrix/esm/index.js"() {
+    init_legacy_browser();
+    init_worker_landed();
+    init_mat3();
+    init_mat4();
+    init_quat();
+    init_vec3();
+    init_vec4();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/array.js
+function filterArrayInplace(array2, predicate) {
+  const length22 = array2.length;
+  let outIndex = 0;
+  for (let i = 0; i < length22; ++i) {
+    if (predicate(array2[i], i, array2)) {
+      array2[outIndex] = array2[i];
+      ++outIndex;
+    }
+  }
+  array2.length = outIndex;
+}
+function transposeArray2d(array2, majorSize, minorSize) {
+  const transpose3 = new array2.constructor(array2.length);
+  for (let i = 0; i < majorSize * minorSize; i += minorSize) {
+    for (let j = 0; j < minorSize; j++) {
+      const index = i / minorSize;
+      transpose3[j * majorSize + index] = array2[i + j];
+    }
+  }
+  return transpose3;
+}
+function binarySearch(haystack, needle, compare, low = 0, high = haystack.length) {
+  while (low < high) {
+    const mid = low + high - 1 >> 1;
+    const compareResult = compare(needle, haystack[mid]);
+    if (compareResult > 0) {
+      low = mid + 1;
+    } else if (compareResult < 0) {
+      high = mid;
+    } else {
+      return mid;
+    }
+  }
+  return ~low;
+}
+function binarySearchLowerBound(begin, end, predicate) {
+  let count = end - begin;
+  while (count > 0) {
+    const step = Math.floor(count / 2);
+    const i = begin + step;
+    if (predicate(i)) {
+      count = step;
+    } else {
+      begin = i + 1;
+      count -= step + 1;
+    }
+  }
+  return begin;
+}
+function arraysEqual(a, b) {
+  const length22 = a.length;
+  if (b.length !== length22) return false;
+  for (let i = 0; i < length22; ++i) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+var init_array = __esm({
+  "node_modules/neuroglancer/lib/util/array.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/geom.js
+function prod3(x) {
+  return x[0] * x[1] * x[2];
+}
+function vec3Key(x) {
+  return `${x[0]},${x[1]},${x[2]}`;
+}
+function transformVectorByMat4(out, a, m) {
+  const x = a[0];
+  const y = a[1];
+  const z = a[2];
+  out[0] = m[0] * x + m[4] * y + m[8] * z;
+  out[1] = m[1] * x + m[5] * y + m[9] * z;
+  out[2] = m[2] * x + m[6] * y + m[10] * z;
+  return out;
+}
+function transformVectorByMat4Transpose(out, a, m) {
+  const x = a[0];
+  const y = a[1];
+  const z = a[2];
+  out[0] = m[0] * x + m[1] * y + m[2] * z;
+  out[1] = m[4] * x + m[5] * y + m[6] * z;
+  out[2] = m[8] * x + m[9] * y + m[10] * z;
+  return out;
+}
+function translationRotationScaleZReflectionToMat4(out, translation, rotation, scale6, zReflection) {
+  const temp = out;
+  out[0] = scale6[0];
+  out[1] = scale6[1];
+  out[2] = scale6[2] * zReflection;
+  return mat4_exports.fromRotationTranslationScale(
+    out,
+    rotation,
+    translation,
+    temp
+  );
+}
+function mat3FromMat4(out, m) {
+  const m00 = m[0];
+  const m01 = m[1];
+  const m02 = m[2];
+  const m10 = m[4];
+  const m11 = m[5];
+  const m12 = m[6];
+  const m20 = m[8];
+  const m21 = m[9];
+  const m22 = m[10];
+  out[0] = m00;
+  out[1] = m01;
+  out[2] = m02;
+  out[3] = m10;
+  out[4] = m11;
+  out[5] = m12;
+  out[6] = m20;
+  out[7] = m21;
+  out[8] = m22;
+  return out;
+}
+function getFrustrumPlanes(out, m) {
+  const m00 = m[0];
+  const m10 = m[1];
+  const m20 = m[2];
+  const m30 = m[3];
+  const m01 = m[4];
+  const m11 = m[5];
+  const m21 = m[6];
+  const m31 = m[7];
+  const m02 = m[8];
+  const m12 = m[9];
+  const m22 = m[10];
+  const m32 = m[11];
+  const m03 = m[12];
+  const m13 = m[13];
+  const m23 = m[14];
+  const m33 = m[15];
+  out[0] = m30 + m00;
+  out[1] = m31 + m01;
+  out[2] = m32 + m02;
+  out[3] = m33 + m03;
+  out[4] = m30 - m00;
+  out[5] = m31 - m01;
+  out[6] = m32 - m02;
+  out[7] = m33 - m03;
+  out[8] = m30 + m10;
+  out[9] = m31 + m11;
+  out[10] = m32 + m12;
+  out[11] = m33 + m13;
+  out[12] = m30 - m10;
+  out[13] = m31 - m11;
+  out[14] = m32 - m12;
+  out[15] = m33 - m13;
+  const nearA = m30 + m20;
+  const nearB = m31 + m21;
+  const nearC = m32 + m22;
+  const nearD = m33 + m23;
+  const farA = m30 - m20;
+  const farB = m31 - m21;
+  const farC = m32 - m22;
+  const farD = m33 - m23;
+  const nearNorm = Math.sqrt(nearA ** 2 + nearB ** 2 + nearC ** 2);
+  out[16] = nearA / nearNorm;
+  out[17] = nearB / nearNorm;
+  out[18] = nearC / nearNorm;
+  out[19] = nearD / nearNorm;
+  const farNorm = Math.sqrt(farA ** 2 + farB ** 2 + farC ** 2);
+  out[20] = farA / farNorm;
+  out[21] = farB / farNorm;
+  out[22] = farC / farNorm;
+  out[23] = farD / farNorm;
+  return out;
+}
+function isAABBVisible(xLower, yLower, zLower, xUpper, yUpper, zUpper, clippingPlanes) {
+  for (let i = 0; i < 6; ++i) {
+    const a = clippingPlanes[i * 4];
+    const b = clippingPlanes[i * 4 + 1];
+    const c = clippingPlanes[i * 4 + 2];
+    const d = clippingPlanes[i * 4 + 3];
+    const sum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper) + d;
+    if (sum < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+function isAABBIntersectingPlane(xLower, yLower, zLower, xUpper, yUpper, zUpper, clippingPlanes) {
+  for (let i = 0; i < 4; ++i) {
+    const a = clippingPlanes[i * 4];
+    const b = clippingPlanes[i * 4 + 1];
+    const c = clippingPlanes[i * 4 + 2];
+    const d = clippingPlanes[i * 4 + 3];
+    const sum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper) + d;
+    if (sum < 0) {
+      return false;
+    }
+  }
+  {
+    const i = 5;
+    const a = clippingPlanes[i * 4];
+    const b = clippingPlanes[i * 4 + 1];
+    const c = clippingPlanes[i * 4 + 2];
+    const d = clippingPlanes[i * 4 + 3];
+    const maxSum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper);
+    const minSum = Math.min(a * xLower, a * xUpper) + Math.min(b * yLower, b * yUpper) + Math.min(c * zLower, c * zUpper);
+    const epsilon = Math.abs(d) * 1e-6;
+    if (minSum > -d + epsilon || maxSum < -d - epsilon) return false;
+  }
+  return true;
+}
+function getViewFrustrumVolume(projectionMat) {
+  if (projectionMat[15] === 1) {
+    const depth = 2 / Math.abs(projectionMat[10]);
+    const width = 2 / Math.abs(projectionMat[0]);
+    const height = 2 / Math.abs(projectionMat[5]);
+    return width * height * depth;
+  }
+  const a = projectionMat[10];
+  const b = projectionMat[14];
+  const near = 2 * b / (2 * a - 2);
+  const far = (a - 1) * near / (a + 1);
+  const baseArea = 4 / (projectionMat[0] * projectionMat[5]);
+  return baseArea / 3 * (Math.abs(far) ** 3 - Math.abs(near) ** 3);
+}
+function getViewFrustrumDepthRange(projectionMat) {
+  if (projectionMat[15] === 1) {
+    const depth2 = 2 / Math.abs(projectionMat[10]);
+    return depth2;
+  }
+  const a = projectionMat[10];
+  const b = projectionMat[14];
+  const near = 2 * b / (2 * a - 2);
+  const far = (a - 1) * near / (a + 1);
+  const depth = Math.abs(far - near);
+  return depth;
+}
+var identityMat4, kAxes, kZeroVec, kZeroVec4, kOneVec, kInfinityVec, kIdentityQuat, tempVec3;
+var init_geom = __esm({
+  "node_modules/neuroglancer/lib/util/geom.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_esm();
+    init_array();
+    init_esm();
+    identityMat4 = mat4_exports.create();
+    kAxes = [
+      vec3_exports.fromValues(1, 0, 0),
+      vec3_exports.fromValues(0, 1, 0),
+      vec3_exports.fromValues(0, 0, 1)
+    ];
+    kZeroVec = vec3_exports.fromValues(0, 0, 0);
+    kZeroVec4 = vec4_exports.fromValues(0, 0, 0, 0);
+    kOneVec = vec3_exports.fromValues(1, 1, 1);
+    kInfinityVec = vec3_exports.fromValues(Infinity, Infinity, Infinity);
+    kIdentityQuat = quat_exports.create();
+    tempVec3 = vec3_exports.create();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/json.js
+function verifyFloat(obj) {
+  const t = typeof obj;
+  if (t === "number" || t === "string") {
+    const x = parseFloat("" + obj);
+    if (!Number.isNaN(x)) {
+      return x;
+    }
+  }
+  throw new Error(
+    `Expected floating-point number, but received: ${JSON.stringify(obj)}.`
+  );
+}
+function verifyFiniteFloat(obj) {
+  const x = verifyFloat(obj);
+  if (Number.isFinite(x)) {
+    return x;
+  }
+  throw new Error(`Expected finite floating-point number, but received: ${x}.`);
+}
+function verifyFiniteNonNegativeFloat(obj) {
+  const x = verifyFloat(obj);
+  if (Number.isFinite(x) && x >= 0) {
+    return x;
+  }
+  throw new Error(
+    `Expected finite non-negative floating-point number, but received: ${x}.`
+  );
+}
+function stableStringify(x) {
+  if (typeof x === "object") {
+    if (x === null) {
+      return "null";
+    }
+    if (Array.isArray(x)) {
+      let s2 = "[";
+      const size2 = x.length;
+      let i2 = 0;
+      if (i2 < size2) {
+        s2 += stableStringify(x[i2]);
+        while (++i2 < size2) {
+          s2 += ",";
+          s2 += stableStringify(x[i2]);
+        }
+      }
+      s2 += "]";
+      return s2;
+    }
+    let s = "{";
+    const keys = Object.keys(x).sort();
+    let i = 0;
+    const size = keys.length;
+    if (i < size) {
+      let key = keys[i];
+      s += JSON.stringify(key);
+      s += ":";
+      s += stableStringify(x[key]);
+      while (++i < size) {
+        s += ",";
+        key = keys[i];
+        s += JSON.stringify(key);
+        s += ":";
+        s += stableStringify(x[key]);
+      }
+    }
+    s += "}";
+    return s;
+  }
+  if (typeof x === "bigint") {
+    return x.toString();
+  }
+  return JSON.stringify(x);
+}
+function convertStringLiteral(x, quoteInitial, quoteReplace, quoteSearch) {
+  if (x.length >= 2 && x.charAt(0) === quoteInitial && x.charAt(x.length - 1) === quoteInitial) {
+    let inner = x.substr(1, x.length - 2);
+    let s = quoteReplace;
+    while (inner.length > 0) {
+      const m = inner.match(quoteSearch);
+      if (m === null) {
+        s += inner;
+        break;
+      }
+      s += m[1];
+      if (m[2] === quoteReplace) {
+        s += "\\";
+        s += quoteReplace;
+      } else {
+        s += quoteInitial;
+      }
+      inner = inner.substr(m.index + m[0].length);
+    }
+    s += quoteReplace;
+    return s;
+  }
+  return x;
+}
+function normalizeStringLiteral(x) {
+  return convertStringLiteral(x, "'", '"', DOUBLE_QUOTE_PATTERN);
+}
+function pythonLiteralToJSON(x) {
+  let s = "";
+  while (x.length > 0) {
+    const m = x.match(SINGLE_OR_DOUBLE_QUOTE_STRING_PATTERN);
+    let before;
+    let replacement;
+    if (m === null) {
+      before = x;
+      x = "";
+      replacement = "";
+    } else {
+      before = x.substr(0, m.index);
+      x = x.substr(m.index + m[0].length);
+      const singleQuoteString = m[1];
+      if (singleQuoteString !== void 0) {
+        replacement = normalizeStringLiteral(singleQuoteString);
+      } else {
+        replacement = m[2];
+      }
+    }
+    s += before.replace(/\(/g, "[").replace(/\)/g, "]").replace("True", "true").replace("False", "false").replace(/,\s*([}\]])/g, "$1");
+    s += replacement;
+  }
+  return s;
+}
+function pythonLiteralParse(x) {
+  return JSON.parse(pythonLiteralToJSON(x));
+}
+function parseArray(x, parseElement) {
+  if (!Array.isArray(x)) {
+    throw new Error(`Expected array, but received: ${JSON.stringify(x)}.`);
+  }
+  return x.map(parseElement);
+}
+function parseFixedLengthArray(out, obj, parseElement) {
+  const length6 = out.length;
+  if (!Array.isArray(obj) || obj.length !== length6) {
+    throw new Error(
+      `Expected length ${length6} array, but received: ${JSON.stringify(obj)}.`
+    );
+  }
+  for (let i = 0; i < length6; ++i) {
+    out[i] = parseElement(obj[i], i);
+  }
+  return out;
+}
+function verifyObject(obj) {
+  if (typeof obj !== "object" || obj == null || Array.isArray(obj)) {
+    throw new Error(
+      `Expected JSON object, but received: ${JSON.stringify(obj)}.`
+    );
+  }
+  return obj;
+}
+function verifyInt(obj) {
+  const result = parseInt(obj, 10);
+  if (!Number.isInteger(result)) {
+    throw new Error(`Expected integer, but received: ${JSON.stringify(obj)}.`);
+  }
+  return result;
+}
+function verifyString(obj) {
+  if (typeof obj !== "string") {
+    throw new Error(`Expected string, but received: ${JSON.stringify(obj)}.`);
+  }
+  return obj;
+}
+function verifyOptionalString(obj) {
+  if (obj === void 0) {
+    return void 0;
+  }
+  return verifyString(obj);
+}
+function verifyObjectProperty(obj, propertyName, validator) {
+  const value = Object.prototype.hasOwnProperty.call(obj, propertyName) ? obj[propertyName] : void 0;
+  try {
+    return validator(value);
+  } catch (parseError) {
+    throw new Error(
+      `Error parsing ${JSON.stringify(propertyName)} property: ${parseError.message}`
+    );
+  }
+}
+function verifyOptionalObjectProperty(obj, propertyName, validator, defaultValue) {
+  return verifyObjectProperty(
+    obj,
+    propertyName,
+    (x) => x === void 0 ? defaultValue : validator(x)
+  );
+}
+function verifyEnumString(obj, enumType, pattern = /^[a-zA-Z]/) {
+  if (typeof obj === "string" && obj.match(pattern) !== null) {
+    const objUpperCase = obj.toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(enumType, objUpperCase)) {
+      return enumType[objUpperCase];
+    }
+  }
+  throw new Error(`Invalid enum value: ${JSON.stringify(obj)}.`);
+}
+function verifyStringArray(a) {
+  if (!Array.isArray(a)) {
+    throw new Error(`Expected array, received: ${JSON.stringify(a)}.`);
+  }
+  for (const x of a) {
+    if (typeof x !== "string") {
+      throw new Error(`Expected string, received: ${JSON.stringify(x)}.`);
+    }
+  }
+  return a;
+}
+function parseUint64(obj) {
+  let n;
+  switch (typeof obj) {
+    case "string":
+      if (obj.match(/^(?:0|[1-9][0-9]*)$/) === null) {
+        throw new Error(
+          `Expected base-10 number, but received: ${JSON.stringify(obj)}`
+        );
+      }
+      n = BigInt(obj);
+      break;
+    case "number":
+      n = BigInt(obj);
+      break;
+    case "bigint":
+      n = obj;
+      break;
+    default:
+      throw new Error(
+        `Expected uint64 value, but received: ${JSON.stringify(obj)}`
+      );
+  }
+  if (n < 0n || n > UINT64_MAX) {
+    throw new Error(`Expected uint64 value, but received: ${n}`);
+  }
+  return n;
+}
+var SINGLE_QUOTE_STRING_PATTERN, DOUBLE_QUOTE_STRING_PATTERN, SINGLE_OR_DOUBLE_QUOTE_STRING_PATTERN, DOUBLE_OR_SINGLE_QUOTE_STRING_PATTERN, DOUBLE_QUOTE_PATTERN;
+var init_json = __esm({
+  "node_modules/neuroglancer/lib/util/json.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_bigint();
+    init_geom();
+    SINGLE_QUOTE_STRING_PATTERN = /('(?:[^'\\]|(?:\\.))*')/;
+    DOUBLE_QUOTE_STRING_PATTERN = /("(?:[^"\\]|(?:\\.))*")/;
+    SINGLE_OR_DOUBLE_QUOTE_STRING_PATTERN = new RegExp(
+      `${SINGLE_QUOTE_STRING_PATTERN.source}|${DOUBLE_QUOTE_STRING_PATTERN.source}`
+    );
+    DOUBLE_OR_SINGLE_QUOTE_STRING_PATTERN = new RegExp(
+      `${DOUBLE_QUOTE_STRING_PATTERN.source}|${SINGLE_QUOTE_STRING_PATTERN.source}`
+    );
+    DOUBLE_QUOTE_PATTERN = /^((?:[^"'\\]|(?:\\[^']))*)("|\\')/;
+  }
+});
+
+// node_modules/neuroglancer/lib/util/progress_listener.js
+function getId(span) {
+  return span.id;
+}
+var ProgressSpan, MultiSet, KeyedMultiSet, ProgressSpanSet, MultiConsumerProgressListener;
+var init_progress_listener = __esm({
+  "node_modules/neuroglancer/lib/util/progress_listener.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    ProgressSpan = class {
+      constructor(listener, options) {
+        this.listener = listener;
+        const { id = Math.random(), startTime = Date.now(), message } = options;
+        this.id = id;
+        this.startTime = startTime;
+        this.message = message;
+        listener.addSpan(this);
+      }
+      id;
+      startTime;
+      message;
+      [Symbol.dispose]() {
+        this.listener.removeSpan(this.id);
+      }
+    };
+    MultiSet = class {
+      items = /* @__PURE__ */ new Map();
+      add(item) {
+        const { items } = this;
+        const count = (items.get(item) ?? 0) + 1;
+        items.set(item, count);
+        return count;
+      }
+      delete(item) {
+        const { items } = this;
+        let count = items.get(item);
+        if (count > 1) {
+          count -= 1;
+          items.set(item, count);
+          return count;
+        }
+        items.delete(item);
+        return 0;
+      }
+      has(item) {
+        return this.items.has(item);
+      }
+      keys() {
+        return this.items.keys();
+      }
+      entries() {
+        return this.items.entries();
+      }
+      [Symbol.iterator]() {
+        return this.items.keys();
+      }
+    };
+    KeyedMultiSet = class {
+      constructor(getKey) {
+        this.getKey = getKey;
+      }
+      items = /* @__PURE__ */ new Map();
+      add(item) {
+        const { items } = this;
+        const key = this.getKey(item);
+        const obj = items.get(key);
+        if (obj === void 0) {
+          items.set(key, { value: item, count: 1 });
+          return 1;
+        } else {
+          return obj.count += 1;
+        }
+      }
+      delete(item) {
+        return this.deleteKey(this.getKey(item));
+      }
+      deleteKey(key) {
+        const { items } = this;
+        const obj = items.get(key);
+        if (obj !== void 0 && obj.count > 1) {
+          return obj.count -= 1;
+        }
+        items.delete(key);
+        return 0;
+      }
+      has(item) {
+        return this.items.has(this.getKey(item));
+      }
+      *[Symbol.iterator]() {
+        for (const obj of this.items.values()) {
+          yield obj.value;
+        }
+      }
+    };
+    ProgressSpanSet = class extends KeyedMultiSet {
+      constructor() {
+        super(getId);
+      }
+    };
+    MultiConsumerProgressListener = class {
+      spans = new ProgressSpanSet();
+      listeners = new MultiSet();
+      addSpan(span) {
+        if (this.spans.add(span) !== 1) return;
+        for (const listener of this.listeners) {
+          listener.addSpan(span);
+        }
+      }
+      removeSpan(spanId) {
+        if (this.spans.deleteKey(spanId) !== 0) return;
+        for (const listener of this.listeners) {
+          listener.removeSpan(spanId);
+        }
+      }
+      addListener(listener) {
+        if (listener === void 0) return;
+        if (this.listeners.add(listener) !== 1) return;
+        for (const span of this.spans) {
+          listener.addSpan(span);
+        }
+      }
+      removeListener(listener) {
+        if (listener === void 0) return;
+        if (this.listeners.delete(listener) !== 0) return;
+        for (const span of this.spans) {
+          listener.removeSpan(span.id);
+        }
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/memoize.js
+function asyncMemoizeWithProgress(getter) {
+  let progressListener;
+  let abortController;
+  let promise;
+  let completed = false;
+  return async (options) => {
+    if (completed) {
+      return promise;
+    }
+    const { signal } = options;
+    signal == null ? void 0 : signal.throwIfAborted();
+    if (promise === void 0 || abortController.signal.aborted) {
+      progressListener = new MultiConsumerProgressListener();
+      abortController = new SharedAbortController();
+      const curAbortController = abortController;
+      promise = (async () => {
+        try {
+          return await getter({
+            signal: curAbortController.signal,
+            progressListener
+          });
+        } catch (e) {
+          if (curAbortController.signal.aborted) {
+            promise = void 0;
+          }
+          throw e;
+        } finally {
+          if (promise !== void 0) {
+            completed = true;
+          }
+          progressListener = void 0;
+          curAbortController[Symbol.dispose]();
+          if (abortController === curAbortController) {
+            abortController = void 0;
+          }
+        }
+      })();
+    }
+    abortController.addConsumer(signal);
+    const curProgressListener = progressListener;
+    curProgressListener.addListener(options.progressListener);
+    try {
+      return await raceWithAbort(promise, signal);
+    } finally {
+      curProgressListener.removeListener(options.progressListener);
+    }
+  };
+}
+var Memoize, StringMemoize;
+var init_memoize = __esm({
+  "node_modules/neuroglancer/lib/util/memoize.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_abort();
+    init_disposable();
+    init_json();
+    init_progress_listener();
+    Memoize = class {
+      map = /* @__PURE__ */ new Map();
+      /**
+       * If getter throws an exception, no value is added.
+       */
+      get(key, getter) {
+        const { map: map2 } = this;
+        let obj = map2.get(key);
+        if (obj === void 0) {
+          obj = getter();
+          obj.registerDisposer(() => {
+            map2.delete(key);
+          });
+          map2.set(key, obj);
+        } else {
+          obj.addRef();
+        }
+        return obj;
+      }
+    };
+    StringMemoize = class extends Memoize {
+      get(x, getter) {
+        if (typeof x !== "string") {
+          x = stableStringify(x);
+        }
+        return super.get(x, getter);
+      }
+      getUncounted(x, getter) {
+        return this.get(x, () => new RefCountedValue(getter())).value;
+      }
+      getAsync(x, options, getter) {
+        return this.getUncounted(x, () => asyncMemoizeWithProgress(getter))(
+          options
+        );
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/pairing_heap.js
+function makePairingHeapOperations(options) {
+  const { child: CHILD, next: NEXT, prev: PREV, compare } = options;
+  function combineChildren(node) {
+    let cur = node[CHILD];
+    if (cur === null) {
+      return null;
+    }
+    let head = null;
+    while (true) {
+      const curNext = cur[NEXT];
+      let next, m;
+      if (curNext === null) {
+        next = null;
+        m = cur;
+      } else {
+        next = curNext[NEXT];
+        m = meld(cur, curNext);
+      }
+      m[NEXT] = head;
+      head = m;
+      if (next === null) {
+        break;
+      }
+      cur = next;
+    }
+    let root2 = head;
+    head = head[NEXT];
+    while (true) {
+      if (head === null) {
+        break;
+      }
+      const next = head[NEXT];
+      root2 = meld(root2, head);
+      head = next;
+    }
+    root2[PREV] = null;
+    root2[NEXT] = null;
+    return root2;
+  }
+  function meld(a, b) {
+    if (b === null) {
+      return a;
+    }
+    if (a === null) {
+      return b;
+    }
+    if (compare(b, a)) {
+      const temp = a;
+      a = b;
+      b = temp;
+    }
+    const aChild = a[CHILD];
+    b[NEXT] = aChild;
+    b[PREV] = a;
+    if (aChild !== null) {
+      aChild[PREV] = b;
+    }
+    a[CHILD] = b;
+    return a;
+  }
+  function removeMin(root2) {
+    const newRoot = combineChildren(root2);
+    root2[NEXT] = null;
+    root2[PREV] = null;
+    root2[CHILD] = null;
+    return newRoot;
+  }
+  function remove(root2, node) {
+    if (root2 === node) {
+      return removeMin(root2);
+    }
+    const prev = node[PREV];
+    const next = node[NEXT];
+    if (prev[CHILD] === node) {
+      prev[CHILD] = next;
+    } else {
+      prev[NEXT] = next;
+    }
+    if (next !== null) {
+      next[PREV] = prev;
+    }
+    const newRoot = meld(root2, combineChildren(node));
+    node[NEXT] = null;
+    node[PREV] = null;
+    node[CHILD] = null;
+    return newRoot;
+  }
+  function* entries(root2) {
+    if (root2 !== null) {
+      let child = root2[CHILD];
+      yield root2;
+      while (child !== null) {
+        const next = child[NEXT];
+        yield* entries(child);
+        child = next;
+      }
+    }
+  }
+  function* removedEntries(root2) {
+    if (root2 !== null) {
+      let child = root2[CHILD];
+      root2[CHILD] = null;
+      root2[NEXT] = null;
+      root2[PREV] = null;
+      yield root2;
+      while (child !== null) {
+        const next = child[NEXT];
+        child[CHILD] = null;
+        child[NEXT] = null;
+        child[PREV] = null;
+        yield* entries(child);
+        child = next;
+      }
+    }
+  }
+  return {
+    compare,
+    meld,
+    removeMin,
+    remove,
+    entries,
+    removedEntries
+  };
+}
+var init_pairing_heap = __esm({
+  "node_modules/neuroglancer/lib/util/pairing_heap.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/signal.js
+var Signal, NullarySignal;
+var init_signal = __esm({
+  "node_modules/neuroglancer/lib/util/signal.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    Signal = class {
+      handlers = /* @__PURE__ */ new Set();
+      /**
+       * Count of number of times this signal has been dispatched.  This is incremented each time
+       * `dispatch` is called prior to invoking the handlers.
+       */
+      count = 0;
+      constructor() {
+        const obj = this;
+        this.dispatch = function() {
+          ++obj.count;
+          obj.handlers.forEach((handler) => {
+            handler.apply(this, arguments);
+          });
+        };
+      }
+      /**
+       * Add a handler function.  If `dispatch` is currently be called, then the new handler will be
+       * called before `dispatch` returns.
+       *
+       * @param handler The handler function to add.
+       *
+       * @return A function that unregisters the handler.
+       */
+      add(handler) {
+        this.handlers.add(handler);
+        return () => {
+          return this.remove(handler);
+        };
+      }
+      addOnce(handler) {
+        const { handlers: handlers2 } = this;
+        function onceWrapper(...args) {
+          handlers2.delete(onceWrapper);
+          handler(...args);
+        }
+        handlers2.add(onceWrapper);
+      }
+      /**
+       * Remove a handler function.  If `dispatch` is currently be called and the new handler has not
+       * yet been called, then it will not be called.
+       *
+       * @param handler Handler to remove.
+       * @return `true` if the handler was present, `false` otherwise.
+       */
+      remove(handler) {
+        return this.handlers.delete(handler);
+      }
+      /**
+       * Invokes each handler function with the same parameters (including `this`) with which it is
+       * called.  Handlers are invoked in the order in which they were added.
+       */
+      dispatch;
+      /**
+       * Disposes of resources.  No methods, including `dispatch`, may be invoked afterwards.
+       */
+      dispose() {
+        this.handlers = void 0;
+      }
+    };
+    NullarySignal = class extends Signal {
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/worker_rpc.js
+function registerRPC(key, handler) {
+  handlers.set(key, handler);
+}
+function registerPromiseRPC(key, handler) {
+  registerRPC(key, function(x) {
+    const id = x.id;
+    const abortController = new AbortController();
+    let progressListener;
+    if (x.progressListener === true) {
+      progressListener = new ProxyProgressListener(this, id);
+    }
+    const promise = handler.call(this, x, {
+      signal: abortController.signal,
+      progressListener
+    });
+    this.set(id, { promise, abortController });
+    promise.then(
+      ({ value, transfers }) => {
+        this.delete(id);
+        this.invoke(PROMISE_RESPONSE_ID, { id, value }, transfers);
+      },
+      (error) => {
+        this.delete(id);
+        this.invoke(PROMISE_RESPONSE_ID, {
+          id,
+          error
+        });
+      }
+    );
+  });
+}
+function initializeSharedObjectCounterpart(obj, rpc2, options = {}) {
+  if (rpc2 != null) {
+    obj.initializeSharedObject(rpc2, options.id);
+  }
+}
+function registerSharedObjectOwner(identifier) {
+  return (constructorFunction) => {
+    constructorFunction.prototype.RPC_TYPE_ID = identifier;
+  };
+}
+function registerSharedObject(identifier) {
+  return (constructorFunction) => {
+    if (identifier !== void 0) {
+      constructorFunction.prototype.RPC_TYPE_ID = identifier;
+    } else {
+      identifier = constructorFunction.prototype.RPC_TYPE_ID;
+      if (identifier === void 0) {
+        throw new Error("RPC_TYPE_ID should have already been defined");
+      }
+    }
+    sharedObjectConstructors.set(identifier, constructorFunction);
+  };
+}
+var IS_WORKER, DEBUG, DEBUG_MESSAGES, PROMISE_RESPONSE_ID, PROMISE_CANCEL_ID, PROMISE_PROGRESS_ADD_SPAN_ID, PROMISE_PROGRESS_REMOVE_SPAN_ID, READY_ID, handlers, ProxyProgressListener, INITIAL_RPC_ID, RPC, SharedObject, SharedObjectCounterpart, sharedObjectConstructors;
+var init_worker_rpc = __esm({
+  "node_modules/neuroglancer/lib/worker_rpc.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_abort();
+    init_disposable();
+    init_progress_listener();
+    IS_WORKER = !(typeof Window !== "undefined" && self instanceof Window);
+    DEBUG = false;
+    DEBUG_MESSAGES = false;
+    PROMISE_RESPONSE_ID = "rpc.promise.response";
+    PROMISE_CANCEL_ID = "rpc.promise.cancel";
+    PROMISE_PROGRESS_ADD_SPAN_ID = "rpc.promise.addProgressSpan";
+    PROMISE_PROGRESS_REMOVE_SPAN_ID = "rpc.promise.removeProgressSpan";
+    READY_ID = "rpc.ready";
+    handlers = /* @__PURE__ */ new Map();
+    ProxyProgressListener = class {
+      constructor(rpc2, id) {
+        this.rpc = rpc2;
+        this.id = id;
+      }
+      addSpan(span) {
+        this.rpc.invoke(PROMISE_PROGRESS_ADD_SPAN_ID, {
+          id: this.id,
+          span: {
+            id: span.id,
+            message: span.message,
+            startTime: span.startTime
+          }
+        });
+      }
+      removeSpan(spanId) {
+        this.rpc.invoke(PROMISE_PROGRESS_REMOVE_SPAN_ID, {
+          id: this.id,
+          spanId
+        });
+      }
+    };
+    registerRPC(PROMISE_CANCEL_ID, function(x) {
+      const id = x.id;
+      const request = this.get(id);
+      if (request !== void 0) {
+        const { abortController } = request;
+        abortController.abort();
+      }
+    });
+    registerRPC(PROMISE_RESPONSE_ID, function(x) {
+      const id = x.id;
+      const { resolve, reject } = this.get(id);
+      this.delete(id);
+      if (Object.prototype.hasOwnProperty.call(x, "value")) {
+        resolve(x.value);
+      } else {
+        reject(x.error);
+      }
+    });
+    registerRPC(PROMISE_PROGRESS_ADD_SPAN_ID, function(x) {
+      const id = x.id;
+      const { progressListener } = this.get(id);
+      new ProgressSpan(progressListener, x.span);
+    });
+    registerRPC(PROMISE_PROGRESS_REMOVE_SPAN_ID, function(x) {
+      const id = x.id;
+      const { progressListener } = this.get(id);
+      progressListener.removeSpan(x.spanId);
+    });
+    registerRPC(READY_ID, function(x) {
+      x;
+      this.onPeerReady();
+    });
+    INITIAL_RPC_ID = IS_WORKER ? -1 : 0;
+    RPC = class {
+      constructor(target2, waitUntilReady) {
+        this.target = target2;
+        if (waitUntilReady) {
+          this.queue = [];
+        }
+        target2.onmessage = (e) => {
+          const data = e.data;
+          if (DEBUG_MESSAGES) {
+            console.log("Received message", data);
+          }
+          const handler = handlers.get(data.functionName);
+          if (handler === void 0) {
+            throw new Error(`Missing RPC function: ${data.functionName}`);
+          }
+          handlers.get(data.functionName).call(this, data);
+        };
+      }
+      objects = /* @__PURE__ */ new Map();
+      nextId = INITIAL_RPC_ID;
+      queue;
+      sendReady() {
+        this.invoke(READY_ID, {});
+      }
+      onPeerReady() {
+        const { queue } = this;
+        if (queue === void 0) return;
+        this.queue = void 0;
+        for (const { data, transfers } of queue) {
+          this.target.postMessage(data, transfers);
+        }
+      }
+      get numObjects() {
+        return this.objects.size;
+      }
+      set(id, value) {
+        this.objects.set(id, value);
+      }
+      delete(id) {
+        this.objects.delete(id);
+      }
+      get(id) {
+        return this.objects.get(id);
+      }
+      getRef(x) {
+        const rpcId = x.id;
+        const obj = this.get(rpcId);
+        obj.referencedGeneration = x.gen;
+        obj.addRef();
+        return obj;
+      }
+      getOptionalRef(x) {
+        if (x === void 0) return void 0;
+        const rpcId = x.id;
+        const obj = this.get(rpcId);
+        obj.referencedGeneration = x.gen;
+        obj.addRef();
+        return obj;
+      }
+      invoke(name, x, transfers) {
+        x.functionName = name;
+        if (DEBUG_MESSAGES) {
+          console.trace("Sending message", x);
+        }
+        const { queue } = this;
+        if (queue !== void 0) {
+          queue.push({ data: x, transfers });
+          return;
+        }
+        this.target.postMessage(x, transfers);
+      }
+      promiseInvoke(name, x, options) {
+        let signal;
+        let progressListener;
+        let transfers;
+        if (options !== void 0) {
+          ({ signal, progressListener, transfers } = options);
+        }
+        if (signal == null ? void 0 : signal.aborted) {
+          return Promise.reject(signal.reason);
+        }
+        if (progressListener !== void 0) {
+          x.progressListener = true;
+        }
+        const id = x.id = this.newId();
+        this.invoke(name, x, transfers);
+        const { promise, resolve, reject } = signal === void 0 ? Promise.withResolvers() : promiseWithResolversAndAbortCallback(signal, () => {
+          this.invoke(PROMISE_CANCEL_ID, { id });
+        });
+        this.set(id, { resolve, reject, progressListener });
+        return promise;
+      }
+      newId() {
+        return IS_WORKER ? this.nextId-- : this.nextId++;
+      }
+    };
+    SharedObject = class extends RefCounted {
+      rpc = null;
+      rpcId = null;
+      isOwner;
+      unreferencedGeneration;
+      referencedGeneration;
+      initializeSharedObject(rpc2, rpcId = rpc2.newId()) {
+        this.rpc = rpc2;
+        this.rpcId = rpcId;
+        this.isOwner = false;
+        rpc2.set(rpcId, this);
+      }
+      initializeCounterpart(rpc2, options = {}) {
+        this.initializeSharedObject(rpc2);
+        this.unreferencedGeneration = 0;
+        this.referencedGeneration = 0;
+        this.isOwner = true;
+        options.id = this.rpcId;
+        options.type = this.RPC_TYPE_ID;
+        rpc2.invoke("SharedObject.new", options);
+      }
+      dispose() {
+        super.dispose();
+      }
+      /**
+       * Precondition: this.isOwner === true.
+       */
+      addCounterpartRef() {
+        return { id: this.rpcId, gen: ++this.referencedGeneration };
+      }
+      refCountReachedZero() {
+        if (this.isOwner === true) {
+          if (this.referencedGeneration === this.unreferencedGeneration) {
+            this.ownerDispose();
+          }
+        } else if (this.isOwner === false) {
+          this.rpc.invoke("SharedObject.refCountReachedZero", {
+            id: this.rpcId,
+            gen: this.referencedGeneration
+          });
+        } else {
+          super.refCountReachedZero();
+        }
+      }
+      /**
+       * Precondition: this.isOwner === true.
+       */
+      ownerDispose() {
+        if (DEBUG) {
+          console.log(`[${IS_WORKER}] #rpc object = ${this.rpc.numObjects}`);
+        }
+        const { rpc: rpc2, rpcId } = this;
+        super.refCountReachedZero();
+        rpc2.delete(rpcId);
+        rpc2.invoke("SharedObject.dispose", { id: rpcId });
+      }
+      /**
+       * Precondition: this.isOwner === true.
+       *
+       * This should be called when the counterpart's refCount is decremented and reaches zero.
+       */
+      counterpartRefCountReachedZero(generation) {
+        this.unreferencedGeneration = generation;
+        if (this.refCount === 0 && generation === this.referencedGeneration) {
+          this.ownerDispose();
+        }
+      }
+    };
+    SharedObjectCounterpart = class extends SharedObject {
+      constructor(rpc2, options = {}) {
+        super();
+        initializeSharedObjectCounterpart(this, rpc2, options);
+      }
+    };
+    registerRPC("SharedObject.dispose", function(x) {
+      const obj = this.get(x.id);
+      if (obj.refCount !== 0) {
+        throw new Error(
+          "Attempted to dispose object with non-zero reference count."
+        );
+      }
+      if (DEBUG) {
+        console.log(`[${IS_WORKER}] #rpc objects: ${this.numObjects}`);
+      }
+      obj.disposed();
+      this.delete(obj.rpcId);
+      obj.rpcId = null;
+      obj.rpc = null;
+    });
+    registerRPC("SharedObject.refCountReachedZero", function(x) {
+      const obj = this.get(x.id);
+      const generation = x.gen;
+      obj.counterpartRefCountReachedZero(generation);
+    });
+    sharedObjectConstructors = /* @__PURE__ */ new Map();
+    registerRPC("SharedObject.new", function(x) {
+      const rpc2 = this;
+      const typeName = x.type;
+      const constructorFunction = sharedObjectConstructors.get(typeName);
+      const obj = new constructorFunction(rpc2, x);
+      --obj.refCount;
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/chunk_manager/backend.js
+function getNextMarkGeneration() {
+  return ++nextMarkGeneration;
+}
+function updateChunkStatistics(chunk, sign) {
+  const { statistics } = chunk.source;
+  const { systemMemoryBytes, gpuMemoryBytes } = chunk;
+  const index = getChunkStateStatisticIndex(chunk.state, chunk.priorityTier);
+  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.numChunks] += sign;
+  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.systemMemoryBytes] += sign * systemMemoryBytes;
+  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.gpuMemoryBytes] += sign * gpuMemoryBytes;
+}
+function startChunkDownload(chunk) {
+  const downloadAbortController = chunk.downloadAbortController = new AbortController();
+  const startTime = Date.now();
+  chunk.source.download(chunk, downloadAbortController.signal).then(
+    () => {
+      if (chunk.downloadAbortController === downloadAbortController) {
+        chunk.downloadAbortController = void 0;
+        const endTime = Date.now();
+        const { statistics } = chunk.source;
+        statistics[getChunkDownloadStatisticIndex(ChunkDownloadStatistics.totalTime)] += endTime - startTime;
+        ++statistics[getChunkDownloadStatisticIndex(ChunkDownloadStatistics.totalChunks)];
+        chunk.downloadSucceeded();
+      }
+    },
+    (error) => {
+      if (chunk.downloadAbortController === downloadAbortController) {
+        chunk.downloadAbortController = void 0;
+        chunk.downloadFailed(error);
+        console.log(`Error retrieving chunk ${chunk}: ${error}`);
+      }
+    }
+  );
+}
+function cancelChunkDownload(chunk) {
+  const controller = chunk.downloadAbortController;
+  chunk.downloadAbortController = void 0;
+  controller.abort(new DOMException("chunk download cancelled", "AbortError"));
+}
+function makeChunkPriorityQueue0(compare) {
+  return new ChunkPriorityQueue(
+    makePairingHeapOperations({
+      compare,
+      child: "child0",
+      next: "next0",
+      prev: "prev0"
+    }),
+    linkedList0
+  );
+}
+function makeChunkPriorityQueue1(compare) {
+  return new ChunkPriorityQueue(
+    makePairingHeapOperations({
+      compare,
+      child: "child1",
+      next: "next1",
+      prev: "prev1"
+    }),
+    linkedList1
+  );
+}
+function tryToFreeCapacity(size, capacity, priorityTier, priority, evictionCandidates, evict) {
+  while (capacity.availableItems < 1 || capacity.availableSize < size) {
+    const evictionCandidate = evictionCandidates.next().value;
+    if (evictionCandidate === void 0) {
+      return false;
+    }
+    const evictionTier = evictionCandidate.priorityTier;
+    if (evictionTier < priorityTier || evictionTier === priorityTier && evictionCandidate.priority >= priority) {
+      return false;
+    }
+    evict(evictionCandidate);
+  }
+  return true;
+}
+function WithParameters(Base, parametersConstructor) {
+  let C = class extends Base {
+    parameters;
+    constructor(...args) {
+      super(...args);
+      const options = args[1];
+      this.parameters = options.parameters;
+    }
+  };
+  C = __decorateClass([
+    registerSharedObjectOwner(parametersConstructor.RPC_ID)
+  ], C);
+  return C;
+}
+function withChunkManager(Base) {
+  return class extends Base {
+    chunkManager;
+    constructor(...args) {
+      super(...args);
+      const rpc2 = args[0];
+      const options = args[1];
+      this.chunkManager = rpc2.get(options.chunkManager);
+    }
+  };
+}
+var __defProp2, __getOwnPropDesc2, __decorateClass, DEBUG_CHUNK_UPDATES, nextMarkGeneration, Chunk, numSourceQueueLevels, ChunkSourceBase, ChunkSource, ChunkPriorityQueue, linkedList0, linkedList1, AvailableCapacity, ChunkQueueManager, ChunkRenderLayerBackend, LAYER_CHUNK_STATISTICS_INTERVAL, ChunkManager;
+var init_backend = __esm({
+  "node_modules/neuroglancer/lib/chunk_manager/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_lodash();
+    init_base();
+    init_disposable();
+    init_linked_list();
+    init_memoize();
+    init_pairing_heap();
+    init_signal();
+    init_worker_rpc();
+    __defProp2 = Object.defineProperty;
+    __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    __decorateClass = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc2(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp2(target2, key, result);
+      return result;
+    };
+    DEBUG_CHUNK_UPDATES = false;
+    nextMarkGeneration = 0;
+    Chunk = class {
+      // Node properties used for eviction/promotion heaps and LRU linked lists.
+      child0 = null;
+      next0 = null;
+      prev0 = null;
+      child1 = null;
+      next1 = null;
+      prev1 = null;
+      source = null;
+      key = null;
+      state_ = ChunkState.NEW;
+      error = null;
+      // Used by layers for marking chunks for various purposes.
+      markGeneration = -1;
+      /**
+       * Specifies existing priority within priority tier.  Only meaningful if priorityTier in
+       * CHUNK_ORDERED_PRIORITY_TIERS.  Higher numbers mean higher priority.
+       */
+      priority = 0;
+      /**
+       * Specifies updated priority within priority tier, not yet reflected in priority queue state.
+       * Only meaningful if newPriorityTier in CHUNK_ORDERED_PRIORITY_TIERS.
+       */
+      newPriority = 0;
+      priorityTier = ChunkPriorityTier.RECENT;
+      /**
+       * Specifies updated priority tier, not yet reflected in priority queue state.
+       */
+      newPriorityTier = ChunkPriorityTier.RECENT;
+      systemMemoryBytes_ = 0;
+      gpuMemoryBytes_ = 0;
+      downloadSlots_ = 1;
+      isComputational = false;
+      /**
+       * Specifies lowest numeric state required by any request, if `prioritTier !==
+       * ChunkPriorityTier.RECENT`, then this must be one of `GPU_MEMORY`, `SYSTEM_MEMORY`, or
+       * `SYSTEM_MEMORY_WORKER`.
+       */
+      requestedState = ChunkState.NEW;
+      newRequestedState = ChunkState.NEW;
+      /**
+       * Abort controller used to cancel the pending download.  Set to undefined except when state !==
+       * DOWNLOADING.  This should not be accessed by code outside this module.
+       */
+      downloadAbortController = void 0;
+      initialize(key) {
+        this.key = key;
+        this.priority = Number.NEGATIVE_INFINITY;
+        this.priorityTier = ChunkPriorityTier.RECENT;
+        this.newPriority = Number.NEGATIVE_INFINITY;
+        this.newPriorityTier = ChunkPriorityTier.RECENT;
+        this.error = null;
+        this.state = ChunkState.NEW;
+        this.requestedState = ChunkState.NEW;
+        this.newRequestedState = ChunkState.NEW;
+      }
+      /**
+       * Sets this.priority{Tier,} to this.newPriority{Tier,}, and resets this.newPriorityTier to
+       * ChunkPriorityTier.RECENT.
+       *
+       * This does not actually update any queues to reflect this change.
+       */
+      updatePriorityProperties() {
+        this.priorityTier = this.newPriorityTier;
+        this.priority = this.newPriority;
+        this.newPriorityTier = ChunkPriorityTier.RECENT;
+        this.newPriority = Number.NEGATIVE_INFINITY;
+        this.requestedState = this.newRequestedState;
+        this.newRequestedState = ChunkState.NEW;
+      }
+      dispose() {
+        this.source = null;
+        this.error = null;
+      }
+      get chunkManager() {
+        return this.source.chunkManager;
+      }
+      get queueManager() {
+        return this.source.chunkManager.queueManager;
+      }
+      downloadFailed(error) {
+        this.error = error;
+        this.queueManager.updateChunkState(this, ChunkState.FAILED);
+      }
+      downloadSucceeded() {
+        if (this.requestedState === ChunkState.SYSTEM_MEMORY) {
+          this.queueManager.moveChunkToFrontend(this);
+          this.queueManager.updateChunkState(this, ChunkState.SYSTEM_MEMORY);
+        } else {
+          this.queueManager.updateChunkState(this, ChunkState.SYSTEM_MEMORY_WORKER);
+        }
+      }
+      freeSystemMemory() {
+      }
+      serialize(msg, _transfers) {
+        msg.id = this.key;
+        msg.source = this.source.rpcId;
+        msg.new = true;
+      }
+      toString() {
+        return this.key;
+      }
+      set state(newState) {
+        if (newState === this.state_) {
+          return;
+        }
+        const oldState = this.state_;
+        this.state_ = newState;
+        this.source.chunkStateChanged(this, oldState);
+      }
+      get state() {
+        return this.state_;
+      }
+      set systemMemoryBytes(bytes) {
+        updateChunkStatistics(this, -1);
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
+        this.systemMemoryBytes_ = bytes;
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
+        updateChunkStatistics(this, 1);
+        this.chunkManager.queueManager.scheduleUpdate();
+      }
+      get systemMemoryBytes() {
+        return this.systemMemoryBytes_;
+      }
+      set gpuMemoryBytes(bytes) {
+        updateChunkStatistics(this, -1);
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
+        this.gpuMemoryBytes_ = bytes;
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
+        updateChunkStatistics(this, 1);
+        this.chunkManager.queueManager.scheduleUpdate();
+      }
+      get gpuMemoryBytes() {
+        return this.gpuMemoryBytes_;
+      }
+      get downloadSlots() {
+        return this.downloadSlots_;
+      }
+      set downloadSlots(count) {
+        if (count === this.downloadSlots_) return;
+        updateChunkStatistics(this, -1);
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
+        this.downloadSlots_ = count;
+        this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
+        updateChunkStatistics(this, 1);
+        this.chunkManager.queueManager.scheduleUpdate();
+      }
+      registerListener(listener) {
+        if (!this.source) {
+          return false;
+        }
+        return this.source.registerChunkListener(this.key, listener);
+      }
+      unregisterListener(listener) {
+        if (!this.source) {
+          return false;
+        }
+        return this.source.unregisterChunkListener(this.key, listener);
+      }
+      static priorityLess(a, b) {
+        return a.priority < b.priority;
+      }
+      static priorityGreater(a, b) {
+        return a.priority > b.priority;
+      }
+    };
+    numSourceQueueLevels = 2;
+    ChunkSourceBase = class extends SharedObject {
+      constructor(chunkManager) {
+        super();
+        this.chunkManager = chunkManager;
+        chunkManager.queueManager.sources.add(this);
+      }
+      listeners_ = /* @__PURE__ */ new Map();
+      chunks = /* @__PURE__ */ new Map();
+      freeChunks = new Array();
+      statistics = new Float64Array(numChunkStatistics);
+      /**
+       * sourceQueueLevel must be greater than the sourceQueueLevel of any ChunkSource whose download
+       * method depends on chunks from this source.  A normal ChunkSource with no other dependencies
+       * should have a level of 0.
+       */
+      sourceQueueLevel = 0;
+      disposed() {
+        this.chunkManager.queueManager.sources.delete(this);
+        super.disposed();
+      }
+      getNewChunk_(chunkType) {
+        const freeChunks = this.freeChunks;
+        const freeChunksLength = freeChunks.length;
+        if (freeChunksLength > 0) {
+          const chunk2 = freeChunks[freeChunksLength - 1];
+          freeChunks.length = freeChunksLength - 1;
+          chunk2.source = this;
+          return chunk2;
+        }
+        const chunk = new chunkType();
+        chunk.source = this;
+        return chunk;
+      }
+      /**
+       * Adds the specified chunk to the chunk cache.
+       *
+       * If the chunk cache was previously empty, also call this.addRef() to increment the reference
+       * count.
+       */
+      addChunk(chunk) {
+        const { chunks } = this;
+        if (chunks.size === 0) {
+          this.addRef();
+        }
+        chunks.set(chunk.key, chunk);
+        updateChunkStatistics(chunk, 1);
+      }
+      /**
+       * Remove the specified chunk from the chunk cache.
+       *
+       * If the chunk cache becomes empty, also call this.dispose() to decrement the reference count.
+       */
+      removeChunk(chunk) {
+        const { chunks, freeChunks } = this;
+        chunks.delete(chunk.key);
+        chunk.dispose();
+        freeChunks[freeChunks.length] = chunk;
+        if (chunks.size === 0) {
+          this.dispose();
+        }
+      }
+      registerChunkListener(key, listener) {
+        if (!this.listeners_.has(key)) {
+          this.listeners_.set(key, [listener]);
+        } else {
+          this.listeners_.get(key).push(listener);
+        }
+        return true;
+      }
+      unregisterChunkListener(key, listener) {
+        if (!this.listeners_.has(key)) {
+          return false;
+        }
+        const keyListeners = this.listeners_.get(key);
+        const idx = keyListeners.indexOf(listener);
+        if (idx < 0) {
+          return false;
+        }
+        keyListeners.splice(idx, 1);
+        if (keyListeners.length === 0) {
+          this.listeners_.delete(key);
+        }
+        return true;
+      }
+      chunkStateChanged(chunk, oldState) {
+        const { key } = chunk;
+        if (key === null) return;
+        const listeners = this.listeners_.get(key);
+        if (listeners === void 0) return;
+        for (const listener of listeners.slice()) {
+          listener(chunk, oldState);
+        }
+      }
+    };
+    ChunkSource = class extends ChunkSourceBase {
+      constructor(rpc2, options) {
+        const chunkManager = rpc2.get(options.chunkManager);
+        super(chunkManager);
+        initializeSharedObjectCounterpart(this, rpc2, options);
+      }
+    };
+    ChunkPriorityQueue = class {
+      constructor(heapOperations, linkedListOperations2) {
+        this.heapOperations = heapOperations;
+        this.linkedListOperations = linkedListOperations2;
+        linkedListOperations2.initializeHead(this.recentHead);
+      }
+      /**
+       * Heap roots for VISIBLE and PREFETCH priority tiers.
+       */
+      heapRoots = [null, null];
+      /**
+       * Head node for RECENT linked list.
+       */
+      recentHead = new Chunk();
+      add(chunk) {
+        const priorityTier = chunk.priorityTier;
+        if (priorityTier === ChunkPriorityTier.RECENT) {
+          this.linkedListOperations.insertAfter(this.recentHead, chunk);
+        } else {
+          const { heapRoots } = this;
+          heapRoots[priorityTier] = this.heapOperations.meld(
+            heapRoots[priorityTier],
+            chunk
+          );
+        }
+      }
+      *candidates() {
+        if (this.heapOperations.compare === Chunk.priorityLess) {
+          const { linkedListOperations: linkedListOperations2, recentHead } = this;
+          while (true) {
+            const chunk = linkedListOperations2.back(recentHead);
+            if (chunk == null) {
+              break;
+            }
+            yield chunk;
+          }
+          const { heapRoots } = this;
+          for (let tier = ChunkPriorityTier.LAST_ORDERED_TIER; tier >= ChunkPriorityTier.FIRST_ORDERED_TIER; --tier) {
+            while (true) {
+              const root2 = heapRoots[tier];
+              if (root2 == null) {
+                break;
+              }
+              yield root2;
+            }
+          }
+        } else {
+          const heapRoots = this.heapRoots;
+          for (let tier = ChunkPriorityTier.FIRST_ORDERED_TIER; tier <= ChunkPriorityTier.LAST_ORDERED_TIER; ++tier) {
+            while (true) {
+              const root2 = heapRoots[tier];
+              if (root2 == null) {
+                break;
+              }
+              yield root2;
+            }
+          }
+          const { linkedListOperations: linkedListOperations2, recentHead } = this;
+          while (true) {
+            const chunk = linkedListOperations2.front(recentHead);
+            if (chunk == null) {
+              break;
+            }
+            yield chunk;
+          }
+        }
+      }
+      /**
+       * Deletes a chunk from this priority queue.
+       * @param chunk The chunk to delete from the priority queue.
+       */
+      delete(chunk) {
+        const priorityTier = chunk.priorityTier;
+        if (priorityTier === ChunkPriorityTier.RECENT) {
+          this.linkedListOperations.pop(chunk);
+        } else {
+          const heapRoots = this.heapRoots;
+          heapRoots[priorityTier] = this.heapOperations.remove(
+            heapRoots[priorityTier],
+            chunk
+          );
+        }
+      }
+    };
+    linkedList0 = linkedListOperations({ next: "next0", prev: "prev0" });
+    linkedList1 = linkedListOperations({ next: "next1", prev: "prev1" });
+    AvailableCapacity = class extends RefCounted {
+      constructor(itemLimit, sizeLimit) {
+        super();
+        this.itemLimit = itemLimit;
+        this.sizeLimit = sizeLimit;
+        this.registerDisposer(itemLimit.changed.add(this.capacityChanged.dispatch));
+        this.registerDisposer(sizeLimit.changed.add(this.capacityChanged.dispatch));
+      }
+      currentSize = 0;
+      currentItems = 0;
+      capacityChanged = new NullarySignal();
+      /**
+       * Adjust available capacity by the specified amounts.
+       */
+      adjust(items, size) {
+        this.currentItems -= items;
+        this.currentSize -= size;
+      }
+      get availableSize() {
+        return this.sizeLimit.value - this.currentSize;
+      }
+      get availableItems() {
+        return this.itemLimit.value - this.currentItems;
+      }
+      toString() {
+        return `bytes=${this.currentSize}/${this.sizeLimit.value},items=${this.currentItems}/${this.itemLimit.value}`;
+      }
+    };
+    ChunkQueueManager = class extends SharedObjectCounterpart {
+      gpuMemoryCapacity;
+      systemMemoryCapacity;
+      /**
+       * Download capacity for each sourceQueueLevel.
+       */
+      downloadCapacity;
+      computeCapacity;
+      enablePrefetch;
+      /**
+       * Set of chunk sources associated with this queue manager.
+       */
+      sources = /* @__PURE__ */ new Set();
+      /**
+       * Contains all chunks in QUEUED state pending download, for each sourceQueueLevel.
+       */
+      queuedDownloadPromotionQueue = [
+        makeChunkPriorityQueue1(Chunk.priorityGreater),
+        makeChunkPriorityQueue1(Chunk.priorityGreater)
+      ];
+      /**
+       * Contains all chunks in QUEUED state pending compute.
+       */
+      queuedComputePromotionQueue = makeChunkPriorityQueue1(
+        Chunk.priorityGreater
+      );
+      /**
+       * Contains all chunks in DOWNLOADING state, for each sourceQueueLevel.
+       */
+      downloadEvictionQueue = [
+        makeChunkPriorityQueue1(Chunk.priorityLess),
+        makeChunkPriorityQueue1(Chunk.priorityLess)
+      ];
+      /**
+       * Contains all chunks in COMPUTING state.
+       */
+      computeEvictionQueue = makeChunkPriorityQueue1(Chunk.priorityLess);
+      /**
+       * Contains all chunks that take up memory (DOWNLOADING, SYSTEM_MEMORY,
+       * GPU_MEMORY).
+       */
+      systemMemoryEvictionQueue = makeChunkPriorityQueue0(
+        Chunk.priorityLess
+      );
+      /**
+       * Contains all chunks in SYSTEM_MEMORY state not in RECENT priority tier.
+       */
+      gpuMemoryPromotionQueue = makeChunkPriorityQueue1(
+        Chunk.priorityGreater
+      );
+      /**
+       * Contains all chunks in GPU_MEMORY state.
+       */
+      gpuMemoryEvictionQueue = makeChunkPriorityQueue1(Chunk.priorityLess);
+      // Should be `number|null`, but marked `any` to work around @types/node being pulled in.
+      updatePending = null;
+      gpuMemoryChanged = new NullarySignal();
+      numQueued = 0;
+      numFailed = 0;
+      gpuMemoryGeneration = 0;
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        const getCapacity = (capacity) => {
+          const result = this.registerDisposer(
+            new AvailableCapacity(
+              rpc2.get(capacity.itemLimit),
+              rpc2.get(capacity.sizeLimit)
+            )
+          );
+          result.capacityChanged.add(() => this.scheduleUpdate());
+          return result;
+        };
+        this.gpuMemoryCapacity = getCapacity(options.gpuMemoryCapacity);
+        this.systemMemoryCapacity = getCapacity(options.systemMemoryCapacity);
+        this.enablePrefetch = rpc2.get(options.enablePrefetch);
+        this.downloadCapacity = [
+          getCapacity(options.downloadCapacity),
+          getCapacity(options.downloadCapacity)
+        ];
+        this.computeCapacity = getCapacity(options.computeCapacity);
+      }
+      scheduleUpdate() {
+        if (this.updatePending === null) {
+          this.updatePending = setTimeout(this.process.bind(this), 0);
+        }
+      }
+      *chunkQueuesForChunk(chunk) {
+        switch (chunk.state) {
+          case ChunkState.QUEUED:
+            if (chunk.isComputational) {
+              yield this.queuedComputePromotionQueue;
+            } else {
+              yield this.queuedDownloadPromotionQueue[chunk.source.sourceQueueLevel];
+            }
+            break;
+          case ChunkState.DOWNLOADING:
+            if (chunk.isComputational) {
+              yield this.computeEvictionQueue;
+            } else {
+              yield this.downloadEvictionQueue[chunk.source.sourceQueueLevel];
+              yield this.systemMemoryEvictionQueue;
+            }
+            break;
+          case ChunkState.SYSTEM_MEMORY_WORKER:
+          case ChunkState.SYSTEM_MEMORY:
+            yield this.systemMemoryEvictionQueue;
+            if (chunk.requestedState === ChunkState.GPU_MEMORY) {
+              yield this.gpuMemoryPromotionQueue;
+            }
+            break;
+          case ChunkState.GPU_MEMORY:
+            yield this.systemMemoryEvictionQueue;
+            yield this.gpuMemoryEvictionQueue;
+            break;
+        }
+      }
+      adjustCapacitiesForChunk(chunk, add7) {
+        const factor = add7 ? -1 : 1;
+        switch (chunk.state) {
+          case ChunkState.FAILED:
+            this.numFailed -= factor;
+            break;
+          case ChunkState.QUEUED:
+            this.numQueued -= factor;
+            break;
+          case ChunkState.DOWNLOADING:
+            (chunk.isComputational ? this.computeCapacity : this.downloadCapacity[chunk.source.sourceQueueLevel]).adjust(
+              factor * chunk.downloadSlots,
+              factor * chunk.systemMemoryBytes
+            );
+            this.systemMemoryCapacity.adjust(
+              factor,
+              factor * chunk.systemMemoryBytes
+            );
+            break;
+          case ChunkState.SYSTEM_MEMORY:
+          case ChunkState.SYSTEM_MEMORY_WORKER:
+            this.systemMemoryCapacity.adjust(
+              factor,
+              factor * chunk.systemMemoryBytes
+            );
+            break;
+          case ChunkState.GPU_MEMORY:
+            this.systemMemoryCapacity.adjust(
+              factor,
+              factor * chunk.systemMemoryBytes
+            );
+            this.gpuMemoryCapacity.adjust(factor, factor * chunk.gpuMemoryBytes);
+            break;
+        }
+      }
+      removeChunkFromQueues_(chunk) {
+        updateChunkStatistics(chunk, -1);
+        for (const queue of this.chunkQueuesForChunk(chunk)) {
+          queue.delete(chunk);
+        }
+      }
+      // var freedChunks = 0;
+      addChunkToQueues_(chunk) {
+        if (chunk.state === ChunkState.QUEUED && chunk.priorityTier === ChunkPriorityTier.RECENT) {
+          const { source } = chunk;
+          source.removeChunk(chunk);
+          this.adjustCapacitiesForChunk(chunk, false);
+          return false;
+        }
+        updateChunkStatistics(chunk, 1);
+        for (const queue of this.chunkQueuesForChunk(chunk)) {
+          queue.add(chunk);
+        }
+        return true;
+      }
+      performChunkPriorityUpdate(chunk) {
+        if (chunk.priorityTier === chunk.newPriorityTier && chunk.priority === chunk.newPriority) {
+          chunk.newPriorityTier = ChunkPriorityTier.RECENT;
+          chunk.newPriority = Number.NEGATIVE_INFINITY;
+          return;
+        }
+        if (DEBUG_CHUNK_UPDATES) {
+          console.log(
+            `${chunk}: changed priority ${chunk.priorityTier}:${chunk.priority} -> ${chunk.newPriorityTier}:${chunk.newPriority}`
+          );
+        }
+        this.removeChunkFromQueues_(chunk);
+        chunk.updatePriorityProperties();
+        if (chunk.state === ChunkState.NEW) {
+          chunk.state = ChunkState.QUEUED;
+          this.adjustCapacitiesForChunk(chunk, true);
+        }
+        this.addChunkToQueues_(chunk);
+      }
+      updateChunkState(chunk, newState) {
+        if (newState === chunk.state) {
+          return;
+        }
+        if (DEBUG_CHUNK_UPDATES) {
+          console.log(
+            `${chunk}: changed state ${ChunkState[chunk.state]} -> ${ChunkState[newState]}`
+          );
+        }
+        this.adjustCapacitiesForChunk(chunk, false);
+        this.removeChunkFromQueues_(chunk);
+        chunk.state = newState;
+        this.adjustCapacitiesForChunk(chunk, true);
+        this.addChunkToQueues_(chunk);
+        this.scheduleUpdate();
+      }
+      markRecentlyUsed(chunk) {
+        this.removeChunkFromQueues_(chunk);
+        this.addChunkToQueues_(chunk);
+      }
+      processGPUPromotions_() {
+        const queueManager = this;
+        function evictFromGPUMemory(chunk) {
+          queueManager.freeChunkGPUMemory(chunk);
+          chunk.source.chunkManager.queueManager.updateChunkState(
+            chunk,
+            ChunkState.SYSTEM_MEMORY
+          );
+        }
+        const promotionCandidates = this.gpuMemoryPromotionQueue.candidates();
+        const evictionCandidates = this.gpuMemoryEvictionQueue.candidates();
+        const capacity = this.gpuMemoryCapacity;
+        while (true) {
+          const promotionCandidate = promotionCandidates.next().value;
+          if (promotionCandidate === void 0) {
+            break;
+          }
+          const priorityTier = promotionCandidate.priorityTier;
+          const priority = promotionCandidate.priority;
+          if (!tryToFreeCapacity(
+            promotionCandidate.gpuMemoryBytes,
+            capacity,
+            priorityTier,
+            priority,
+            evictionCandidates,
+            evictFromGPUMemory
+          )) {
+            break;
+          }
+          this.copyChunkToGPU(promotionCandidate);
+          this.updateChunkState(promotionCandidate, ChunkState.GPU_MEMORY);
+        }
+      }
+      freeChunkGPUMemory(chunk) {
+        ++this.gpuMemoryGeneration;
+        this.rpc.invoke("Chunk.update", {
+          id: chunk.key,
+          state: ChunkState.SYSTEM_MEMORY,
+          source: chunk.source.rpcId
+        });
+      }
+      freeChunkSystemMemory(chunk) {
+        if (chunk.state === ChunkState.SYSTEM_MEMORY_WORKER) {
+          chunk.freeSystemMemory();
+        } else {
+          this.rpc.invoke("Chunk.update", {
+            id: chunk.key,
+            state: ChunkState.EXPIRED,
+            source: chunk.source.rpcId
+          });
+        }
+      }
+      retrieveChunkData(chunk) {
+        return this.rpc.promiseInvoke("Chunk.retrieve", {
+          key: chunk.key,
+          source: chunk.source.rpcId
+        });
+      }
+      copyChunkToGPU(chunk) {
+        ++this.gpuMemoryGeneration;
+        const rpc2 = this.rpc;
+        if (chunk.state === ChunkState.SYSTEM_MEMORY) {
+          rpc2.invoke("Chunk.update", {
+            id: chunk.key,
+            source: chunk.source.rpcId,
+            state: ChunkState.GPU_MEMORY
+          });
+        } else {
+          const msg = {};
+          const transfers = [];
+          chunk.serialize(msg, transfers);
+          msg.state = ChunkState.GPU_MEMORY;
+          rpc2.invoke("Chunk.update", msg, transfers);
+        }
+      }
+      moveChunkToFrontend(chunk) {
+        const rpc2 = this.rpc;
+        const msg = {};
+        const transfers = [];
+        chunk.serialize(msg, transfers);
+        msg.state = ChunkState.SYSTEM_MEMORY;
+        rpc2.invoke("Chunk.update", msg, transfers);
+      }
+      processQueuePromotions_() {
+        const evict = (chunk) => {
+          switch (chunk.state) {
+            case ChunkState.DOWNLOADING:
+              cancelChunkDownload(chunk);
+              break;
+            case ChunkState.GPU_MEMORY:
+              this.freeChunkGPUMemory(chunk);
+            // fallthrough
+            case ChunkState.SYSTEM_MEMORY_WORKER:
+            case ChunkState.SYSTEM_MEMORY:
+              this.freeChunkSystemMemory(chunk);
+              break;
+          }
+          this.updateChunkState(chunk, ChunkState.QUEUED);
+        };
+        const promotionLambda = (promotionCandidates, evictionCandidates, capacity) => {
+          const systemMemoryEvictionCandidates = this.systemMemoryEvictionQueue.candidates();
+          const systemMemoryCapacity = this.systemMemoryCapacity;
+          while (true) {
+            const promotionCandidateResult = promotionCandidates.next();
+            if (promotionCandidateResult.done) {
+              return;
+            }
+            const promotionCandidate = promotionCandidateResult.value;
+            const size = 0;
+            const priorityTier = promotionCandidate.priorityTier;
+            const priority = promotionCandidate.priority;
+            if (!tryToFreeCapacity(
+              size,
+              capacity,
+              priorityTier,
+              priority,
+              evictionCandidates,
+              evict
+            )) {
+              return;
+            }
+            if (!tryToFreeCapacity(
+              size,
+              systemMemoryCapacity,
+              priorityTier,
+              priority,
+              systemMemoryEvictionCandidates,
+              evict
+            )) {
+              return;
+            }
+            this.updateChunkState(promotionCandidate, ChunkState.DOWNLOADING);
+            startChunkDownload(promotionCandidate);
+          }
+        };
+        for (let sourceQueueLevel = 0; sourceQueueLevel < numSourceQueueLevels; ++sourceQueueLevel) {
+          promotionLambda(
+            this.queuedDownloadPromotionQueue[sourceQueueLevel].candidates(),
+            this.downloadEvictionQueue[sourceQueueLevel].candidates(),
+            this.downloadCapacity[sourceQueueLevel]
+          );
+        }
+        promotionLambda(
+          this.queuedComputePromotionQueue.candidates(),
+          this.computeEvictionQueue.candidates(),
+          this.computeCapacity
+        );
+      }
+      process() {
+        if (!this.updatePending) {
+          return;
+        }
+        this.updatePending = null;
+        const gpuMemoryGeneration = this.gpuMemoryGeneration;
+        this.processGPUPromotions_();
+        this.processQueuePromotions_();
+        this.logStatistics();
+        if (this.gpuMemoryGeneration !== gpuMemoryGeneration) {
+          this.gpuMemoryChanged.dispatch();
+        }
+      }
+      logStatistics() {
+        if (DEBUG_CHUNK_UPDATES) {
+          console.log(
+            `[Chunk status] QUEUED: ${this.numQueued}, FAILED: ${this.numFailed}, DOWNLOAD: ${this.downloadCapacity}, MEM: ${this.systemMemoryCapacity}, GPU: ${this.gpuMemoryCapacity}`
+          );
+        }
+      }
+      invalidateSourceCache(source) {
+        for (const chunk of source.chunks.values()) {
+          switch (chunk.state) {
+            case ChunkState.DOWNLOADING:
+              cancelChunkDownload(chunk);
+              break;
+            case ChunkState.SYSTEM_MEMORY_WORKER:
+              chunk.freeSystemMemory();
+              break;
+          }
+          this.updateChunkState(chunk, ChunkState.QUEUED);
+        }
+        this.rpc.invoke("Chunk.update", { source: source.rpcId });
+        this.scheduleUpdate();
+      }
+    };
+    ChunkQueueManager = __decorateClass([
+      registerSharedObject(CHUNK_QUEUE_MANAGER_RPC_ID)
+    ], ChunkQueueManager);
+    ChunkRenderLayerBackend = class extends SharedObjectCounterpart {
+      chunkManagerGeneration = -1;
+      numVisibleChunksNeeded = 0;
+      numVisibleChunksAvailable = 0;
+      numPrefetchChunksNeeded = 0;
+      numPrefetchChunksAvailable = 0;
+    };
+    LAYER_CHUNK_STATISTICS_INTERVAL = 200;
+    ChunkManager = class extends SharedObjectCounterpart {
+      queueManager;
+      /**
+       * Array of chunks within each existing priority tier.
+       */
+      existingTierChunks = [];
+      /**
+       * Array of chunks whose new priorities have not yet been reflected in the
+       * queue states.
+       */
+      newTierChunks = [];
+      // Should be `number|null`, but marked `any` to workaround `@types/node` being pulled in.
+      updatePending = null;
+      recomputeChunkPriorities = new NullarySignal();
+      /**
+       * Dispatched immediately after recomputeChunkPriorities is dispatched.
+       * This signal should be used for handlers that depend on the result of another handler.
+       */
+      recomputeChunkPrioritiesLate = new NullarySignal();
+      memoize = new StringMemoize();
+      layers = [];
+      sendLayerChunkStatistics = this.registerCancellable(
+        throttle_default(() => {
+          this.rpc.invoke(CHUNK_LAYER_STATISTICS_RPC_ID, {
+            id: this.rpcId,
+            layers: this.layers.map((layer) => ({
+              id: layer.rpcId,
+              numVisibleChunksAvailable: layer.numVisibleChunksAvailable,
+              numVisibleChunksNeeded: layer.numVisibleChunksNeeded,
+              numPrefetchChunksAvailable: layer.numPrefetchChunksAvailable,
+              numPrefetchChunksNeeded: layer.numPrefetchChunksNeeded
+            }))
+          });
+        }, LAYER_CHUNK_STATISTICS_INTERVAL)
+      );
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.queueManager = rpc2.get(options.chunkQueueManager).addRef();
+        this.registerDisposer(
+          this.queueManager.gpuMemoryChanged.add(
+            this.registerCancellable(
+              throttle_default(
+                () => this.scheduleUpdateChunkPriorities(),
+                LAYER_CHUNK_STATISTICS_INTERVAL,
+                { leading: false, trailing: true }
+              )
+            )
+          )
+        );
+        for (let tier = ChunkPriorityTier.FIRST_TIER; tier <= ChunkPriorityTier.LAST_TIER; ++tier) {
+          if (tier === ChunkPriorityTier.RECENT) {
+            continue;
+          }
+          this.existingTierChunks[tier] = [];
+        }
+      }
+      scheduleUpdateChunkPriorities() {
+        if (this.updatePending === null) {
+          this.updatePending = setTimeout(
+            this.recomputeChunkPriorities_.bind(this),
+            0
+          );
+        }
+      }
+      registerLayer(layer) {
+        const generation = this.recomputeChunkPriorities.count;
+        if (layer.chunkManagerGeneration !== generation) {
+          layer.chunkManagerGeneration = generation;
+          this.layers.push(layer);
+          layer.numVisibleChunksAvailable = 0;
+          layer.numVisibleChunksNeeded = 0;
+          layer.numPrefetchChunksAvailable = 0;
+          layer.numPrefetchChunksNeeded = 0;
+        }
+      }
+      recomputeChunkPriorities_() {
+        this.updatePending = null;
+        this.layers.length = 0;
+        this.recomputeChunkPriorities.dispatch();
+        this.recomputeChunkPrioritiesLate.dispatch();
+        this.updateQueueState([
+          ChunkPriorityTier.VISIBLE,
+          ChunkPriorityTier.PREFETCH
+        ]);
+        this.sendLayerChunkStatistics();
+      }
+      /**
+       * @param chunk
+       * @param tier New priority tier.  Must not equal ChunkPriorityTier.RECENT.
+       * @param priority Priority within tier.
+       * @param requestedState Indicates requested chunk state.
+       */
+      requestChunk(chunk, tier, priority, requestedState = ChunkState.GPU_MEMORY) {
+        if (Number.isNaN(priority)) {
+          return;
+        }
+        if (tier === ChunkPriorityTier.RECENT) {
+          throw new Error("Not going to request a chunk with the RECENT tier");
+        }
+        chunk.newRequestedState = Math.min(chunk.newRequestedState, requestedState);
+        if (chunk.newPriorityTier === ChunkPriorityTier.RECENT) {
+          this.newTierChunks.push(chunk);
+        }
+        const newPriorityTier = chunk.newPriorityTier;
+        if (tier < newPriorityTier || tier === newPriorityTier && priority > chunk.newPriority) {
+          chunk.newPriorityTier = tier;
+          chunk.newPriority = priority;
+        }
+      }
+      /**
+       * Update queue state to reflect updated contents of the specified priority tiers.  Existing
+       * chunks within those tiers not present in this.newTierChunks will be moved to the RECENT tier
+       * (and removed if in the QUEUED state).
+       */
+      updateQueueState(tiers) {
+        const existingTierChunks = this.existingTierChunks;
+        const queueManager = this.queueManager;
+        for (const tier of tiers) {
+          const chunks = existingTierChunks[tier];
+          if (DEBUG_CHUNK_UPDATES) {
+            console.log(
+              `existingTierChunks[${ChunkPriorityTier[tier]}].length=${chunks.length}`
+            );
+          }
+          for (const chunk of chunks) {
+            if (chunk.newPriorityTier === ChunkPriorityTier.RECENT) {
+              queueManager.performChunkPriorityUpdate(chunk);
+            }
+          }
+          chunks.length = 0;
+        }
+        const newTierChunks = this.newTierChunks;
+        for (const chunk of newTierChunks) {
+          queueManager.performChunkPriorityUpdate(chunk);
+          existingTierChunks[chunk.priorityTier].push(chunk);
+        }
+        if (DEBUG_CHUNK_UPDATES) {
+          console.log(
+            `updateQueueState: newTierChunks.length = ${newTierChunks.length}`
+          );
+        }
+        newTierChunks.length = 0;
+        this.queueManager.scheduleUpdate();
+      }
+    };
+    ChunkManager = __decorateClass([
+      registerSharedObject(CHUNK_MANAGER_RPC_ID)
+    ], ChunkManager);
+    registerRPC(CHUNK_SOURCE_INVALIDATE_RPC_ID, function(x) {
+      const source = this.get(x.id);
+      source.chunkManager.queueManager.invalidateSourceCache(source);
+    });
+    registerPromiseRPC(
+      REQUEST_CHUNK_STATISTICS_RPC_ID,
+      function(x) {
+        const queue = this.get(x.queue);
+        const results = /* @__PURE__ */ new Map();
+        for (const source of queue.sources) {
+          results.set(source.rpcId, source.statistics);
+        }
+        return Promise.resolve({ value: results });
+      }
+    );
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/base.js
+var VolumeChunkSourceParameters;
+var init_base2 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/base.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    VolumeChunkSourceParameters = class {
+      url;
+      metadata;
+      static RPC_ID = "zarr/VolumeChunkSource";
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/gzip.js
+function isGzipFormat(data) {
+  const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  return view.length >= 3 && view[0] === 31 && view[1] === 139 && view[2] === 8;
+}
+async function decodeGzip(data, format, signal) {
+  try {
+    const decompressedStream = decodeGzipStream(
+      data instanceof Response ? data : new Response(data),
+      format,
+      signal
+    );
+    return await new Response(decompressedStream).arrayBuffer();
+  } catch {
+    signal == null ? void 0 : signal.throwIfAborted();
+    throw new Error(`Failed to decode ${format}`);
+  }
+}
+function decodeGzipStream(response, format, signal) {
+  return response.body.pipeThrough(new DecompressionStream(format), {
+    signal
+  });
+}
+var init_gzip = __esm({
+  "node_modules/neuroglancer/lib/util/gzip.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/gzip/decode.js
+var init_decode6 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/gzip/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode();
+    init_codec();
+    init_gzip();
+    for (const [name, compressionFormat] of [
+      ["gzip", "gzip"],
+      ["zlib", "deflate"]
+    ]) {
+      registerCodec({
+        name,
+        kind: CodecKind.bytesToBytes,
+        async decode(configuration, encoded, signal) {
+          configuration;
+          return new Uint8Array(
+            await decodeGzip(encoded, compressionFormat, signal)
+          );
+        }
+      });
+    }
+  }
+});
+
+// node_modules/neuroglancer/lib/util/object_id.js
+function getObjectId(x) {
+  if (x instanceof Object) {
+    let id = x[OBJECT_ID_SYMBOL];
+    if (id === void 0) {
+      id = x[OBJECT_ID_SYMBOL] = nextObjectId++;
+    }
+    return `o${id}`;
+  }
+  return "" + JSON.stringify(x);
+}
+var OBJECT_ID_SYMBOL, nextObjectId;
+var init_object_id = __esm({
+  "node_modules/neuroglancer/lib/util/object_id.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    OBJECT_ID_SYMBOL = Symbol("objectId");
+    nextObjectId = 0;
+  }
+});
+
+// node_modules/neuroglancer/lib/chunk_manager/generic_file_source.js
+function makeSimpleAsyncCache(chunkManager, memoizeKey, options) {
+  return chunkManager.memoize.get(
+    `simpleAsyncCache:${memoizeKey}`,
+    () => new SimpleAsyncCache(chunkManager.addRef(), options)
+  );
+}
+function getCachedDecodedUrl(sharedKvStoreContext, url, decodeFunction, options) {
+  const cache = sharedKvStoreContext.chunkManager.memoize.get(
+    `getCachedDecodedUrl:${getObjectId(decodeFunction)}`,
+    () => {
+      const cache2 = new SimpleAsyncCache(
+        sharedKvStoreContext.chunkManager.addRef(),
+        {
+          get: async (url2, progressOptions) => {
+            const readResponse = await sharedKvStoreContext.kvStoreContext.read(
+              url2,
+              { ...progressOptions, throwIfMissing: true }
+            );
+            try {
+              return decodeFunction(readResponse, progressOptions);
+            } catch (e) {
+              throw new Error("Error reading ${url}", { cause: e });
+            }
+          }
+        }
+      );
+      cache2.registerDisposer(sharedKvStoreContext.addRef());
+      return cache2;
+    }
+  );
+  return cache.get(url, options);
+}
+var AsyncCacheChunk, SimpleAsyncCache;
+var init_generic_file_source = __esm({
+  "node_modules/neuroglancer/lib/chunk_manager/generic_file_source.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_backend();
+    init_base();
+    init_json();
+    init_memoize();
+    init_object_id();
+    AsyncCacheChunk = class extends Chunk {
+      asyncMemoize;
+      initialize(key) {
+        super.initialize(key);
+      }
+      freeSystemMemory() {
+        this.asyncMemoize = void 0;
+      }
+    };
+    SimpleAsyncCache = class extends ChunkSourceBase {
+      constructor(chunkManager, options) {
+        super(chunkManager);
+        this.registerDisposer(chunkManager);
+        this.downloadFunction = options.get;
+        this.encodeKeyFunction = options.encodeKey ?? stableStringify;
+      }
+      encodeKeyFunction;
+      downloadFunction;
+      get(key, options) {
+        const encodedKey = this.encodeKeyFunction(key);
+        let chunk = this.chunks.get(encodedKey);
+        if (chunk === void 0) {
+          chunk = this.getNewChunk_(AsyncCacheChunk);
+          chunk.initialize(encodedKey);
+          this.addChunk(chunk);
+        }
+        if (chunk.asyncMemoize === void 0) {
+          chunk.asyncMemoize = asyncMemoizeWithProgress(async (progressOptions) => {
+            try {
+              const { data, size } = await this.downloadFunction(
+                key,
+                progressOptions
+              );
+              chunk.systemMemoryBytes = size;
+              chunk.queueManager.updateChunkState(
+                chunk,
+                ChunkState.SYSTEM_MEMORY_WORKER
+              );
+              return data;
+            } catch (e) {
+              chunk.queueManager.updateChunkState(chunk, ChunkState.FAILED);
+              throw e;
+            }
+          });
+        }
+        if (chunk.state === ChunkState.SYSTEM_MEMORY_WORKER) {
+          chunk.chunkManager.queueManager.markRecentlyUsed(chunk);
+        }
+        return chunk.asyncMemoize(options);
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/metadata/parse_util.js
+function parseNameAndConfiguration(obj, parseName, parseConfiguration) {
+  verifyObject(obj);
+  const name = verifyObjectProperty(
+    obj,
+    "name",
+    (value) => parseName(verifyString(value))
+  );
+  const configuration = verifyObjectProperty(obj, "configuration", (value) => {
+    if (value === void 0) {
+      value = {};
+    } else {
+      verifyObject(value);
+    }
+    return parseConfiguration(value, name);
+  });
+  return { name, configuration };
+}
+var init_parse_util = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/metadata/parse_util.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_json();
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/resolve.js
+function getCodecResolver(obj) {
+  const { name: resolver, configuration } = parseNameAndConfiguration(
+    obj,
+    (name) => {
+      const resolver2 = codecRegistry2.get(name);
+      if (resolver2 === void 0) {
+        throw new Error(`Unknown codec: ${JSON.stringify(name)}`);
+      }
+      return resolver2;
+    },
+    (configuration2) => configuration2
+  );
+  return { resolver, configuration };
+}
+function registerCodec2(resolver) {
+  codecRegistry2.set(resolver.name, resolver);
+}
+function parseCodecChainSpec(obj, decodedArrayInfo) {
+  const arrayToArray = [];
+  const arrayInfo = [];
+  const layoutInfo = [];
+  const encodedSize = [];
+  arrayInfo.push(decodedArrayInfo);
+  const codecSpecs = parseArray(obj, getCodecResolver);
+  const numCodecs = codecSpecs.length;
+  let i = 0;
+  for (; i < numCodecs; ++i) {
+    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
+    if (resolver.kind !== CodecKind.arrayToArray) {
+      break;
+    }
+    const arrayResolver = resolver;
+    const { configuration, encodedArrayInfo } = arrayResolver.resolve(
+      initialConfiguration,
+      decodedArrayInfo
+    );
+    arrayInfo.push(encodedArrayInfo);
+    decodedArrayInfo = encodedArrayInfo;
+    arrayToArray.push({
+      kind: CodecKind.arrayToArray,
+      name: resolver.name,
+      configuration
+    });
+  }
+  if (i === numCodecs || codecSpecs[i].resolver.kind !== CodecKind.arrayToBytes) {
+    throw new Error("Missing array -> bytes codec");
+  }
+  const {
+    codecSpec: arrayToBytes,
+    layoutInfo: finalLayoutInfo,
+    encodedSize: initialEncodedSize,
+    shardingInfo
+  } = (() => {
+    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
+    const arrayToBytesResolver = resolver;
+    const { configuration, shardingInfo: shardingInfo2, encodedSize: encodedSize2 } = arrayToBytesResolver.resolve(initialConfiguration, decodedArrayInfo);
+    if (shardingInfo2 !== void 0) {
+      if (i + 1 !== numCodecs) {
+        throw new Error(
+          "bytes -> bytes codecs not supported following sharding codec"
+        );
+      }
+    }
+    const layoutInfo2 = arrayToBytesResolver.getDecodedArrayLayoutInfo(
+      configuration,
+      decodedArrayInfo
+    );
+    const codecSpec = {
+      name: resolver.name,
+      kind: CodecKind.arrayToBytes,
+      configuration
+    };
+    return { codecSpec, layoutInfo: layoutInfo2, encodedSize: encodedSize2, shardingInfo: shardingInfo2 };
+  })();
+  layoutInfo[i] = finalLayoutInfo;
+  encodedSize.push(initialEncodedSize);
+  const curEncodedSize = initialEncodedSize;
+  const bytesToBytes = [];
+  ++i;
+  while (i < numCodecs) {
+    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
+    if (resolver.kind !== CodecKind.bytesToBytes) {
+      throw new Error(
+        `Expected bytes -> bytes codec, but received ${JSON.stringify(
+          resolver.name
+        )} of kind ${CodecKind[resolver.kind]}`
+      );
+    }
+    const bytesResolver = resolver;
+    const { configuration, encodedSize: newEncodedSize } = bytesResolver.resolve(initialConfiguration, curEncodedSize);
+    bytesToBytes.push({
+      name: resolver.name,
+      kind: resolver.kind,
+      configuration
+    });
+    encodedSize.push(newEncodedSize);
+    ++i;
+  }
+  for (let j = arrayToArray.length - 1; j >= 0; --j) {
+    layoutInfo[j] = codecSpecs[j].resolver.getDecodedArrayLayoutInfo(
+      arrayToArray[j].configuration,
+      arrayInfo[j],
+      layoutInfo[j + 1]
+    );
+  }
+  return {
+    [CodecKind.arrayToArray]: arrayToArray,
+    [CodecKind.arrayToBytes]: arrayToBytes,
+    [CodecKind.bytesToBytes]: bytesToBytes,
+    arrayInfo,
+    layoutInfo,
+    shardingInfo,
+    encodedSize
+  };
+}
+var codecRegistry2;
+var init_resolve = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/resolve.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_codec();
+    init_parse_util();
+    init_json();
+    codecRegistry2 = /* @__PURE__ */ new Map();
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/metadata/index.js
+var ChunkKeyEncoding;
+var init_metadata = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/metadata/index.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    ChunkKeyEncoding = /* @__PURE__ */ ((ChunkKeyEncoding22) => {
+      ChunkKeyEncoding22[ChunkKeyEncoding22["DEFAULT"] = 0] = "DEFAULT";
+      ChunkKeyEncoding22[ChunkKeyEncoding22["V2"] = 1] = "V2";
+      return ChunkKeyEncoding22;
+    })(ChunkKeyEncoding || {});
+  }
+});
+
+// node_modules/neuroglancer/lib/util/numpy_dtype.js
+function parseNumpyDtype(typestr) {
+  const dtype = supportedDataTypes.get(typestr);
+  if (dtype === void 0) {
+    throw new Error(`Unsupported numpy data type: ${JSON.stringify(typestr)}`);
+  }
+  return dtype;
+}
+var supportedDataTypes;
+var init_numpy_dtype = __esm({
+  "node_modules/neuroglancer/lib/util/numpy_dtype.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_data_type();
+    init_endian();
+    supportedDataTypes = /* @__PURE__ */ new Map();
+    supportedDataTypes.set("|u1", {
+      endianness: Endianness.LITTLE,
+      dataType: DataType.UINT8
+    });
+    supportedDataTypes.set("|i1", {
+      endianness: Endianness.LITTLE,
+      dataType: DataType.INT8
+    });
+    for (const [endiannessChar, endianness] of [
+      ["<", Endianness.LITTLE],
+      [">", Endianness.BIG]
+    ]) {
+      for (const typeChar of ["u", "i"]) {
+        supportedDataTypes.set(`${endiannessChar}${typeChar}8`, {
+          endianness,
+          dataType: DataType.UINT64
+        });
+      }
+      supportedDataTypes.set(`${endiannessChar}u2`, {
+        endianness,
+        dataType: DataType.UINT16
+      });
+      supportedDataTypes.set(`${endiannessChar}i2`, {
+        endianness,
+        dataType: DataType.INT16
+      });
+      supportedDataTypes.set(`${endiannessChar}u4`, {
+        endianness,
+        dataType: DataType.UINT32
+      });
+      supportedDataTypes.set(`${endiannessChar}i4`, {
+        endianness,
+        dataType: DataType.INT32
+      });
+      supportedDataTypes.set(`${endiannessChar}f4`, {
+        endianness,
+        dataType: DataType.FLOAT32
+      });
+    }
+  }
+});
+
+// node_modules/neuroglancer/lib/util/si_units.js
+var preferredSiPrefixes, allSiPrefixes, siPrefixesWithAlternatives, supportedUnits, exponentToPrefix;
+var init_si_units = __esm({
+  "node_modules/neuroglancer/lib/util/si_units.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_array();
+    preferredSiPrefixes = [
+      { prefix: "Y", exponent: 24, longPrefix: "yotta" },
+      { prefix: "Z", exponent: 21, longPrefix: "zetta" },
+      { prefix: "E", exponent: 18, longPrefix: "exa" },
+      { prefix: "P", exponent: 15, longPrefix: "peta" },
+      { prefix: "T", exponent: 12, longPrefix: "tera" },
+      { prefix: "G", exponent: 9, longPrefix: "giga" },
+      { prefix: "M", exponent: 6, longPrefix: "mega" },
+      { prefix: "k", exponent: 3, longPrefix: "kilo" },
+      { prefix: "", exponent: 0, longPrefix: "" },
+      { prefix: "m", exponent: -3, longPrefix: "milli" },
+      { prefix: "\xB5", exponent: -6, longPrefix: "micro" },
+      { prefix: "n", exponent: -9, longPrefix: "nano" },
+      { prefix: "p", exponent: -12, longPrefix: "pico" },
+      { prefix: "f", exponent: -15, longPrefix: "femto" },
+      { prefix: "a", exponent: -18, longPrefix: "atto" },
+      { prefix: "z", exponent: -21, longPrefix: "zepto" },
+      { prefix: "y", exponent: -24, longPrefix: "yocto" }
+    ];
+    allSiPrefixes = [
+      ...preferredSiPrefixes,
+      { prefix: "h", exponent: 2, longPrefix: "hecto" },
+      { prefix: "da", exponent: 1, longPrefix: "deca" },
+      { prefix: "d", exponent: -1, longPrefix: "deci" },
+      { prefix: "c", exponent: -2, longPrefix: "centi" }
+    ];
+    siPrefixesWithAlternatives = [
+      { prefix: "u", exponent: -6 },
+      // Also allow "u" for micro
+      ...allSiPrefixes
+    ];
+    supportedUnits = /* @__PURE__ */ new Map();
+    supportedUnits.set("", { unit: "", exponent: 0 });
+    exponentToPrefix = /* @__PURE__ */ new Map();
+    for (const { prefix, exponent } of siPrefixesWithAlternatives) {
+      exponentToPrefix.set(exponent, prefix);
+      for (const unit of ["m", "s", "Hz", "rad/s"]) {
+        supportedUnits.set(`${prefix}${unit}`, { unit, exponent });
+      }
+    }
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/metadata/parse.js
+function parseChunkShape(obj, rank) {
+  return parseFixedLengthArray(new Array(rank), obj, (x) => {
+    if (typeof x !== "number" || !Number.isInteger(x) || x <= 0) {
+      throw new Error(
+        `Expected positive integer, but received: ${JSON.stringify(x)}`
+      );
+    }
+    return x;
+  });
+}
+var UNITS;
+var init_parse = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/metadata/parse.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_resolve();
+    init_metadata();
+    init_parse_util();
+    init_data_type();
+    init_endian();
+    init_json();
+    init_numpy_dtype();
+    init_si_units();
+    UNITS = /* @__PURE__ */ new Map([
+      ["", { unit: "", scale: 1 }],
+      ["angstrom", { unit: "m", scale: 1e-10 }],
+      ["foot", { unit: "m", scale: 0.3048 }],
+      ["inch", { unit: "m", scale: 0.0254 }],
+      ["mile", { unit: "m", scale: 1609.34 }],
+      // eslint-disable-next-line no-loss-of-precision
+      ["parsec", { unit: "m", scale: 30856775814913670 }],
+      ["yard", { unit: "m", scale: 0.9144 }],
+      ["minute", { unit: "s", scale: 60 }],
+      ["hour", { unit: "s", scale: 60 * 60 }],
+      ["day", { unit: "s", scale: 60 * 60 * 24 }]
+    ]);
+    for (const unit of ["meter", "second"]) {
+      for (const siPrefix of allSiPrefixes) {
+        const { longPrefix, prefix } = siPrefix;
+        if (longPrefix === void 0) continue;
+        const unitInfo = { unit: unit[0], scale: 10 ** siPrefix.exponent };
+        UNITS.set(`${longPrefix}${unit}`, unitInfo);
+        UNITS.set(`${prefix}${unit[0]}`, unitInfo);
+      }
+    }
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/resolve.js
+var ShardIndexLocation;
+var init_resolve2 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/resolve.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_codec();
+    init_resolve();
+    init_parse();
+    init_data_type();
+    init_json();
+    ShardIndexLocation = /* @__PURE__ */ ((ShardIndexLocation2) => {
+      ShardIndexLocation2[ShardIndexLocation2["START"] = 0] = "START";
+      ShardIndexLocation2[ShardIndexLocation2["END"] = 1] = "END";
+      return ShardIndexLocation2;
+    })(ShardIndexLocation || {});
+    registerCodec2({
+      name: "sharding_indexed",
+      kind: CodecKind.arrayToBytes,
+      resolve(configuration, decodedArrayInfo) {
+        verifyObject(configuration);
+        const subChunkShape = verifyObjectProperty(
+          configuration,
+          "chunk_shape",
+          (value) => parseChunkShape(value, decodedArrayInfo.chunkShape.length)
+        );
+        const indexLocation = verifyOptionalObjectProperty(
+          configuration,
+          "index_location",
+          (x) => verifyEnumString(x, ShardIndexLocation, /^[a-z]+$/),
+          1
+          /* END */
+        );
+        const subChunkGridShape = Array.from(
+          decodedArrayInfo.chunkShape,
+          (outerSize, i) => {
+            const innerSize = subChunkShape[i];
+            if (outerSize % innerSize !== 0) {
+              throw new Error(
+                `sub-chunk shape of ${JSON.stringify(
+                  innerSize
+                )} does not evenly divide outer chunk shape of ${JSON.stringify(
+                  decodedArrayInfo.chunkShape
+                )}`
+              );
+            }
+            return outerSize / innerSize;
+          }
+        );
+        const indexShape = Array.from(subChunkGridShape);
+        indexShape.push(2);
+        const indexCodecs = verifyObjectProperty(
+          configuration,
+          "index_codecs",
+          (value) => parseCodecChainSpec(value, {
+            dataType: DataType.UINT64,
+            chunkShape: indexShape
+          })
+        );
+        if (indexCodecs.encodedSize[indexCodecs.encodedSize.length - 1] === void 0) {
+          throw new Error("index_codecs must specify fixed-size encoding");
+        }
+        const subChunkCodecs = verifyObjectProperty(
+          configuration,
+          "codecs",
+          (value) => parseCodecChainSpec(value, {
+            dataType: decodedArrayInfo.dataType,
+            chunkShape: subChunkShape
+          })
+        );
+        return {
+          configuration: {
+            indexCodecs,
+            subChunkCodecs,
+            subChunkShape,
+            subChunkGridShape,
+            indexLocation
+          },
+          shardingInfo: { subChunkShape, subChunkGridShape, subChunkCodecs }
+        };
+      },
+      getDecodedArrayLayoutInfo(configuration, decodedArrayInfo) {
+        decodedArrayInfo;
+        return configuration.subChunkCodecs.layoutInfo[0];
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/util/string.js
+function defaultStringCompare(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+var init_string = __esm({
+  "node_modules/neuroglancer/lib/util/string.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/index.js
+async function readKvStore(store, key, options = {}) {
+  return readFileHandle(new KvStoreFileHandle(store, key), options);
+}
+async function readFileHandle(handle, options = {}) {
+  const response = await handle.read(options);
+  if ((options == null ? void 0 : options.throwIfMissing) === true) {
+    if (response === void 0) {
+      throw new NotFoundError(handle);
+    }
+  }
+  if ((options == null ? void 0 : options.strictByteRange) === true && response !== void 0) {
+    const { byteRange } = options;
+    const { offset, length: length6 } = response;
+    if (byteRange !== void 0) {
+      if ("suffixLength" in byteRange ? length6 !== byteRange.suffixLength : offset !== byteRange.offset || length6 !== void 0 && length6 !== byteRange.length) {
+        throw new Error(
+          `Received truncated response for ${handle.getUrl()}, expected ${JSON.stringify(
+            byteRange
+          )} but received offset=${offset}, length=${length6}`
+        );
+      }
+    }
+  }
+  return response;
+}
+function transformListResponse(response, prefix, kvStore, responseKeys) {
+  switch (responseKeys) {
+    case "suffix": {
+      const offset = prefix.length;
+      return {
+        directories: response.directories.map((key) => key.substring(offset)),
+        entries: response.entries.map(({ key, ...entry }) => ({
+          ...entry,
+          key: key.substring(offset)
+        }))
+      };
+    }
+    case "url": {
+      return {
+        directories: response.directories.map((key) => kvStore.getUrl(key)),
+        entries: response.entries.map(({ key, ...entry }) => ({
+          ...entry,
+          key: kvStore.getUrl(key)
+        }))
+      };
+    }
+    default: {
+      return response;
+    }
+  }
+}
+async function listKvStore(kvStore, prefix, options = {}) {
+  if (!kvStore.list) {
+    throw new Error("Listing not supported");
+  }
+  return transformListResponse(
+    await kvStore.list(prefix, options),
+    prefix,
+    kvStore,
+    options.responseKeys
+  );
+}
+function normalizeListResponse(response) {
+  response.entries.sort(({ key: a }, { key: b }) => defaultStringCompare(a, b));
+  response.directories.sort(defaultStringCompare);
+  return response;
+}
+var NotFoundError, KvStoreFileHandle;
+var init_kvstore = __esm({
+  "node_modules/neuroglancer/lib/kvstore/index.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_string();
+    NotFoundError = class extends Error {
+      constructor(handle, options) {
+        super(`${handle.getUrl()} not found`, options);
+      }
+    };
+    KvStoreFileHandle = class {
+      constructor(store, key) {
+        this.store = store;
+        this.key = key;
+      }
+      stat(options) {
+        return this.store.stat(this.key, options);
+      }
+      read(options) {
+        return this.store.read(this.key, options);
+      }
+      getUrl() {
+        return this.store.getUrl(this.key);
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/byte_range/file_handle.js
+function composeByteRangeRequest(outer, inner) {
+  if (inner === void 0) {
+    return { outer, inner: { offset: 0, length: outer.length } };
+  }
+  if ("suffixLength" in inner) {
+    const length6 = Math.min(outer.length, inner.suffixLength);
+    return {
+      outer: { offset: outer.offset + (outer.length - length6), length: length6 },
+      inner: { offset: outer.length - length6, length: length6 }
+    };
+  }
+  if (inner.offset + inner.length > outer.length) {
+    throw new Error(
+      `Requested byte range ${JSON.stringify(
+        inner
+      )} not valid for value of length ${outer.length}`
+    );
+  }
+  return {
+    outer: { offset: outer.offset + inner.offset, length: inner.length },
+    inner
+  };
+}
+function handleByteRangeRequestFromUint8Array(value, byteRange) {
+  const {
+    outer: { offset, length: length6 }
+  } = composeByteRangeRequest({ offset: 0, length: value.length }, byteRange);
+  return {
+    offset,
+    length: length6,
+    totalSize: value.length,
+    response: new Response(value.subarray(offset, offset + length6))
+  };
+}
+var FileByteRangeHandle;
+var init_file_handle = __esm({
+  "node_modules/neuroglancer/lib/kvstore/byte_range/file_handle.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_kvstore();
+    FileByteRangeHandle = class {
+      constructor(base, byteRange) {
+        this.base = base;
+        this.byteRange = byteRange;
+      }
+      async stat(options) {
+        options;
+        return { totalSize: this.byteRange.length };
+      }
+      async read(options) {
+        const { byteRange } = this;
+        const { outer: outerByteRange, inner: innerByteRange } = composeByteRangeRequest(byteRange, options.byteRange);
+        if (outerByteRange.length === 0) {
+          return {
+            response: new Response(new Uint8Array(0)),
+            totalSize: byteRange.length,
+            ...innerByteRange
+          };
+        }
+        const response = await readFileHandle(this.base, {
+          signal: options.signal,
+          byteRange: outerByteRange,
+          strictByteRange: true,
+          throwIfMissing: true
+        });
+        return {
+          response: response.response,
+          totalSize: byteRange.length,
+          ...innerByteRange
+        };
+      }
+      getUrl() {
+        const { offset, length: length6 } = this.byteRange;
+        return `${this.base.getUrl()}|range:${offset}-${offset + length6}`;
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/decode.js
+function makeIndexCache(chunkManager, base, configuration) {
+  return new SimpleAsyncCache(chunkManager.addRef(), {
+    get: async (key, progressOptions) => {
+      const { indexCodecs } = configuration;
+      const encodedSize = indexCodecs.encodedSize[indexCodecs.encodedSize.length - 1];
+      let byteRange;
+      switch (configuration.indexLocation) {
+        case ShardIndexLocation.START:
+          byteRange = { offset: 0, length: encodedSize };
+          break;
+        case ShardIndexLocation.END:
+          byteRange = { suffixLength: encodedSize };
+          break;
+      }
+      const response = await base.read(key, {
+        ...progressOptions,
+        byteRange
+      });
+      if (response === void 0) {
+        return { size: 0, data: void 0 };
+      }
+      const index = await decodeArray(
+        configuration.indexCodecs,
+        new Uint8Array(await response.response.arrayBuffer()),
+        progressOptions.signal
+      );
+      return {
+        size: index.byteLength,
+        data: new BigUint64Array(
+          index.buffer,
+          index.byteOffset,
+          index.byteLength / 8
+        )
+      };
+    }
+  });
+}
+var MISSING_VALUE, ShardedKvStore;
+var init_decode7 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_generic_file_source();
+    init_decode();
+    init_codec();
+    init_resolve2();
+    init_file_handle();
+    init_kvstore();
+    init_disposable();
+    MISSING_VALUE = BigInt("18446744073709551615");
+    ShardedKvStore = class extends RefCounted {
+      constructor(configuration, chunkManager, base) {
+        super();
+        this.configuration = configuration;
+        this.base = base;
+        this.indexCache = this.registerDisposer(
+          makeIndexCache(chunkManager, base, configuration)
+        );
+        const { subChunkGridShape } = this.configuration;
+        const rank = subChunkGridShape.length;
+        const physicalToLogicalIndexDimension = this.configuration.indexCodecs.layoutInfo[0].physicalToLogicalDimension;
+        const indexStrides = this.indexStrides = new Array(rank + 1);
+        let stride = 1;
+        for (let physicalIndexDim = rank; physicalIndexDim >= 0; --physicalIndexDim) {
+          const logicalIndexDim = physicalToLogicalIndexDimension[physicalIndexDim];
+          indexStrides[logicalIndexDim] = stride;
+          stride *= logicalIndexDim === rank ? 2 : subChunkGridShape[logicalIndexDim];
+        }
+      }
+      indexCache;
+      indexStrides;
+      async findKey(key, progressOptions) {
+        const shardIndex = await this.indexCache.get(key.base, progressOptions);
+        if (shardIndex === void 0) {
+          return void 0;
+        }
+        const rank = this.configuration.subChunkShape.length;
+        const { subChunk } = key;
+        const { indexStrides } = this;
+        let indexOffset = 0;
+        for (let logicalIndexDim = 0; logicalIndexDim < rank; ++logicalIndexDim) {
+          const pos = subChunk[logicalIndexDim];
+          indexOffset += pos * indexStrides[logicalIndexDim];
+        }
+        const dataOffset = shardIndex[indexOffset];
+        const dataLength = shardIndex[indexOffset + indexStrides[rank]];
+        if (dataOffset === MISSING_VALUE && dataLength === MISSING_VALUE) {
+          return void 0;
+        }
+        return {
+          offset: Number(dataOffset),
+          length: Number(dataLength)
+        };
+      }
+      async stat(key, options) {
+        const fullByteRange = await this.findKey(key, options);
+        if (fullByteRange === void 0) return void 0;
+        return { totalSize: fullByteRange.length };
+      }
+      async read(key, options) {
+        const fullByteRange = await this.findKey(key, options);
+        if (fullByteRange === void 0) return void 0;
+        return new FileByteRangeHandle(
+          new KvStoreFileHandle(this.base, key.base),
+          fullByteRange
+        ).read(options);
+      }
+      getUrl(key) {
+        return `subchunk ${JSON.stringify(key.subChunk)} within shard ${this.base.getUrl(key.base)}`;
+      }
+      get supportsOffsetReads() {
+        return true;
+      }
+      get supportsSuffixReads() {
+        return true;
+      }
+    };
+    registerCodec({
+      name: "sharding_indexed",
+      kind: CodecKind.arrayToBytes,
+      getShardedKvStore(configuration, chunkManager, base) {
+        return new ShardedKvStore(configuration, chunkManager, base);
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/codec/transpose/decode.js
+var init_decode8 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/codec/transpose/decode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode();
+    init_codec();
+    registerCodec({
+      name: "transpose",
+      kind: CodecKind.arrayToArray,
+      async decode(configuration, decodedArrayInfo, encoded, signal) {
+        decodedArrayInfo;
+        signal;
+        configuration;
+        return encoded;
+      }
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/credentials_provider/index.js
+function makeCachedCredentialsGetter(getUncached) {
+  let cachedCredentials;
+  let pendingCredentials;
+  return async (invalidCredentials, options) => {
+    if (pendingCredentials === void 0 || invalidCredentials !== void 0 && (cachedCredentials == null ? void 0 : cachedCredentials.generation) === invalidCredentials.generation) {
+      cachedCredentials = void 0;
+      pendingCredentials = asyncMemoizeWithProgress(async (progressOptions) => {
+        cachedCredentials = await getUncached(
+          invalidCredentials,
+          progressOptions
+        );
+        return cachedCredentials;
+      });
+    }
+    return pendingCredentials(options ?? {});
+  };
+}
+var CredentialsProvider, CachingCredentialsManager;
+var init_credentials_provider = __esm({
+  "node_modules/neuroglancer/lib/credentials_provider/index.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_disposable();
+    init_memoize();
+    CredentialsProvider = class extends RefCounted {
+    };
+    CachingCredentialsManager = class extends RefCounted {
+      constructor(base) {
+        super();
+        this.base = base;
+      }
+      memoize = new StringMemoize();
+      getCredentialsProvider(key, parameters) {
+        return this.memoize.get(
+          { key, parameters },
+          () => this.registerDisposer(
+            this.base.getCredentialsProvider(key, parameters).addRef()
+          )
+        );
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/credentials_provider/shared_common.js
+var CREDENTIALS_PROVIDER_RPC_ID, CREDENTIALS_PROVIDER_GET_RPC_ID, CREDENTIALS_MANAGER_RPC_ID, CREDENTIALS_MANAGER_GET_RPC_ID;
+var init_shared_common = __esm({
+  "node_modules/neuroglancer/lib/credentials_provider/shared_common.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    CREDENTIALS_PROVIDER_RPC_ID = "CredentialsProvider";
+    CREDENTIALS_PROVIDER_GET_RPC_ID = "CredentialsProvider.get";
+    CREDENTIALS_MANAGER_RPC_ID = "CredentialsManager";
+    CREDENTIALS_MANAGER_GET_RPC_ID = "CredentialsManager.get";
+  }
+});
+
+// node_modules/neuroglancer/lib/credentials_provider/shared_counterpart.js
+function WithSharedCredentialsProviderCounterpart() {
+  return (Base) => class extends Base {
+    credentialsProvider;
+    constructor(...args) {
+      super(...args);
+      const options = args[1];
+      this.credentialsProvider = this.rpc.getOptionalRef(options.credentialsProvider);
+    }
+  };
+}
+var __defProp3, __getOwnPropDesc3, __decorateClass2, SharedCredentialsProviderCounterpart, ProxyCredentialsProvider, SharedCredentialsManagerCounterpart;
+var init_shared_counterpart = __esm({
+  "node_modules/neuroglancer/lib/credentials_provider/shared_counterpart.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_credentials_provider();
+    init_shared_common();
+    init_worker_rpc();
+    __defProp3 = Object.defineProperty;
+    __getOwnPropDesc3 = Object.getOwnPropertyDescriptor;
+    __decorateClass2 = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc3(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp3(target2, key, result);
+      return result;
+    };
+    SharedCredentialsProviderCounterpart = class extends SharedObjectCounterpart {
+      get = makeCachedCredentialsGetter(
+        (invalidCredentials, options) => this.rpc.promiseInvoke(
+          CREDENTIALS_PROVIDER_GET_RPC_ID,
+          { providerId: this.rpcId, invalidCredentials },
+          { signal: options.signal, progressListener: options.progressListener }
+        )
+      );
+    };
+    SharedCredentialsProviderCounterpart = __decorateClass2([
+      registerSharedObject(CREDENTIALS_PROVIDER_RPC_ID)
+    ], SharedCredentialsProviderCounterpart);
+    ProxyCredentialsProvider = class extends CredentialsProvider {
+      constructor(rpc2, managerId, key, parameters) {
+        super();
+        this.rpc = rpc2;
+        this.managerId = managerId;
+        this.key = key;
+        this.parameters = parameters;
+      }
+      get = makeCachedCredentialsGetter(
+        (invalidCredentials, options) => this.rpc.promiseInvoke(
+          CREDENTIALS_MANAGER_GET_RPC_ID,
+          {
+            managerId: this.managerId,
+            key: this.key,
+            parameters: this.parameters,
+            invalidCredentials
+          },
+          { signal: options.signal, progressListener: options.progressListener }
+        )
+      );
+    };
+    SharedCredentialsManagerCounterpart = class extends SharedObjectCounterpart {
+      impl = new CachingCredentialsManager(this.makeBaseCredentialsManager());
+      makeBaseCredentialsManager() {
+        return {
+          getCredentialsProvider: (key, parameters) => new ProxyCredentialsProvider(
+            this.rpc,
+            this.rpcId,
+            key,
+            parameters
+          )
+        };
+      }
+      getCredentialsProvider(key, parameters) {
+        return this.impl.getCredentialsProvider(key, parameters);
+      }
+    };
+    SharedCredentialsManagerCounterpart = __decorateClass2([
+      registerSharedObject(CREDENTIALS_MANAGER_RPC_ID)
+    ], SharedCredentialsManagerCounterpart);
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/url.js
+function kvstoreEnsureDirectoryPipelineUrl(url) {
+  const m = url.match(
+    /^((?:.*?\|)?)([a-zA-Z][a-zA-Z0-9-+.]*)(?:(:[^?#|]*)((?:[?#][^|]*)?))?$/
+  );
+  if (m === null) {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  const [, pipelinePrefix, scheme, path, queryAndFragment] = m;
+  if (path === void 0) {
+    return `${pipelinePrefix}${scheme}:`;
+  }
+  if (path === ":" || path.endsWith("/")) return url;
+  return `${pipelinePrefix}${scheme}${path}/${queryAndFragment ?? ""}`;
+}
+function finalPipelineUrlComponent(url) {
+  const m = url.match(/.*?([^|]*)$/);
+  return m[1];
+}
+function parsePipelineUrlComponent(url) {
+  const m = url.match(schemePattern);
+  const scheme = m[1];
+  const suffix = m[2];
+  if (scheme === void 0) {
+    return { url, scheme: url, suffix: void 0 };
+  } else {
+    return { url, scheme, suffix };
+  }
+}
+function splitPipelineUrl(url) {
+  return url.split("|").map(parsePipelineUrlComponent);
+}
+function pipelineUrlJoin(baseUrl, ...additionalParts) {
+  let [, base, queryAndFragment] = baseUrl.match(/^(.*?[^|?#]*)([^|]*)$/);
+  for (let part of additionalParts) {
+    if (part.startsWith("/")) {
+      part = part.substring(1);
+    }
+    if (part === "") continue;
+    base = kvstoreEnsureDirectoryPipelineUrl(base);
+    base += encodePathForUrl(part);
+  }
+  return base + queryAndFragment;
+}
+function joinPath(base, ...additionalParts) {
+  for (let part of additionalParts) {
+    if (part.startsWith("/")) {
+      part = part.substring(1);
+    }
+    if (part === "") continue;
+    base = ensurePathIsDirectory(base);
+    base += part;
+  }
+  return base;
+}
+function ensurePathIsDirectory(path) {
+  if (!pathIsDirectory(path)) {
+    path += "/";
+  }
+  return path;
+}
+function ensureNoQueryOrFragmentParameters(url) {
+  const { suffix } = url;
+  if (suffix === void 0) return;
+  if (suffix.match(/[#?]/)) {
+    throw new Error(
+      `Invalid URL ${url.url}: query parameters and/or fragment not supported`
+    );
+  }
+}
+function ensureEmptyUrlSuffix(url) {
+  if (url.suffix) {
+    throw new Error(
+      `Invalid URL syntax ${JSON.stringify(url.url)}, expected "${url.scheme}:"`
+    );
+  }
+}
+function extractQueryAndFragment(url) {
+  const [, base, queryAndFragment] = url.match(/^(.*?[^|?#]*)([^|]*)$/);
+  return { base, queryAndFragment };
+}
+function resolveRelativePath(basePath, relativePath) {
+  const origBasePath = basePath;
+  if (basePath.endsWith("/")) {
+    basePath = basePath.substring(0, basePath.length - 1);
+  }
+  for (const component of relativePath.split("/")) {
+    if (component === "" || component === ".") {
+      continue;
+    }
+    if (component === "..") {
+      const prevSlash = basePath.lastIndexOf("/");
+      if (prevSlash <= 0) {
+        throw new Error(
+          `Invalid relative path ${JSON.stringify(relativePath)} from base path ${JSON.stringify(origBasePath)}`
+        );
+      }
+      basePath = basePath.substring(0, prevSlash);
+      continue;
+    }
+    if (basePath !== "") {
+      basePath += "/";
+    }
+    basePath += component;
+  }
+  if (relativePath.endsWith("/")) {
+    basePath += "/";
+  }
+  return basePath;
+}
+function pathIsDirectory(path) {
+  return path === "" || path.endsWith("/");
+}
+function encodePathForUrl(path) {
+  return encodeURI(path).replace(
+    /[?#@]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+function joinBaseUrlAndPath(baseUrl, path) {
+  const { base, queryAndFragment } = extractQueryAndFragment(baseUrl);
+  return base + encodePathForUrl(path) + queryAndFragment;
+}
+function getBaseHttpUrlAndPath(url) {
+  const parsed = new URL(url);
+  if (parsed.hash) {
+    throw new Error("fragment not supported");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("basic auth credentials not supported");
+  }
+  return {
+    baseUrl: `${parsed.origin}/${parsed.search}`,
+    path: decodeURIComponent(parsed.pathname.substring(1))
+  };
+}
+var schemePattern;
+var init_url = __esm({
+  "node_modules/neuroglancer/lib/kvstore/url.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    schemePattern = /^(?:([a-zA-Z][a-zA-Z0-9-+.]*):)?(.*)$/;
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/auto_detect.js
+function composeMatchFunctions(specs) {
+  return async (options) => {
+    const matches = [];
+    const results = await Promise.allSettled(
+      specs.map((spec) => spec.match(options))
+    );
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      matches.push(...result.value);
+    }
+    return matches;
+  };
+}
+function composeAutoDetectDirectorySpecs(specs) {
+  const fileNames = /* @__PURE__ */ new Set();
+  const subDirectories = /* @__PURE__ */ new Set();
+  for (const spec of specs) {
+    const { fileNames: curFileNames, subDirectories: curSubDirectories } = spec;
+    if (curFileNames !== void 0) {
+      for (const fileName of curFileNames) {
+        fileNames.add(fileName);
+      }
+    }
+    if (curSubDirectories !== void 0) {
+      for (const subDirectory of curSubDirectories) {
+        subDirectories.add(subDirectory);
+      }
+    }
+  }
+  return { fileNames, subDirectories, match: composeMatchFunctions(specs) };
+}
+function composeAutoDetectFileSpecs(specs) {
+  let prefixLength = 0;
+  let suffixLength = 0;
+  for (const spec of specs) {
+    prefixLength = Math.max(prefixLength, spec.prefixLength);
+    suffixLength = Math.max(suffixLength, spec.suffixLength);
+  }
+  return { prefixLength, suffixLength, match: composeMatchFunctions(specs) };
+}
+var AutoDetectRegistry;
+var init_auto_detect = __esm({
+  "node_modules/neuroglancer/lib/kvstore/auto_detect.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_kvstore();
+    init_url();
+    init_progress_listener();
+    AutoDetectRegistry = class {
+      directorySpecs = [];
+      fileSpecs = [];
+      _directorySpec;
+      _fileSpec;
+      registerDirectoryFormat(spec) {
+        this.directorySpecs.push(spec);
+        this._directorySpec = void 0;
+      }
+      registerFileFormat(spec) {
+        this.fileSpecs.push(spec);
+        this._fileSpec = void 0;
+      }
+      copyTo(registry) {
+        registry.directorySpecs.push(...this.directorySpecs);
+        registry.fileSpecs.push(...this.fileSpecs);
+        registry._fileSpec = void 0;
+        registry._directorySpec = void 0;
+      }
+      get directorySpec() {
+        return this._directorySpec ?? (this._directorySpec = this.getDirectorySpec());
+      }
+      getDirectorySpec() {
+        return composeAutoDetectDirectorySpecs(this.directorySpecs);
+      }
+      get fileSpec() {
+        return this._fileSpec ?? (this._fileSpec = this.getFileSpec());
+      }
+      getFileSpec() {
+        const { fileSpecs } = this;
+        const specs = [...fileSpecs];
+        return composeAutoDetectFileSpecs(specs);
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/context.js
+var KvStoreContext;
+var init_context = __esm({
+  "node_modules/neuroglancer/lib/kvstore/context.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_auto_detect();
+    init_kvstore();
+    init_url();
+    KvStoreContext = class {
+      baseKvStoreProviders = /* @__PURE__ */ new Map();
+      kvStoreAdapterProviders = /* @__PURE__ */ new Map();
+      autoDetectRegistry = new AutoDetectRegistry();
+      getKvStore(url) {
+        const pipeline = splitPipelineUrl(url);
+        let kvStore;
+        {
+          const basePart = pipeline[0];
+          kvStore = this.getBaseKvStoreProvider(basePart).getKvStore(basePart);
+        }
+        for (let i = 1; i < pipeline.length; ++i) {
+          kvStore = this.applyKvStoreAdapterUrl(kvStore, pipeline[i]);
+        }
+        return kvStore;
+      }
+      getFileHandle(url) {
+        const { store, path } = this.getKvStore(url);
+        return new KvStoreFileHandle(store, path);
+      }
+      getBaseKvStoreProvider(url) {
+        const provider = this.baseKvStoreProviders.get(url.scheme);
+        if (provider === void 0) {
+          const usage = this.describeProtocolUsage(url.scheme);
+          let message = `Invalid base kvstore protocol "${url.scheme}:"`;
+          if (usage !== void 0) {
+            message += `; ${usage}`;
+          }
+          throw new Error(message);
+        }
+        return provider;
+      }
+      getKvStoreAdapterProvider(adapterUrl) {
+        const provider = this.kvStoreAdapterProviders.get(adapterUrl.scheme);
+        if (provider === void 0) {
+          const usage = this.describeProtocolUsage(adapterUrl.scheme);
+          let message = `Invalid kvstore adapter protocol "${adapterUrl.scheme}:"`;
+          if (usage !== void 0) {
+            message += `; ${usage}`;
+          }
+          message += `; supported schemes: ${JSON.stringify(Array.from(this.kvStoreAdapterProviders.keys()))}`;
+          throw new Error(message);
+        }
+        return provider;
+      }
+      applyKvStoreAdapterUrl(base, adapterUrl) {
+        return this.getKvStoreAdapterProvider(adapterUrl).getKvStore(
+          adapterUrl,
+          base
+        );
+      }
+      // Describes valid uses of `protocol`, for error messages indicating an
+      // invalid protocol.  If the protocol is unknown, returns `undefined`.
+      describeProtocolUsage(protocol) {
+        if (this.baseKvStoreProviders.has(protocol)) {
+          return `"${protocol}:" may only be used as a base kvstore protocol`;
+        }
+        if (this.kvStoreAdapterProviders.has(protocol)) {
+          return `"${protocol}:" may only be used as a kvstore adapter protocol`;
+        }
+        return void 0;
+      }
+      stat(url, options = {}) {
+        const kvStore = this.getKvStore(url);
+        return kvStore.store.stat(kvStore.path, options);
+      }
+      read(url, options = {}) {
+        const kvStore = this.getKvStore(url);
+        return readKvStore(kvStore.store, kvStore.path, options);
+      }
+      list(urlPrefix, options = {}) {
+        const kvStore = this.getKvStore(urlPrefix);
+        return listKvStore(kvStore.store, kvStore.path, options);
+      }
+      resolveRelativePath(baseUrl, relativePath) {
+        const kvStore = this.getKvStore(baseUrl);
+        return kvStore.store.getUrl(
+          resolveRelativePath(kvStore.path, relativePath)
+        );
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/register.js
+var KvStoreProviderRegistry, frontendBackendIsomorphicKvStoreProviderRegistry;
+var init_register = __esm({
+  "node_modules/neuroglancer/lib/kvstore/register.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_auto_detect();
+    KvStoreProviderRegistry = class {
+      baseKvStoreProviders = [];
+      kvStoreAdapterProviders = [];
+      autoDetectRegistry = new AutoDetectRegistry();
+      registerBaseKvStoreProvider(provider) {
+        this.baseKvStoreProviders.push(provider);
+      }
+      registerKvStoreAdapterProvider(provider) {
+        this.kvStoreAdapterProviders.push(provider);
+      }
+      applyToContext(context) {
+        const { kvStoreContext } = context;
+        for (const key of [
+          "baseKvStoreProviders",
+          "kvStoreAdapterProviders"
+        ]) {
+          const map2 = kvStoreContext[key];
+          for (const providerFactory of this[key]) {
+            const provider = providerFactory(context);
+            const { scheme } = provider;
+            if (map2.has(scheme)) {
+              throw new Error(`Duplicate kvstore scheme ${scheme}`);
+            }
+            map2.set(scheme, provider);
+          }
+        }
+        this.autoDetectRegistry.copyTo(context.kvStoreContext.autoDetectRegistry);
+      }
+    };
+    frontendBackendIsomorphicKvStoreProviderRegistry = new KvStoreProviderRegistry();
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/shared_common.js
+var SHARED_KVSTORE_CONTEXT_RPC_ID, STAT_RPC_ID, READ_RPC_ID, LIST_RPC_ID, COMPLETE_URL_RPC_ID;
+var init_shared_common2 = __esm({
+  "node_modules/neuroglancer/lib/kvstore/shared_common.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    SHARED_KVSTORE_CONTEXT_RPC_ID = "SharedKvStoreContext";
+    STAT_RPC_ID = "SharedKvStoreContext.stat";
+    READ_RPC_ID = "SharedKvStoreContext.read";
+    LIST_RPC_ID = "SharedKvStoreContext.list";
+    COMPLETE_URL_RPC_ID = "SharedKvStoreContext.completeUrl";
+  }
+});
+
+// node_modules/neuroglancer/lib/kvstore/backend.js
+function WithSharedKvStoreContextCounterpart(Base) {
+  return class extends Base {
+    sharedKvStoreContext;
+    constructor(...args) {
+      super(...args);
+      const options = args[1];
+      this.sharedKvStoreContext = this.rpc.get(options.sharedKvStoreContext);
+    }
+  };
+}
+var __defProp4, __getOwnPropDesc4, __decorateClass3, SharedKvStoreContextCounterpart, backendOnlyKvStoreProviderRegistry;
+var init_backend2 = __esm({
+  "node_modules/neuroglancer/lib/kvstore/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_shared_counterpart();
+    init_context();
+    init_register();
+    init_shared_common2();
+    init_worker_rpc();
+    __defProp4 = Object.defineProperty;
+    __getOwnPropDesc4 = Object.getOwnPropertyDescriptor;
+    __decorateClass3 = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc4(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp4(target2, key, result);
+      return result;
+    };
+    SharedKvStoreContextCounterpart = class extends SharedObjectCounterpart {
+      kvStoreContext;
+      chunkManager;
+      credentialsManager;
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.chunkManager = rpc2.get(options.chunkManager);
+        this.credentialsManager = rpc2.get(
+          options.credentialsManager
+        );
+        this.kvStoreContext = new KvStoreContext();
+        frontendBackendIsomorphicKvStoreProviderRegistry.applyToContext(this);
+        backendOnlyKvStoreProviderRegistry.applyToContext(this);
+      }
+    };
+    SharedKvStoreContextCounterpart = __decorateClass3([
+      registerSharedObject(SHARED_KVSTORE_CONTEXT_RPC_ID)
+    ], SharedKvStoreContextCounterpart);
+    backendOnlyKvStoreProviderRegistry = new KvStoreProviderRegistry();
+  }
+});
+
+// node_modules/neuroglancer/lib/async_computation/encode_compressed_segmentation_request.js
+var encodeCompressedSegmentationUint32, encodeCompressedSegmentationUint64;
+var init_encode_compressed_segmentation_request = __esm({
+  "node_modules/neuroglancer/lib/async_computation/encode_compressed_segmentation_request.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_async_computation();
+    encodeCompressedSegmentationUint32 = asyncComputation("encodeCompressedSegmentationUint32");
+    encodeCompressedSegmentationUint64 = asyncComputation("encodeCompressedSegmentationUint64");
+  }
+});
+
+// node_modules/neuroglancer/lib/trackable_value.js
+function registerNested(f, ...watchables) {
+  const values = watchables.map((w) => w.value);
+  const count = watchables.length;
+  let context = new RefCounted();
+  let result = f(context, ...values);
+  const handleChange = debounce_default(() => {
+    let changed = false;
+    for (let i = 0; i < count; ++i) {
+      const watchable = watchables[i];
+      const value = watchable.value;
+      if (values[i] !== value) {
+        values[i] = value;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    context.dispose();
+    context = new RefCounted();
+    result = f(context, ...values);
+  }, 0);
+  const signalDisposers = watchables.map((w) => w.changed.add(handleChange));
+  return {
+    flush() {
+      handleChange.flush();
+    },
+    dispose() {
+      handleChange.cancel();
+      invokeDisposers(signalDisposers);
+      context.dispose();
+    },
+    get value() {
+      handleChange.flush();
+      return result;
+    }
+  };
+}
+var WatchableValue;
+var init_trackable_value = __esm({
+  "node_modules/neuroglancer/lib/trackable_value.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_lodash();
+    init_disposable();
+    init_signal();
+    WatchableValue = class {
+      constructor(value_) {
+        this.value_ = value_;
+      }
+      get value() {
+        return this.value_;
+      }
+      set value(newValue) {
+        if (newValue !== this.value_) {
+          this.value_ = newValue;
+          this.changed.dispatch();
+        }
+      }
+      changed = new NullarySignal();
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/util/matrix.js
+function identity4(a, lda, n) {
+  for (let i = 0; i < n; ++i) {
+    const start = lda * i;
+    a.fill(0, start, start + n);
+    a[start + i] = 1;
+  }
+  return a;
+}
+function createIdentity(c, rows, cols = rows) {
+  return identity4(new c(rows * cols), rows, Math.min(rows, cols));
+}
+function copy6(b, ldb, a, lda, m, n) {
+  for (let col = 0; col < n; ++col) {
+    const aOff = col * lda;
+    const bOff = col * ldb;
+    for (let row = 0; row < m; ++row) {
+      b[bOff + row] = a[aOff + row];
+    }
+  }
+  return b;
+}
+function inverseInplace(a, lda, n) {
+  let determinant3 = 1;
+  if (pivots === void 0 || pivots.length < n) {
+    pivots = new Uint32Array(n);
+  }
+  for (let i = 0; i < n; ++i) {
+    pivots[i] = i;
+  }
+  for (let k = 0; k < n; ++k) {
+    const kColOff = lda * k;
+    let pivotRow = k;
+    {
+      let bestPivot = Math.abs(a[kColOff + k]);
+      for (let row = k + 1; row < n; ++row) {
+        const mag = Math.abs(a[kColOff + row]);
+        if (mag > bestPivot) {
+          bestPivot = mag;
+          pivotRow = row;
+        }
+      }
+    }
+    if (k !== pivotRow) {
+      determinant3 *= -1;
+      for (let col = 0; col < n; ++col) {
+        const off = lda * col;
+        const temp = a[off + k];
+        a[off + k] = a[off + pivotRow];
+        a[off + pivotRow] = temp;
+      }
+      {
+        const tempPivot = pivots[k];
+        pivots[k] = pivots[pivotRow];
+        pivots[pivotRow] = tempPivot;
+      }
+    }
+    const pivotValue = a[kColOff + k];
+    const pivotInv = 1 / pivotValue;
+    determinant3 *= pivotValue;
+    for (let j = 0; j < n; ++j) {
+      a[lda * j + k] *= pivotInv;
+    }
+    a[kColOff + k] = pivotInv;
+    for (let row = 0; row < n; ++row) {
+      if (row === k) continue;
+      const factor = -a[lda * k + row];
+      for (let j = 0; j < n; ++j) {
+        const jColOff = lda * j;
+        a[jColOff + row] += factor * a[jColOff + k];
+      }
+      a[lda * k + row] = factor * pivotInv;
+    }
+  }
+  for (let col = 0; col < n; ++col) {
+    let targetCol = pivots[col];
+    while (targetCol !== col) {
+      const colOff = lda * col;
+      const targetColOff = lda * targetCol;
+      for (let i = 0; i < n; ++i) {
+        const off1 = colOff + i;
+        const off2 = targetColOff + i;
+        const temp2 = a[off1];
+        a[off1] = a[off2];
+        a[off2] = temp2;
+      }
+      const temp = pivots[col] = pivots[targetCol];
+      pivots[targetCol] = targetCol;
+      targetCol = temp;
+    }
+  }
+  return determinant3;
+}
+function inverse3(b, ldb, a, lda, n) {
+  copy6(b, ldb, a, lda, n, n);
+  return inverseInplace(b, ldb, n);
+}
+var pivots;
+var init_matrix = __esm({
+  "node_modules/neuroglancer/lib/util/matrix.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/vector.js
+function add6(out, a, b) {
+  const rank = out.length;
+  for (let i = 0; i < rank; ++i) {
+    out[i] = a[i] + b[i];
+  }
+  return out;
+}
+function multiply6(out, a, b) {
+  const rank = out.length;
+  for (let i = 0; i < rank; ++i) {
+    out[i] = a[i] * b[i];
+  }
+  return out;
+}
+function prod(array2) {
+  let result = 1;
+  for (let i = 0, length6 = array2.length; i < length6; ++i) {
+    result *= array2[i];
+  }
+  return result;
+}
+function min3(out, a, b) {
+  const rank = out.length;
+  for (let i = 0; i < rank; ++i) {
+    out[i] = Math.min(a[i], b[i]);
+  }
+  return out;
+}
+function max3(out, a, b) {
+  const rank = out.length;
+  for (let i = 0; i < rank; ++i) {
+    out[i] = Math.max(a[i], b[i]);
+  }
+  return out;
+}
+var kEmptyFloat32Vec, kEmptyFloat64Vec, kFloat64Vec3Of1;
+var init_vector = __esm({
+  "node_modules/neuroglancer/lib/util/vector.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    kEmptyFloat32Vec = new Float32Array(0);
+    kEmptyFloat64Vec = new Float64Array(0);
+    kFloat64Vec3Of1 = Float64Array.of(1, 1, 1);
+  }
+});
+
+// node_modules/neuroglancer/lib/coordinate_transform.js
+function makeCoordinateSpace(space) {
+  const { names, units, scales } = space;
+  const {
+    valid = true,
+    rank = names.length,
+    timestamps = names.map(() => Number.NEGATIVE_INFINITY),
+    ids = names.map((_, i) => -i),
+    boundingBoxes = []
+  } = space;
+  const { coordinateArrays = new Array(rank) } = space;
+  const { bounds = computeCombinedBounds(boundingBoxes, rank) } = space;
+  return {
+    valid,
+    rank,
+    names,
+    timestamps,
+    ids,
+    units,
+    scales,
+    boundingBoxes,
+    bounds,
+    coordinateArrays
+  };
+}
+function computeCombinedLowerUpperBound(boundingBox, outputDimension, outputRank) {
+  const {
+    box: { lowerBounds: baseLowerBounds, upperBounds: baseUpperBounds },
+    transform: transform2
+  } = boundingBox;
+  const inputRank = baseLowerBounds.length;
+  const stride = outputRank;
+  const offset = transform2[stride * inputRank + outputDimension];
+  let targetLower = offset;
+  let targetUpper = offset;
+  let hasCoefficient = false;
+  for (let inputDim = 0; inputDim < inputRank; ++inputDim) {
+    const c = transform2[stride * inputDim + outputDimension];
+    if (c === 0) continue;
+    const lower = c * baseLowerBounds[inputDim];
+    const upper = c * baseUpperBounds[inputDim];
+    targetLower += Math.min(lower, upper);
+    targetUpper += Math.max(lower, upper);
+    hasCoefficient = true;
+  }
+  if (!hasCoefficient) return void 0;
+  return { lower: targetLower, upper: targetUpper };
+}
+function computeCombinedBounds(boundingBoxes, outputRank) {
+  const lowerBounds = new Float64Array(outputRank);
+  const upperBounds = new Float64Array(outputRank);
+  lowerBounds.fill(Number.NEGATIVE_INFINITY);
+  upperBounds.fill(Number.POSITIVE_INFINITY);
+  const halfIntegerBounds = new Array(outputRank);
+  halfIntegerBounds.fill(0);
+  const integerBounds = new Array(outputRank);
+  integerBounds.fill(0);
+  for (const boundingBox of boundingBoxes) {
+    for (let outputDim = 0; outputDim < outputRank; ++outputDim) {
+      const result = computeCombinedLowerUpperBound(
+        boundingBox,
+        outputDim,
+        outputRank
+      );
+      if (result === void 0) continue;
+      let { lower: targetLower, upper: targetUpper } = result;
+      if (Number.isFinite(targetLower) && Number.isFinite(targetUpper)) {
+        let lowerRound;
+        let upperRound;
+        let lowerFloor;
+        let upperFloor;
+        if (Math.abs(targetLower - (lowerRound = Math.round(targetLower))) < INTEGER_BOUNDS_EPSILON && Math.abs(targetUpper - (upperRound = Math.round(targetUpper))) < INTEGER_BOUNDS_EPSILON) {
+          ++integerBounds[outputDim];
+          targetLower = lowerRound;
+          targetUpper = upperRound;
+        } else if (Math.abs(targetLower - (lowerFloor = Math.floor(targetLower)) - 0.5) < INTEGER_BOUNDS_EPSILON && Math.abs(targetUpper - (upperFloor = Math.floor(targetUpper)) - 0.5) < INTEGER_BOUNDS_EPSILON) {
+          ++halfIntegerBounds[outputDim];
+          targetLower = lowerFloor + 0.5;
+          targetUpper = upperFloor + 0.5;
+        }
+      }
+      lowerBounds[outputDim] = lowerBounds[outputDim] === Number.NEGATIVE_INFINITY ? targetLower : Math.min(lowerBounds[outputDim], targetLower);
+      upperBounds[outputDim] = upperBounds[outputDim] === Number.POSITIVE_INFINITY ? targetUpper : Math.max(upperBounds[outputDim], targetUpper);
+    }
+  }
+  const voxelCenterAtIntegerCoordinates = integerBounds.map(
+    (integerCount, i) => {
+      const halfIntegerCount = halfIntegerBounds[i];
+      return halfIntegerCount > 0 && integerCount === 0;
+    }
+  );
+  return { lowerBounds, upperBounds, voxelCenterAtIntegerCoordinates };
+}
+var emptyInvalidCoordinateSpace, emptyValidCoordinateSpace, INTEGER_BOUNDS_EPSILON;
+var init_coordinate_transform = __esm({
+  "node_modules/neuroglancer/lib/coordinate_transform.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_trackable_value();
+    init_array();
+    init_geom();
+    init_json();
+    init_matrix();
+    init_si_units();
+    init_signal();
+    init_vector();
+    emptyInvalidCoordinateSpace = makeCoordinateSpace({
+      valid: false,
+      names: [],
+      units: [],
+      scales: kEmptyFloat64Vec,
+      boundingBoxes: []
+    });
+    emptyValidCoordinateSpace = makeCoordinateSpace({
+      valid: true,
+      names: [],
+      units: [],
+      scales: kEmptyFloat64Vec,
+      boundingBoxes: []
+    });
+    INTEGER_BOUNDS_EPSILON = 1e-3;
+  }
+});
+
+// node_modules/neuroglancer/lib/util/trackable.js
+var init_trackable = __esm({
+  "node_modules/neuroglancer/lib/util/trackable.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_disposable();
+    init_json();
+    init_signal();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/trackable_enum.js
+var init_trackable_enum = __esm({
+  "node_modules/neuroglancer/lib/util/trackable_enum.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_json();
+    init_signal();
+  }
+});
+
+// node_modules/neuroglancer/lib/navigation_state.js
+function displayDimensionRenderInfosEqual(a, b) {
+  return arraysEqual(a.globalDimensionNames, b.globalDimensionNames) && arraysEqual(a.displayDimensionIndices, b.displayDimensionIndices) && arraysEqual(a.canonicalVoxelFactors, b.canonicalVoxelFactors) && arraysEqual(a.voxelPhysicalScales, b.voxelPhysicalScales) && a.canonicalVoxelPhysicalSize === b.canonicalVoxelPhysicalSize && arraysEqual(a.displayDimensionUnits, b.displayDimensionUnits) && arraysEqual(a.displayDimensionScales, b.displayDimensionScales);
+}
+function validateDisplayDimensionRenderInfoProperty(obj, expected) {
+  const actual = obj.displayDimensionRenderInfo;
+  if (actual === expected) return true;
+  if (displayDimensionRenderInfosEqual(actual, expected)) {
+    obj.displayDimensionRenderInfo = expected;
+    return true;
+  }
+  return false;
+}
+var tempVec32, tempQuat;
+var init_navigation_state = __esm({
+  "node_modules/neuroglancer/lib/navigation_state.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_coordinate_transform();
+    init_array();
+    init_disposable();
+    init_geom();
+    init_json();
+    init_signal();
+    init_trackable();
+    init_trackable_enum();
+    init_vector();
+    tempVec32 = vec3_exports.create();
+    tempQuat = quat_exports.create();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/animation_frame_debounce.js
+var init_animation_frame_debounce = __esm({
+  "node_modules/neuroglancer/lib/util/animation_frame_debounce.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/framerate.js
+var init_framerate = __esm({
+  "node_modules/neuroglancer/lib/util/framerate.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/trackable_screenshot_mode.js
+var init_trackable_screenshot_mode = __esm({
+  "node_modules/neuroglancer/lib/util/trackable_screenshot_mode.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_trackable_enum();
+  }
+});
+
+// node_modules/neuroglancer/lib/webgl/context.js
+var init_context2 = __esm({
+  "node_modules/neuroglancer/lib/webgl/context.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_memoize();
+  }
+});
+
+// node_modules/neuroglancer/lib/display_context.js
+var init_display_context = __esm({
+  "node_modules/neuroglancer/lib/display_context.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_trackable_value();
+    init_animation_frame_debounce();
+    init_disposable();
+    init_framerate();
+    init_json();
+    init_signal();
+    init_trackable_screenshot_mode();
+    init_context2();
+  }
+});
+
+// node_modules/neuroglancer/lib/projection_parameters.js
+var init_projection_parameters = __esm({
+  "node_modules/neuroglancer/lib/projection_parameters.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_display_context();
+    init_array();
+    init_geom();
+    init_vector();
+  }
+});
+
+// node_modules/neuroglancer/lib/render_coordinate_transform.js
+function getChunkPositionFromCombinedGlobalLocalPositions(chunkPosition, globalPosition, localPosition, layerRank, combinedGlobalLocalToChunkTransform) {
+  const globalRank = globalPosition.length;
+  const localRank = localPosition.length;
+  const rank = chunkPosition.length;
+  let valid = true;
+  for (let chunkDim = 0; chunkDim < layerRank; ++chunkDim) {
+    let off = chunkDim;
+    let sum = 0;
+    for (let globalDim = 0; globalDim < globalRank; ++globalDim) {
+      sum += combinedGlobalLocalToChunkTransform[off + globalDim * layerRank] * globalPosition[globalDim];
+    }
+    off += globalRank * layerRank;
+    for (let localDim = 0; localDim < localRank; ++localDim) {
+      sum += combinedGlobalLocalToChunkTransform[off + localDim * layerRank] * localPosition[localDim];
+    }
+    sum += combinedGlobalLocalToChunkTransform[off + localRank * layerRank];
+    if (chunkDim < rank) {
+      chunkPosition[chunkDim] = sum;
+    } else {
+      if (sum < 0 || sum >= 1) {
+        valid = false;
+      }
+    }
+  }
+  return valid;
+}
+function get3dModelToDisplaySpaceMatrix(out, displayDimensionRenderInfo, transform2) {
+  out.fill(0);
+  out[15] = 1;
+  let fullRank = true;
+  const { displayDimensionIndices } = displayDimensionRenderInfo;
+  const { globalToRenderLayerDimensions, modelToRenderLayerTransform } = transform2;
+  const layerRank = transform2.rank;
+  for (let displayDim = 0; displayDim < 3; ++displayDim) {
+    const globalDim = displayDimensionIndices[displayDim];
+    if (globalDim === -1) {
+      fullRank = false;
+      continue;
+    }
+    const layerDim = globalToRenderLayerDimensions[globalDim];
+    if (layerDim === -1) {
+      fullRank = false;
+      continue;
+    }
+    out[displayDim + 12] = modelToRenderLayerTransform[layerDim + layerRank * (layerRank + 1)];
+    for (let modelDim = 0; modelDim < 3; ++modelDim) {
+      out[displayDim + 4 * modelDim] = modelToRenderLayerTransform[layerDim + (layerRank + 1) * modelDim];
+    }
+  }
+  if (!fullRank) {
+    const { globalDimensionNames } = displayDimensionRenderInfo;
+    const displayDimDesc = Array.from(
+      displayDimensionIndices.filter((i) => i !== -1),
+      (i) => globalDimensionNames[i]
+    ).join(",\xA0");
+    throw new Error(
+      `Transform from model dimensions (${transform2.modelDimensionNames.join(
+        ",\xA0"
+      )}) to display dimensions (${displayDimDesc}) does not have full rank`
+    );
+  }
+}
+var zeroRankChannelSpace;
+var init_render_coordinate_transform = __esm({
+  "node_modules/neuroglancer/lib/render_coordinate_transform.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_coordinate_transform();
+    init_trackable_value();
+    init_array();
+    init_geom();
+    init_matrix();
+    init_vector();
+    init_vector();
+    zeroRankChannelSpace = {
+      channelCoordinateSpace: emptyValidCoordinateSpace,
+      shape: new Uint32Array(0),
+      numChannels: 1,
+      coordinates: new Uint32Array(0)
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/sliceview/chunk_layout.js
+var ChunkLayout;
+var init_chunk_layout = __esm({
+  "node_modules/neuroglancer/lib/sliceview/chunk_layout.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_geom();
+    init_matrix();
+    ChunkLayout = class _ChunkLayout {
+      /**
+       * Size of each chunk in "chunk" coordinates.
+       */
+      size;
+      /**
+       * Transform from local "chunk" coordinates to global voxel coordinates.
+       */
+      transform;
+      /**
+       * Inverse of transform.  Transform from global voxel coordinates to "chunk" coordinates.
+       */
+      invTransform;
+      /**
+       * Determinant of `transform`.
+       */
+      detTransform;
+      finiteRank;
+      constructor(size, transform2, finiteRank) {
+        this.size = vec3_exports.clone(size);
+        this.transform = mat4_exports.clone(transform2);
+        this.finiteRank = finiteRank;
+        const invTransform = mat4_exports.create();
+        const det = inverse3(invTransform, 4, transform2, 4, 4);
+        if (det === 0) {
+          throw new Error("Transform is singular");
+        }
+        this.invTransform = invTransform;
+        this.detTransform = det;
+      }
+      toObject() {
+        return {
+          size: this.size,
+          transform: this.transform,
+          finiteRank: this.finiteRank
+        };
+      }
+      static fromObject(msg) {
+        return new _ChunkLayout(msg.size, msg.transform, msg.finiteRank);
+      }
+      /**
+       * Transform global spatial coordinates to local spatial coordinates.
+       */
+      globalToLocalSpatial(out, globalSpatial) {
+        return vec3_exports.transformMat4(out, globalSpatial, this.invTransform);
+      }
+      localSpatialVectorToGlobal(out, localVector) {
+        return transformVectorByMat4(out, localVector, this.transform);
+      }
+      /**
+       * Returns the unnormalized normal vector.
+       */
+      globalToLocalNormal(globalNormal, localNormal) {
+        return transformVectorByMat4Transpose(
+          globalNormal,
+          localNormal,
+          this.transform
+        );
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/sliceview/base.js
+function estimateSliceAreaPerChunk(chunkLayout, viewMatrix) {
+  let viewZProjection = 0;
+  let chunkVolume = Math.abs(chunkLayout.detTransform);
+  const { transform: transform2, size } = chunkLayout;
+  for (let i = 0; i < 3; ++i) {
+    let sum = 0;
+    for (let j = 0; j < 3; ++j) {
+      sum += viewMatrix[j * 4 + 2] * transform2[4 * i + j];
+    }
+    const s = size[i];
+    viewZProjection += Math.abs(sum) * s;
+    chunkVolume *= s;
+  }
+  return chunkVolume / viewZProjection;
+}
+function updateFixedCurPositionInChunks(tsource, globalPosition, localPosition) {
+  const { curPositionInChunks, fixedPositionWithinChunk } = tsource;
+  const { nonDisplayLowerClipBound, nonDisplayUpperClipBound } = tsource;
+  const { rank, chunkDataSize, lowerChunkBound, upperChunkBound } = tsource.source.spec;
+  if (!getChunkPositionFromCombinedGlobalLocalPositions(
+    curPositionInChunks,
+    globalPosition,
+    localPosition,
+    tsource.layerRank,
+    tsource.fixedLayerToChunkTransform
+  )) {
+    return false;
+  }
+  const EPSILON2 = 1e-3;
+  for (let chunkDim = 0; chunkDim < rank; ++chunkDim) {
+    const x = curPositionInChunks[chunkDim];
+    if (x < nonDisplayLowerClipBound[chunkDim] - EPSILON2 || x > nonDisplayUpperClipBound[chunkDim] + EPSILON2) {
+      if (DEBUG_VISIBLE_SOURCES) {
+        console.log(
+          "excluding source",
+          tsource,
+          `because of chunkDim=${chunkDim}, sum=${x}`,
+          nonDisplayLowerClipBound,
+          nonDisplayUpperClipBound,
+          tsource.fixedLayerToChunkTransform
+        );
+      }
+      return false;
+    }
+    const chunkSize = chunkDataSize[chunkDim];
+    const chunk = curPositionInChunks[chunkDim] = Math.min(
+      upperChunkBound[chunkDim] - 1,
+      Math.max(lowerChunkBound[chunkDim], Math.floor(x / chunkSize))
+    );
+    fixedPositionWithinChunk[chunkDim] = x - chunk * chunkSize;
+  }
+  return true;
+}
+function pickBestAlternativeSource(viewMatrix, alternatives) {
+  const numAlternatives = alternatives.length;
+  let bestAlternativeIndex = 0;
+  if (DEBUG_VISIBLE_SOURCES) {
+    console.log(alternatives);
+  }
+  if (numAlternatives > 1) {
+    let bestSliceArea = 0;
+    for (let alternativeIndex = 0; alternativeIndex < numAlternatives; ++alternativeIndex) {
+      const alternative = alternatives[alternativeIndex];
+      const { chunkLayout } = alternative;
+      const sliceArea = estimateSliceAreaPerChunk(chunkLayout, viewMatrix);
+      if (DEBUG_VISIBLE_SOURCES) {
+        console.log(
+          `chunksize = ${chunkLayout.size}, sliceArea = ${sliceArea}`
+        );
+      }
+      if (sliceArea > bestSliceArea) {
+        bestSliceArea = sliceArea;
+        bestAlternativeIndex = alternativeIndex;
+      }
+    }
+  }
+  return bestAlternativeIndex;
+}
+function visibleSourcesInvalidated(oldValue, newValue) {
+  if (oldValue.displayDimensionRenderInfo !== newValue.displayDimensionRenderInfo) {
+    return true;
+  }
+  if (oldValue.pixelSize !== newValue.pixelSize) return true;
+  const { viewMatrix: oldViewMatrix } = oldValue;
+  const { viewMatrix: newViewMatrix } = newValue;
+  for (let i = 0; i < 12; ++i) {
+    if (oldViewMatrix[i] !== newViewMatrix[i]) return true;
+  }
+  return false;
+}
+function* filterVisibleSources(sliceView, renderLayer, sources) {
+  const pixelSize = sliceView.projectionParameters.value.pixelSize * 1.1;
+  const smallestVoxelSize = sources[0].effectiveVoxelSize;
+  const renderScaleTarget = renderLayer.renderScaleTarget.value;
+  const canImproveOnVoxelSize = (voxelSize) => {
+    const targetSize = pixelSize * renderScaleTarget;
+    for (let i = 0; i < 3; ++i) {
+      const size = voxelSize[i];
+      if (size > targetSize && size > 1.01 * smallestVoxelSize[i]) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const improvesOnPrevVoxelSize = (voxelSize, prevVoxelSize2) => {
+    const targetSize = pixelSize * renderScaleTarget;
+    for (let i = 0; i < 3; ++i) {
+      const size = voxelSize[i];
+      const prevSize = prevVoxelSize2[i];
+      if (Math.abs(targetSize - size) < Math.abs(targetSize - prevSize) && size < 1.01 * prevSize) {
+        return true;
+      }
+    }
+    return false;
+  };
+  let scaleIndex = sources.length - 1;
+  let prevVoxelSize;
+  if (DEBUG_VISIBLE_SOURCES) {
+    console.log(`Filtering ${sources.length} visible sources`);
+  }
+  while (true) {
+    const transformedSource = sources[scaleIndex];
+    if (prevVoxelSize !== void 0 && !improvesOnPrevVoxelSize(
+      transformedSource.effectiveVoxelSize,
+      prevVoxelSize
+    )) {
+      if (DEBUG_VISIBLE_SOURCES) {
+        console.log(
+          `  Stopping at ${scaleIndex} because can't improve on prev voxel size: effectiveVoxelSize=${transformedSource.effectiveVoxelSize} prevVoxelSize=${prevVoxelSize}`
+        );
+      }
+      break;
+    }
+    yield transformedSource;
+    if (scaleIndex === 0) {
+      if (DEBUG_VISIBLE_SOURCES) {
+        console.log(`  Stopping because scaleIndex=0`);
+      }
+      break;
+    }
+    if (!canImproveOnVoxelSize(transformedSource.effectiveVoxelSize)) {
+      if (DEBUG_VISIBLE_SOURCES) {
+        console.log(
+          `Stopping at at ${scaleIndex} because can't improve on voxel size ${transformedSource.effectiveVoxelSize}`
+        );
+      }
+      break;
+    }
+    prevVoxelSize = transformedSource.effectiveVoxelSize;
+    --scaleIndex;
+  }
+}
+function forEachVolumetricChunkWithinFrustrum(clippingPlanes, transformedSource, callback, predicate) {
+  const lower = tempVisibleVolumetricChunkLower;
+  const upper = tempVisibleVolumetricChunkUpper;
+  const { lowerChunkDisplayBound, upperChunkDisplayBound } = transformedSource;
+  for (let i = 0; i < 3; ++i) {
+    lower[i] = Math.max(lower[i], lowerChunkDisplayBound[i]);
+    upper[i] = Math.min(upper[i], upperChunkDisplayBound[i]);
+  }
+  const { curPositionInChunks, chunkDisplayDimensionIndices } = transformedSource;
+  function recurse() {
+    if (!predicate(
+      lower[0],
+      lower[1],
+      lower[2],
+      upper[0],
+      upper[1],
+      upper[2],
+      clippingPlanes
+    )) {
+      return;
+    }
+    let splitDim = 0;
+    let splitSize = Math.max(0, upper[0] - lower[0]);
+    let volume = splitSize;
+    for (let i = 1; i < 3; ++i) {
+      const size = Math.max(0, upper[i] - lower[i]);
+      volume *= size;
+      if (size > splitSize) {
+        splitSize = size;
+        splitDim = i;
+      }
+    }
+    if (volume === 0) return;
+    if (volume === 1) {
+      curPositionInChunks[chunkDisplayDimensionIndices[0]] = lower[0];
+      curPositionInChunks[chunkDisplayDimensionIndices[1]] = lower[1];
+      curPositionInChunks[chunkDisplayDimensionIndices[2]] = lower[2];
+      callback(lower, clippingPlanes);
+      return;
+    }
+    const prevLower = lower[splitDim];
+    const prevUpper = upper[splitDim];
+    const splitPoint = Math.floor(0.5 * (prevLower + prevUpper));
+    upper[splitDim] = splitPoint;
+    recurse();
+    upper[splitDim] = prevUpper;
+    lower[splitDim] = splitPoint;
+    recurse();
+    lower[splitDim] = prevLower;
+  }
+  recurse();
+}
+function forEachVisibleVolumetricChunk(projectionParameters, localPosition, transformedSource, callback) {
+  if (!updateFixedCurPositionInChunks(
+    transformedSource,
+    projectionParameters.globalPosition,
+    localPosition
+  )) {
+    return;
+  }
+  const { size: chunkSize } = transformedSource.chunkLayout;
+  const modelViewProjection = mat4_exports.multiply(
+    tempVisibleVolumetricModelViewProjection,
+    projectionParameters.viewProjectionMat,
+    transformedSource.chunkLayout.transform
+  );
+  for (let i = 0; i < 3; ++i) {
+    const s = chunkSize[i];
+    for (let j = 0; j < 4; ++j) {
+      modelViewProjection[4 * i + j] *= s;
+    }
+  }
+  const clippingPlanes = tempVisibleVolumetricClippingPlanes;
+  getFrustrumPlanes(clippingPlanes, modelViewProjection);
+  const lower = tempVisibleVolumetricChunkLower;
+  const upper = tempVisibleVolumetricChunkUpper;
+  lower.fill(Number.NEGATIVE_INFINITY);
+  upper.fill(Number.POSITIVE_INFINITY);
+  forEachVolumetricChunkWithinFrustrum(
+    clippingPlanes,
+    transformedSource,
+    callback,
+    isAABBVisible
+  );
+}
+function forEachPlaneIntersectingVolumetricChunk(projectionParameters, localPosition, transformedSource, chunkLayout, callback) {
+  if (!updateFixedCurPositionInChunks(
+    transformedSource,
+    projectionParameters.globalPosition,
+    localPosition
+  )) {
+    return;
+  }
+  const { size: chunkSize } = chunkLayout;
+  const modelViewProjection = mat4_exports.multiply(
+    tempVisibleVolumetricModelViewProjection,
+    projectionParameters.viewProjectionMat,
+    chunkLayout.transform
+  );
+  for (let i = 0; i < 3; ++i) {
+    const s = chunkSize[i];
+    for (let j = 0; j < 4; ++j) {
+      modelViewProjection[4 * i + j] *= s;
+    }
+  }
+  const { upperChunkDisplayBound } = transformedSource;
+  const invModelViewProjection = tempMat4;
+  mat4_exports.invert(invModelViewProjection, modelViewProjection);
+  const lower = tempVisibleVolumetricChunkLower;
+  const upper = tempVisibleVolumetricChunkUpper;
+  const BIAS_EPSILON = 1e-4;
+  const BOUND_EPSILON = 1e-3;
+  for (let i = 0; i < 3; ++i) {
+    const c = invModelViewProjection[12 + i] + BIAS_EPSILON / chunkSize[i];
+    const xCoeff = Math.abs(invModelViewProjection[i]);
+    const yCoeff = Math.abs(invModelViewProjection[4 + i]);
+    const upperBound = upperChunkDisplayBound[i];
+    let lowerValue = c - xCoeff - yCoeff;
+    if (lowerValue >= upperBound && lowerValue < upperBound + BOUND_EPSILON) {
+      lowerValue = upperBound - 1;
+    } else {
+      lowerValue = Math.floor(lowerValue);
+    }
+    lower[i] = lowerValue;
+    upper[i] = Math.floor(c + xCoeff + yCoeff + 1);
+  }
+  const clippingPlanes = tempVisibleVolumetricClippingPlanes;
+  for (let i = 0; i < 3; ++i) {
+    const xCoeff = modelViewProjection[4 * i];
+    const yCoeff = modelViewProjection[4 * i + 1];
+    const zCoeff = modelViewProjection[4 * i + 2];
+    clippingPlanes[i] = xCoeff;
+    clippingPlanes[4 + i] = -xCoeff;
+    clippingPlanes[8 + i] = +yCoeff;
+    clippingPlanes[12 + i] = -yCoeff;
+    clippingPlanes[16 + i] = +zCoeff;
+    clippingPlanes[20 + i] = -zCoeff;
+  }
+  {
+    const i = 3;
+    const xCoeff = modelViewProjection[4 * i];
+    const yCoeff = modelViewProjection[4 * i + 1];
+    const zCoeff = modelViewProjection[4 * i + 2];
+    clippingPlanes[i] = 1 + xCoeff;
+    clippingPlanes[4 + i] = 1 - xCoeff;
+    clippingPlanes[8 + i] = 1 + yCoeff;
+    clippingPlanes[12 + i] = 1 - yCoeff;
+    clippingPlanes[16 + i] = zCoeff;
+    clippingPlanes[20 + i] = -zCoeff;
+  }
+  if (DEBUG_CHUNK_VISIBILITY) {
+    console.log("clippingPlanes", clippingPlanes);
+    console.log("modelViewProjection", modelViewProjection.join(","));
+    console.log(`lower=${lower.join(",")}, upper=${upper.join(",")}`);
+  }
+  forEachVolumetricChunkWithinFrustrum(
+    clippingPlanes,
+    transformedSource,
+    callback,
+    isAABBIntersectingPlane
+  );
+}
+function getNormalizedChunkLayout(projectionParameters, chunkLayout) {
+  const { finiteRank } = chunkLayout;
+  if (finiteRank === 3) return chunkLayout;
+  tempChunkLayout.finiteRank = finiteRank;
+  vec3_exports.copy(tempChunkLayout.size, chunkLayout.size);
+  const transform2 = mat4_exports.copy(tempChunkLayout.transform, chunkLayout.transform);
+  const invTransform = mat4_exports.copy(
+    tempChunkLayout.invTransform,
+    chunkLayout.invTransform
+  );
+  tempChunkLayout.detTransform = chunkLayout.detTransform;
+  const { invViewMatrix, width, height } = projectionParameters;
+  const depth = getViewFrustrumDepthRange(projectionParameters.projectionMat);
+  for (let chunkRenderDim = finiteRank; chunkRenderDim < 3; ++chunkRenderDim) {
+    const offset = invViewMatrix[12 + chunkRenderDim];
+    let lower = offset;
+    let upper = offset;
+    const xc = Math.abs(invViewMatrix[chunkRenderDim] * width);
+    lower -= xc;
+    upper += xc;
+    const yc = Math.abs(invViewMatrix[chunkRenderDim + 4] * height);
+    lower -= yc;
+    upper += yc;
+    const zc = Math.abs(invViewMatrix[chunkRenderDim + 8] * depth);
+    lower -= zc;
+    upper += zc;
+    const scaleFactor = Math.max(1, upper - lower);
+    transform2[12 + chunkRenderDim] = lower;
+    transform2[5 * chunkRenderDim] = scaleFactor;
+  }
+  mat4_exports.invert(invTransform, transform2);
+  return tempChunkLayout;
+}
+var DEBUG_VISIBLE_SOURCES, DEBUG_CHUNK_VISIBILITY, tempMat4, tempChunkLayout, SliceViewBase, SLICEVIEW_RPC_ID, SLICEVIEW_RENDERLAYER_RPC_ID, SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID, SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID, SLICEVIEW_REQUEST_CHUNK_RPC_ID, tempVisibleVolumetricChunkLower, tempVisibleVolumetricChunkUpper, tempVisibleVolumetricModelViewProjection, tempVisibleVolumetricClippingPlanes;
+var init_base3 = __esm({
+  "node_modules/neuroglancer/lib/sliceview/base.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_navigation_state();
+    init_projection_parameters();
+    init_render_coordinate_transform();
+    init_chunk_layout();
+    init_data_type();
+    init_geom();
+    init_matrix();
+    init_vector();
+    init_worker_rpc();
+    DEBUG_VISIBLE_SOURCES = false;
+    DEBUG_CHUNK_VISIBILITY = false;
+    tempMat4 = mat4_exports.create();
+    tempChunkLayout = new ChunkLayout(vec3_exports.create(), mat4_exports.create(), 0);
+    SliceViewBase = class extends SharedObject {
+      constructor(projectionParameters) {
+        super();
+        this.projectionParameters = projectionParameters;
+        this.registerDisposer(
+          projectionParameters.changed.add((oldValue, newValue) => {
+            if (visibleSourcesInvalidated(oldValue, newValue)) {
+              this.invalidateVisibleSources();
+            }
+            this.invalidateVisibleChunks();
+          })
+        );
+      }
+      visibleLayers = /* @__PURE__ */ new Map();
+      visibleSourcesStale = true;
+      invalidateVisibleSources() {
+        this.visibleSourcesStale = true;
+      }
+      invalidateVisibleChunks() {
+      }
+      /**
+       * Computes the list of sources to use for each visible layer, based on the
+       * current pixelSize.
+       */
+      updateVisibleSources() {
+        if (!this.visibleSourcesStale) {
+          return;
+        }
+        this.visibleSourcesStale = false;
+        const curDisplayDimensionRenderInfo = this.projectionParameters.value.displayDimensionRenderInfo;
+        const { visibleLayers } = this;
+        for (const [renderLayer, visibleLayerSources] of visibleLayers) {
+          const { allSources, visibleSources } = visibleLayerSources;
+          visibleSources.length = 0;
+          if (allSources.length === 0 || !validateDisplayDimensionRenderInfoProperty(
+            visibleLayerSources,
+            curDisplayDimensionRenderInfo
+          )) {
+            continue;
+          }
+          const preferredOrientationIndex = pickBestAlternativeSource(
+            this.projectionParameters.value.viewMatrix,
+            allSources.map((x) => x[0])
+          );
+          const sources = allSources[preferredOrientationIndex];
+          for (const source of renderLayer.filterVisibleSources(this, sources)) {
+            visibleSources.push(source);
+          }
+          visibleSources.reverse();
+          if (DEBUG_VISIBLE_SOURCES) {
+            console.log("visible sources chosen", visibleSources);
+          }
+        }
+      }
+    };
+    SLICEVIEW_RPC_ID = "SliceView";
+    SLICEVIEW_RENDERLAYER_RPC_ID = "sliceview/RenderLayer";
+    SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID = "SliceView.addVisibleLayer";
+    SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID = "SliceView.removeVisibleLayer";
+    SLICEVIEW_REQUEST_CHUNK_RPC_ID = "ChunkManager.requestChunk";
+    tempVisibleVolumetricChunkLower = new Float32Array(3);
+    tempVisibleVolumetricChunkUpper = new Float32Array(3);
+    tempVisibleVolumetricModelViewProjection = mat4_exports.create();
+    tempVisibleVolumetricClippingPlanes = new Float32Array(24);
+  }
+});
+
+// node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/postprocess.js
+async function postProcessRawData(chunk, signal, data) {
+  const { spec } = chunk.source;
+  if (spec.compressedSegmentationBlockSize !== void 0) {
+    const { dataType } = spec;
+    const chunkDataSize = chunk.chunkDataSize;
+    const shape = [
+      chunkDataSize[0],
+      chunkDataSize[1],
+      chunkDataSize[2],
+      chunkDataSize[3] || 1
+    ];
+    switch (dataType) {
+      case DataType.UINT32:
+        chunk.data = await requestAsyncComputation(
+          encodeCompressedSegmentationUint32,
+          signal,
+          [data.buffer],
+          data,
+          shape,
+          spec.compressedSegmentationBlockSize
+        );
+        break;
+      case DataType.UINT64:
+        chunk.data = await requestAsyncComputation(
+          encodeCompressedSegmentationUint64,
+          signal,
+          [data.buffer],
+          data,
+          shape,
+          spec.compressedSegmentationBlockSize
+        );
+        break;
+      default:
+        throw new Error(
+          `Unsupported data type for compressed segmentation: ${DataType[dataType]}`
+        );
+    }
+  } else {
+    chunk.data = data;
+  }
+}
+var init_postprocess = __esm({
+  "node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/postprocess.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_encode_compressed_segmentation_request();
+    init_request();
+    init_base3();
+  }
+});
+
+// node_modules/neuroglancer/lib/render_layer_common.js
+var RENDERED_VIEW_ADD_LAYER_RPC_ID, RENDERED_VIEW_REMOVE_LAYER_RPC_ID, PROJECTION_PARAMETERS_RPC_ID, PROJECTION_PARAMETERS_CHANGED_RPC_METHOD_ID;
+var init_render_layer_common = __esm({
+  "node_modules/neuroglancer/lib/render_layer_common.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    RENDERED_VIEW_ADD_LAYER_RPC_ID = "rendered_view.addLayer";
+    RENDERED_VIEW_REMOVE_LAYER_RPC_ID = "rendered_view.removeLayer";
+    PROJECTION_PARAMETERS_RPC_ID = "SharedProjectionParameters";
+    PROJECTION_PARAMETERS_CHANGED_RPC_METHOD_ID = "SharedProjectionParameters.changed";
+  }
+});
+
+// node_modules/neuroglancer/lib/render_layer_backend.js
+var __defProp5, __getOwnPropDesc5, __decorateClass4, RenderLayerBackendAttachment, RenderLayerBackend, SharedProjectionParametersBackend;
+var init_render_layer_backend = __esm({
+  "node_modules/neuroglancer/lib/render_layer_backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_backend();
+    init_render_layer_common();
+    init_disposable();
+    init_signal();
+    init_worker_rpc();
+    __defProp5 = Object.defineProperty;
+    __getOwnPropDesc5 = Object.getOwnPropertyDescriptor;
+    __decorateClass4 = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc5(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp5(target2, key, result);
+      return result;
+    };
+    RenderLayerBackendAttachment = class extends RefCounted {
+      constructor(view) {
+        super();
+        this.view = view;
+      }
+      state = void 0;
+    };
+    RenderLayerBackend = class extends ChunkRenderLayerBackend {
+      attachments = /* @__PURE__ */ new Map();
+      attach(attachment) {
+        attachment;
+      }
+    };
+    registerRPC(RENDERED_VIEW_ADD_LAYER_RPC_ID, function(x) {
+      const view = this.get(x.view);
+      const layer = this.get(x.layer);
+      const attachment = new RenderLayerBackendAttachment(view);
+      layer.attachments.set(view, attachment);
+      layer.attach(attachment);
+    });
+    registerRPC(RENDERED_VIEW_REMOVE_LAYER_RPC_ID, function(x) {
+      const view = this.get(x.view);
+      const layer = this.get(x.layer);
+      const attachment = layer.attachments.get(view);
+      layer.attachments.delete(view);
+      attachment.dispose();
+    });
+    SharedProjectionParametersBackend = class extends SharedObjectCounterpart {
+      value;
+      oldValue;
+      changed = new Signal();
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.value = options.value;
+        this.oldValue = Object.assign({}, this.value);
+      }
+    };
+    SharedProjectionParametersBackend = __decorateClass4([
+      registerSharedObject(PROJECTION_PARAMETERS_RPC_ID)
+    ], SharedProjectionParametersBackend);
+    registerRPC(PROJECTION_PARAMETERS_CHANGED_RPC_METHOD_ID, function(x) {
+      const obj = this.get(x.id);
+      const { value, oldValue } = obj;
+      Object.assign(oldValue, value);
+      Object.assign(value, x.value);
+      obj.changed.dispatch(oldValue, value);
+    });
+  }
+});
+
+// node_modules/neuroglancer/lib/util/erf.js
+function erf(x) {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const t = 1 / (1 + p * Math.abs(x));
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return Math.sign(x) * y;
+}
+var init_erf = __esm({
+  "node_modules/neuroglancer/lib/util/erf.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+  }
+});
+
+// node_modules/neuroglancer/lib/util/velocity_estimation.js
+var VELOCITY_HALF_LIFE_MS, MODEL_HALF_LIFE_MS, VelocityEstimator;
+var init_velocity_estimation = __esm({
+  "node_modules/neuroglancer/lib/util/velocity_estimation.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    VELOCITY_HALF_LIFE_MS = 50;
+    MODEL_HALF_LIFE_MS = 1e3;
+    VelocityEstimator = class {
+      constructor(velocityHalfLifeMilliseconds = VELOCITY_HALF_LIFE_MS, modelHalfLifeMilliseconds = MODEL_HALF_LIFE_MS) {
+        this.velocityHalfLifeMilliseconds = velocityHalfLifeMilliseconds;
+        this.modelHalfLifeMilliseconds = modelHalfLifeMilliseconds;
+      }
+      lastTime = Number.NEGATIVE_INFINITY;
+      rank = 0;
+      numSamples = 0;
+      // Previous position sampled.
+      prevPosition = new Float32Array();
+      // Moving average of raw velocity over `velocityHalfLifeMilliseconds`.
+      velocity = new Float32Array();
+      // Moving average of `velocity` estimate using `modelHalfLifeMilliseconds`.
+      mean = new Float32Array();
+      // Moving variance of `velocity` estimate using `modelHalfLifeMilliseconds`.
+      variance = new Float32Array();
+      reset(rank) {
+        this.lastTime = Number.NEGATIVE_INFINITY;
+        this.rank = rank;
+        this.numSamples = 0;
+        this.velocity = new Float32Array(rank);
+        this.prevPosition = new Float32Array(rank);
+        this.mean = new Float32Array(rank);
+        this.variance = new Float32Array(rank);
+      }
+      addSample(position3, time = Date.now()) {
+        const rank = position3.length;
+        if (rank !== this.rank) {
+          this.reset(rank);
+        }
+        const numSamples = this.numSamples;
+        ++this.numSamples;
+        if (this.numSamples === 0) {
+          this.prevPosition.set(position3);
+          this.lastTime = time;
+          return;
+        }
+        const deltaT = time - this.lastTime;
+        this.lastTime = time;
+        const velocityAlpha = 1 - 2 ** -(deltaT / this.velocityHalfLifeMilliseconds);
+        const modelAlpha = 1 - 2 ** -(deltaT / this.modelHalfLifeMilliseconds);
+        const { velocity, prevPosition, mean, variance } = this;
+        for (let i = 0; i < rank; ++i) {
+          const curVelocitySample = (position3[i] - prevPosition[i]) / Math.max(deltaT, 1);
+          prevPosition[i] = position3[i];
+          const prevVelocity = velocity[i];
+          const newVelocity = velocity[i] = prevVelocity + velocityAlpha * (curVelocitySample - prevVelocity);
+          if (numSamples === 1) {
+            mean[i] = newVelocity;
+          } else {
+            const meanPrev = mean[i];
+            const varPrev = variance[i];
+            const delta = newVelocity - meanPrev;
+            mean[i] = meanPrev + modelAlpha * delta;
+            variance[i] = (1 - modelAlpha) * (varPrev + modelAlpha * delta * delta);
+          }
+        }
+      }
+    };
+  }
+});
+
+// node_modules/neuroglancer/lib/visibility_priority/backend.js
+function withSharedVisibility(Base) {
+  return class extends Base {
+    visibility;
+    constructor(...args) {
+      super(...args);
+      const rpc2 = args[0];
+      const options = args[1];
+      this.visibility = rpc2.get(options.visibility);
+      this.registerDisposer(
+        this.visibility.changed.add(
+          () => this.chunkManager.scheduleUpdateChunkPriorities()
+        )
+      );
+    }
+  };
+}
+function getPriorityTier(visibility) {
+  return visibility === Number.POSITIVE_INFINITY ? ChunkPriorityTier.VISIBLE : ChunkPriorityTier.PREFETCH;
+}
+function getBasePriority(visibility) {
+  return visibility === Number.POSITIVE_INFINITY ? 0 : visibility * PREFETCH_PRIORITY_MULTIPLIER;
+}
+var init_backend3 = __esm({
+  "node_modules/neuroglancer/lib/visibility_priority/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_base();
+  }
+});
+
+// node_modules/neuroglancer/lib/sliceview/backend.js
+function disposeTransformedSources(allSources) {
+  for (const scales of allSources) {
+    for (const tsource of scales) {
+      tsource.source.dispose();
+    }
+  }
+}
+function deserializeTransformedSources(rpc2, serializedSources, layer) {
+  const sources = serializedSources.map(
+    (scales) => scales.map((serializedSource) => {
+      const source = rpc2.getRef(serializedSource.source);
+      const chunkLayout = serializedSource.chunkLayout;
+      const { rank } = source.spec;
+      const tsource = {
+        renderLayer: layer,
+        source,
+        chunkLayout: ChunkLayout.fromObject(chunkLayout),
+        layerRank: serializedSource.layerRank,
+        nonDisplayLowerClipBound: serializedSource.nonDisplayLowerClipBound,
+        nonDisplayUpperClipBound: serializedSource.nonDisplayUpperClipBound,
+        lowerClipBound: serializedSource.lowerClipBound,
+        upperClipBound: serializedSource.upperClipBound,
+        lowerClipDisplayBound: serializedSource.lowerClipDisplayBound,
+        upperClipDisplayBound: serializedSource.upperClipDisplayBound,
+        lowerChunkDisplayBound: serializedSource.lowerChunkDisplayBound,
+        upperChunkDisplayBound: serializedSource.upperChunkDisplayBound,
+        effectiveVoxelSize: serializedSource.effectiveVoxelSize,
+        chunkDisplayDimensionIndices: serializedSource.chunkDisplayDimensionIndices,
+        fixedLayerToChunkTransform: serializedSource.fixedLayerToChunkTransform,
+        combinedGlobalLocalToChunkTransform: serializedSource.combinedGlobalLocalToChunkTransform,
+        curPositionInChunks: new Float32Array(rank),
+        fixedPositionWithinChunk: new Uint32Array(rank)
+      };
+      return tsource;
+    })
+  );
+  return sources;
+}
+function getPrefetchChunkOffsets(velocityEstimator, tsource) {
+  const offsets = [];
+  const globalRank = velocityEstimator.rank;
+  const { combinedGlobalLocalToChunkTransform, layerRank } = tsource;
+  const { rank: chunkRank, chunkDataSize } = tsource.source.spec;
+  const { mean: meanVec, variance: varianceVec } = velocityEstimator;
+  for (let chunkDim = 0; chunkDim < chunkRank; ++chunkDim) {
+    const isDisplayDimension = tsource.chunkDisplayDimensionIndices.includes(chunkDim);
+    let mean = 0;
+    let variance = 0;
+    for (let globalDim = 0; globalDim < globalRank; ++globalDim) {
+      const meanValue = meanVec[globalDim];
+      const varianceValue = varianceVec[globalDim];
+      const coeff = combinedGlobalLocalToChunkTransform[globalDim * layerRank + chunkDim];
+      mean += coeff * meanValue;
+      variance += coeff * coeff * varianceValue;
+    }
+    if (mean > MAX_PREFETCH_VELOCITY) {
+      continue;
+    }
+    const chunkSize = chunkDataSize[chunkDim];
+    const initialFraction = isDisplayDimension ? 0 : tsource.fixedPositionWithinChunk[chunkDim] / chunkSize;
+    const adjustedMean = mean / chunkSize * PREFETCH_MS;
+    let adjustedStddevTimesSqrt2 = Math.sqrt(2 * variance) / chunkSize * PREFETCH_MS;
+    if (Math.abs(adjustedMean) < 1e-3 && adjustedStddevTimesSqrt2 < 1e-3) {
+      continue;
+    }
+    adjustedStddevTimesSqrt2 = Math.max(1e-6, adjustedStddevTimesSqrt2);
+    const cdf = (x) => 0.5 * (1 + erf((x - adjustedMean) / adjustedStddevTimesSqrt2));
+    const curChunk = tsource.curPositionInChunks[chunkDim];
+    const minChunk = Math.floor(tsource.lowerClipBound[chunkDim] / chunkSize);
+    const maxChunk = Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1;
+    let groupStart = offsets.length;
+    for (let i = 1; i <= MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS; ++i) {
+      if (!isDisplayDimension && curChunk + i > maxChunk) break;
+      const probability = 1 - cdf(i - initialFraction);
+      if (probability < PREFETCH_PROBABILITY_CUTOFF) break;
+      offsets.push(chunkDim, i, minChunk, maxChunk, probability, 0);
+    }
+    let newGroupStart = offsets.length;
+    for (let i = groupStart, end = offsets.length; i < end; i += PREFETCH_ENTRY_SIZE) {
+      offsets[i + PREFETCH_ENTRY_SIZE - 1] = newGroupStart;
+    }
+    groupStart = newGroupStart;
+    for (let i = 1; i <= MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS; ++i) {
+      if (!isDisplayDimension && curChunk - i < minChunk) break;
+      const probability = cdf(-i + 1 - initialFraction);
+      if (probability < PREFETCH_PROBABILITY_CUTOFF) break;
+      offsets.push(chunkDim, -i, minChunk, maxChunk, probability, 0);
+    }
+    newGroupStart = offsets.length;
+    for (let i = groupStart, end = offsets.length; i < end; i += PREFETCH_ENTRY_SIZE) {
+      offsets[i + PREFETCH_ENTRY_SIZE - 1] = newGroupStart;
+    }
+  }
+  return offsets;
+}
+var __defProp6, __getOwnPropDesc6, __decorateClass5, BASE_PRIORITY, SCALE_PRIORITY_MULTIPLIER, tempChunkPosition, tempCenter, tempChunkSize, SliceViewCounterpartBase, SliceViewIntermediateBase, SliceViewBackend, SliceViewChunk, SliceViewChunkSourceBackend, SliceViewRenderLayerBackend, PREFETCH_MS, MAX_PREFETCH_VELOCITY, MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS, PREFETCH_PROBABILITY_CUTOFF, PREFETCH_ENTRY_SIZE;
+var init_backend4 = __esm({
+  "node_modules/neuroglancer/lib/sliceview/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_render_layer_backend();
+    init_backend();
+    init_base();
+    init_base3();
+    init_chunk_layout();
+    init_abort();
+    init_erf();
+    init_geom();
+    init_velocity_estimation();
+    init_backend3();
+    init_worker_rpc();
+    __defProp6 = Object.defineProperty;
+    __getOwnPropDesc6 = Object.getOwnPropertyDescriptor;
+    __decorateClass5 = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc6(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp6(target2, key, result);
+      return result;
+    };
+    BASE_PRIORITY = -1e12;
+    SCALE_PRIORITY_MULTIPLIER = 1e9;
+    tempChunkPosition = vec3_exports.create();
+    tempCenter = vec3_exports.create();
+    tempChunkSize = vec3_exports.create();
+    SliceViewCounterpartBase = class extends SliceViewBase {
+      constructor(rpc2, options) {
+        super(rpc2.get(options.projectionParameters));
+        this.initializeSharedObject(rpc2, options.id);
+      }
+    };
+    SliceViewIntermediateBase = withSharedVisibility(
+      withChunkManager(SliceViewCounterpartBase)
+    );
+    SliceViewBackend = class extends SliceViewIntermediateBase {
+      velocityEstimator = new VelocityEstimator();
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.registerDisposer(
+          this.chunkManager.recomputeChunkPriorities.add(() => {
+            this.updateVisibleChunks();
+          })
+        );
+        this.registerDisposer(
+          this.projectionParameters.changed.add(() => {
+            this.velocityEstimator.addSample(
+              this.projectionParameters.value.globalPosition
+            );
+          })
+        );
+      }
+      invalidateVisibleChunks() {
+        super.invalidateVisibleChunks();
+        this.chunkManager.scheduleUpdateChunkPriorities();
+      }
+      handleLayerChanged = () => {
+        this.chunkManager.scheduleUpdateChunkPriorities();
+      };
+      updateVisibleChunks() {
+        const projectionParameters = this.projectionParameters.value;
+        const chunkManager = this.chunkManager;
+        const visibility = this.visibility.value;
+        if (visibility === Number.NEGATIVE_INFINITY) {
+          return;
+        }
+        this.updateVisibleSources();
+        const { centerDataPosition } = projectionParameters;
+        const priorityTier = getPriorityTier(visibility);
+        let basePriority = getBasePriority(visibility);
+        basePriority += BASE_PRIORITY;
+        const localCenter = tempCenter;
+        const chunkSize = tempChunkSize;
+        const curVisibleChunks = [];
+        this.velocityEstimator.addSample(
+          this.projectionParameters.value.globalPosition
+        );
+        for (const [layer, visibleLayerSources] of this.visibleLayers) {
+          chunkManager.registerLayer(layer);
+          const { visibleSources } = visibleLayerSources;
+          for (let i = 0, numVisibleSources = visibleSources.length; i < numVisibleSources; ++i) {
+            const tsource = visibleSources[i];
+            const prefetchOffsets = chunkManager.queueManager.enablePrefetch.value ? getPrefetchChunkOffsets(this.velocityEstimator, tsource) : [];
+            const { chunkLayout } = tsource;
+            chunkLayout.globalToLocalSpatial(localCenter, centerDataPosition);
+            const { size, finiteRank } = chunkLayout;
+            vec3_exports.copy(chunkSize, size);
+            for (let i2 = finiteRank; i2 < 3; ++i2) {
+              chunkSize[i2] = 0;
+              localCenter[i2] = 0;
+            }
+            const priorityIndex = i;
+            const sourceBasePriority = basePriority + SCALE_PRIORITY_MULTIPLIER * priorityIndex;
+            curVisibleChunks.length = 0;
+            const curMarkGeneration = getNextMarkGeneration();
+            forEachPlaneIntersectingVolumetricChunk(
+              projectionParameters,
+              tsource.renderLayer.localPosition.value,
+              tsource,
+              getNormalizedChunkLayout(projectionParameters, tsource.chunkLayout),
+              (positionInChunks) => {
+                vec3_exports.multiply(tempChunkPosition, positionInChunks, chunkSize);
+                const priority = -vec3_exports.distance(localCenter, tempChunkPosition);
+                const { curPositionInChunks } = tsource;
+                const chunk = tsource.source.getChunk(curPositionInChunks);
+                chunkManager.requestChunk(
+                  chunk,
+                  priorityTier,
+                  sourceBasePriority + priority
+                );
+                ++layer.numVisibleChunksNeeded;
+                if (chunk.state === ChunkState.GPU_MEMORY) {
+                  ++layer.numVisibleChunksAvailable;
+                }
+                curVisibleChunks.push(chunk);
+                chunk.markGeneration = curMarkGeneration;
+              }
+            );
+            if (prefetchOffsets.length !== 0) {
+              const { curPositionInChunks } = tsource;
+              for (const visibleChunk of curVisibleChunks) {
+                curPositionInChunks.set(visibleChunk.chunkGridPosition);
+                for (let j = 0, length6 = prefetchOffsets.length; j < length6; ) {
+                  const chunkDim = prefetchOffsets[j];
+                  const minChunk = prefetchOffsets[j + 2];
+                  const maxChunk = prefetchOffsets[j + 3];
+                  const newPriority = prefetchOffsets[j + 4];
+                  const jumpOffset = prefetchOffsets[j + 5];
+                  const oldIndex = curPositionInChunks[chunkDim];
+                  const newIndex = oldIndex + prefetchOffsets[j + 1];
+                  if (newIndex < minChunk || newIndex > maxChunk) {
+                    j = jumpOffset;
+                    continue;
+                  }
+                  curPositionInChunks[chunkDim] = newIndex;
+                  const chunk = tsource.source.getChunk(curPositionInChunks);
+                  curPositionInChunks[chunkDim] = oldIndex;
+                  if (chunk.markGeneration === curMarkGeneration) {
+                    j = jumpOffset;
+                    continue;
+                  }
+                  chunkManager.requestChunk(
+                    chunk,
+                    ChunkPriorityTier.PREFETCH,
+                    sourceBasePriority + newPriority
+                  );
+                  ++layer.numPrefetchChunksNeeded;
+                  if (chunk.state === ChunkState.GPU_MEMORY) {
+                    ++layer.numPrefetchChunksAvailable;
+                  }
+                  j += PREFETCH_ENTRY_SIZE;
+                }
+              }
+            }
+          }
+        }
+      }
+      removeVisibleLayer(layer) {
+        const { visibleLayers } = this;
+        const layerInfo = visibleLayers.get(layer);
+        visibleLayers.delete(layer);
+        disposeTransformedSources(layerInfo.allSources);
+        layer.renderScaleTarget.changed.remove(this.invalidateVisibleSources);
+        layer.localPosition.changed.remove(this.handleLayerChanged);
+        this.invalidateVisibleSources();
+      }
+      addVisibleLayer(layer, allSources, displayDimensionRenderInfo) {
+        let layerInfo = this.visibleLayers.get(layer);
+        if (layerInfo === void 0) {
+          layerInfo = {
+            allSources,
+            visibleSources: [],
+            displayDimensionRenderInfo
+          };
+          this.visibleLayers.set(layer, layerInfo);
+          layer.renderScaleTarget.changed.add(
+            () => this.invalidateVisibleSources()
+          );
+          layer.localPosition.changed.add(this.handleLayerChanged);
+        } else {
+          disposeTransformedSources(layerInfo.allSources);
+          layerInfo.allSources = allSources;
+          layerInfo.visibleSources.length = 0;
+          layerInfo.displayDimensionRenderInfo = displayDimensionRenderInfo;
+        }
+        this.invalidateVisibleSources();
+      }
+      disposed() {
+        for (const layer of this.visibleLayers.keys()) {
+          this.removeVisibleLayer(layer);
+        }
+        super.disposed();
+      }
+      invalidateVisibleSources() {
+        super.invalidateVisibleSources();
+        this.chunkManager.scheduleUpdateChunkPriorities();
+      }
+    };
+    SliceViewBackend = __decorateClass5([
+      registerSharedObject(SLICEVIEW_RPC_ID)
+    ], SliceViewBackend);
+    registerRPC(SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID, function(x) {
+      const obj = this.get(x.id);
+      const layer = this.get(x.layerId);
+      const sources = deserializeTransformedSources(this, x.sources, layer);
+      obj.addVisibleLayer(layer, sources, x.displayDimensionRenderInfo);
+    });
+    registerRPC(SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID, function(x) {
+      const obj = this.get(x.id);
+      const layer = this.get(x.layerId);
+      obj.removeVisibleLayer(layer);
+    });
+    SliceViewChunk = class extends Chunk {
+      chunkGridPosition;
+      source = null;
+      initializeVolumeChunk(key, chunkGridPosition) {
+        super.initialize(key);
+        this.chunkGridPosition = Float32Array.from(chunkGridPosition);
+      }
+      serialize(msg, transfers) {
+        super.serialize(msg, transfers);
+        msg.chunkGridPosition = this.chunkGridPosition;
+      }
+      downloadSucceeded() {
+        super.downloadSucceeded();
+      }
+      freeSystemMemory() {
+      }
+      toString() {
+        return this.source.toString() + ":" + vec3Key(this.chunkGridPosition);
+      }
+    };
+    SliceViewChunkSourceBackend = class extends ChunkSource {
+      spec;
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.spec = options.spec;
+      }
+      getChunk(chunkGridPosition) {
+        const key = chunkGridPosition.join();
+        let chunk = this.chunks.get(key);
+        if (chunk === void 0) {
+          chunk = this.getNewChunk_(this.chunkConstructor);
+          chunk.initializeVolumeChunk(key, chunkGridPosition);
+          this.addChunk(chunk);
+        }
+        return chunk;
+      }
+    };
+    SliceViewRenderLayerBackend = class extends SharedObjectCounterpart {
+      renderScaleTarget;
+      localPosition;
+      numVisibleChunksNeeded;
+      numVisibleChunksAvailable;
+      numPrefetchChunksNeeded;
+      numPrefetchChunksAvailable;
+      chunkManagerGeneration;
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        this.renderScaleTarget = rpc2.get(options.renderScaleTarget);
+        this.localPosition = rpc2.get(options.localPosition);
+        this.numVisibleChunksNeeded = 0;
+        this.numVisibleChunksAvailable = 0;
+        this.numPrefetchChunksAvailable = 0;
+        this.numPrefetchChunksNeeded = 0;
+        this.chunkManagerGeneration = -1;
+      }
+      filterVisibleSources(sliceView, sources) {
+        return filterVisibleSources(sliceView, this, sources);
+      }
+    };
+    SliceViewRenderLayerBackend = __decorateClass5([
+      registerSharedObject(SLICEVIEW_RENDERLAYER_RPC_ID)
+    ], SliceViewRenderLayerBackend);
+    PREFETCH_MS = 2e3;
+    MAX_PREFETCH_VELOCITY = 0.1;
+    MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS = 32;
+    PREFETCH_PROBABILITY_CUTOFF = 0.05;
+    PREFETCH_ENTRY_SIZE = 6;
+    registerPromiseRPC(
+      SLICEVIEW_REQUEST_CHUNK_RPC_ID,
+      async function(x, progressOptions) {
+        const source = this.get(x.source);
+        const { chunkManager } = source;
+        const chunk = source.getChunk(x.chunkGridPosition);
+        const key = chunk.key;
+        if (chunk.state <= ChunkState.SYSTEM_MEMORY) {
+          return { value: void 0 };
+        }
+        if (chunk.state === ChunkState.FAILED) {
+          throw chunk.error;
+        }
+        const disposeRecompute = chunkManager.recomputeChunkPriorities.add(() => {
+          chunkManager.requestChunk(
+            chunk,
+            ChunkPriorityTier.VISIBLE,
+            Number.POSITIVE_INFINITY,
+            ChunkState.SYSTEM_MEMORY
+          );
+        });
+        chunkManager.scheduleUpdateChunkPriorities();
+        let listener;
+        const promise = new Promise((resolve, reject) => {
+          listener = (chunk2) => {
+            if (chunk2.state === ChunkState.FAILED) {
+              reject(chunk2.error);
+              return;
+            }
+            if (chunk2.state <= ChunkState.SYSTEM_MEMORY) {
+              resolve();
+            }
+          };
+        });
+        source.registerChunkListener(key, listener);
+        try {
+          await raceWithAbort(promise, progressOptions.signal);
+          return { value: void 0 };
+        } finally {
+          source.unregisterChunkListener(key, listener);
+          disposeRecompute();
+          chunkManager.scheduleUpdateChunkPriorities();
+        }
+      }
+    );
+  }
+});
+
+// node_modules/neuroglancer/lib/sliceview/volume/backend.js
+function computeChunkBounds(source, chunk) {
+  const { spec, tempChunkDataSize, tempChunkPosition: tempChunkPosition4 } = source;
+  const { upperVoxelBound, rank, baseVoxelOffset } = spec;
+  const origChunkDataSize = spec.chunkDataSize;
+  const newChunkDataSize = tempChunkDataSize;
+  const chunkPosition = multiply6(
+    tempChunkPosition4,
+    chunk.chunkGridPosition,
+    origChunkDataSize
+  );
+  let partial = false;
+  for (let i = 0; i < rank; ++i) {
+    const upper = Math.min(
+      upperVoxelBound[i],
+      chunkPosition[i] + origChunkDataSize[i]
+    );
+    const size = newChunkDataSize[i] = upper - chunkPosition[i];
+    if (size !== origChunkDataSize[i]) {
+      partial = true;
+    }
+  }
+  add6(chunkPosition, chunkPosition, baseVoxelOffset);
+  if (partial) {
+    chunk.chunkDataSize = Uint32Array.from(newChunkDataSize);
+  } else {
+    chunk.chunkDataSize = origChunkDataSize;
+  }
+  return chunkPosition;
+}
+var VolumeChunk, VolumeChunkSource;
+var init_backend5 = __esm({
+  "node_modules/neuroglancer/lib/sliceview/volume/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_backend4();
+    init_vector();
+    VolumeChunk = class extends SliceViewChunk {
+      source = null;
+      data;
+      chunkDataSize;
+      initializeVolumeChunk(key, chunkGridPosition) {
+        super.initializeVolumeChunk(key, chunkGridPosition);
+        this.chunkDataSize = null;
+        this.data = null;
+      }
+      serialize(msg, transfers) {
+        super.serialize(msg, transfers);
+        const chunkDataSize = this.chunkDataSize;
+        if (chunkDataSize !== this.source.spec.chunkDataSize) {
+          msg.chunkDataSize = chunkDataSize;
+        }
+        const data = msg.data = this.data;
+        if (data !== null) {
+          transfers.push(data.buffer);
+        }
+        this.data = null;
+      }
+      downloadSucceeded() {
+        var _a;
+        this.systemMemoryBytes = this.gpuMemoryBytes = ((_a = this.data) == null ? void 0 : _a.byteLength) ?? 0;
+        super.downloadSucceeded();
+      }
+      freeSystemMemory() {
+        this.data = null;
+      }
+    };
+    VolumeChunkSource = class extends SliceViewChunkSourceBackend {
+      tempChunkDataSize;
+      tempChunkPosition;
+      constructor(rpc2, options) {
+        super(rpc2, options);
+        const rank = this.spec.rank;
+        this.tempChunkDataSize = new Uint32Array(rank);
+        this.tempChunkPosition = new Float32Array(rank);
+      }
+      computeChunkBounds(chunk) {
+        return computeChunkBounds(this, chunk);
+      }
+    };
+    VolumeChunkSource.prototype.chunkConstructor = VolumeChunk;
+  }
+});
+
+// node_modules/neuroglancer/lib/datasource/zarr/backend.js
+var __defProp7, __getOwnPropDesc7, __decorateClass6, ZarrVolumeChunkSource;
+var init_backend6 = __esm({
+  "node_modules/neuroglancer/lib/datasource/zarr/backend.js"() {
+    "use strict";
+    init_legacy_browser();
+    init_worker_landed();
+    init_decode2();
+    init_decode3();
+    init_decode4();
+    init_decode5();
+    init_backend();
+    init_base2();
+    init_decode();
+    init_decode6();
+    init_decode7();
+    init_decode8();
+    init_metadata();
+    init_backend2();
+    init_postprocess();
+    init_backend5();
+    init_worker_rpc();
+    __defProp7 = Object.defineProperty;
+    __getOwnPropDesc7 = Object.getOwnPropertyDescriptor;
+    __decorateClass6 = (decorators, target2, key, kind) => {
+      var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc7(target2, key) : target2;
+      for (var i = decorators.length - 1, decorator; i >= 0; i--)
+        if (decorator = decorators[i])
+          result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
+      if (kind && result) __defProp7(target2, key, result);
+      return result;
+    };
+    ZarrVolumeChunkSource = class extends WithParameters(
+      WithSharedKvStoreContextCounterpart(VolumeChunkSource),
+      VolumeChunkSourceParameters
+    ) {
+      chunkKvStore = applySharding(
+        this.chunkManager,
+        this.parameters.metadata.codecs,
+        this.sharedKvStoreContext.kvStoreContext.getKvStore(this.parameters.url)
+      );
+      async download(chunk, signal) {
+        chunk.chunkDataSize = this.spec.chunkDataSize;
+        const { parameters } = this;
+        const { chunkGridPosition } = chunk;
+        const { metadata } = parameters;
+        let baseKey = "";
+        const rank = this.spec.rank;
+        const { physicalToLogicalDimension } = metadata.codecs.layoutInfo[0];
+        let sep;
+        if (metadata.chunkKeyEncoding === ChunkKeyEncoding.DEFAULT) {
+          baseKey += "c";
+          sep = metadata.dimensionSeparator;
+        } else {
+          sep = "";
+          if (rank === 0) {
+            baseKey += "0";
+          }
+        }
+        const keyCoords = new Array(rank);
+        const { readChunkShape } = metadata.codecs.layoutInfo[0];
+        const { chunkShape } = metadata;
+        for (let fOrderPhysicalDim = 0; fOrderPhysicalDim < rank; ++fOrderPhysicalDim) {
+          const decodedDim = physicalToLogicalDimension[rank - 1 - fOrderPhysicalDim];
+          keyCoords[decodedDim] = Math.floor(
+            chunkGridPosition[fOrderPhysicalDim] * readChunkShape[decodedDim] / chunkShape[decodedDim]
+          );
+        }
+        for (let i = 0; i < rank; ++i) {
+          baseKey += `${sep}${keyCoords[i]}`;
+          sep = metadata.dimensionSeparator;
+        }
+        const { chunkKvStore } = this;
+        const response = await chunkKvStore.kvStore.read(
+          chunkKvStore.getChunkKey(chunkGridPosition, baseKey),
+          { signal }
+        );
+        if (response !== void 0) {
+          const decoded = await decodeArray(
+            chunkKvStore.decodeCodecs,
+            new Uint8Array(await response.response.arrayBuffer()),
+            signal
+          );
+          await postProcessRawData(chunk, signal, decoded);
+        }
+      }
+    };
+    ZarrVolumeChunkSource = __decorateClass6([
+      registerSharedObject()
+    ], ZarrVolumeChunkSource);
+  }
+});
+
+// src/engine/worker_landed.js
+function rememberKeys(store) {
+  if (store.mesospimKeys) return;
+  store.mesospimKeys = true;
+  const stock = store.getChunkKey;
+  store.getChunkKey = (position3, baseKey) => {
+    const key = stock(position3, baseKey);
+    let file = key;
+    while (typeof file !== "string") file = file.base;
+    if (starting !== null) starting.fileKey = file;
+    return key;
+  };
+}
+function forgetShardIndexes(store, files) {
+  for (let level = store.kvStore; level == null ? void 0 : level.indexCache; level = level.base) {
+    for (const [key, cached] of level.indexCache.chunks) {
+      let file;
+      try {
+        file = JSON.parse(key);
+      } catch {
+        continue;
+      }
+      if (typeof file === "string" && files(file)) cached.asyncMemoize = void 0;
+    }
+  }
+}
+function readAgain(manager, chunk) {
+  switch (chunk.state) {
+    case ChunkState.QUEUED:
+      return;
+    case ChunkState.DOWNLOADING: {
+      const controller = chunk.downloadAbortController;
+      chunk.downloadAbortController = void 0;
+      controller == null ? void 0 : controller.abort(new DOMException("chunk download cancelled", "AbortError"));
+      break;
+    }
+    case ChunkState.GPU_MEMORY:
+      manager.freeChunkGPUMemory(chunk);
+    // fallthrough
+    case ChunkState.SYSTEM_MEMORY_WORKER:
+    case ChunkState.SYSTEM_MEMORY:
+      manager.freeChunkSystemMemory(chunk);
+      break;
+  }
+  manager.updateChunkState(chunk, ChunkState.QUEUED);
+}
+function hold(chunkManager) {
+  if (chunkManager.mesospimWanted) return;
+  chunkManager.mesospimWanted = true;
+  chunkManager.recomputeChunkPriorities.add(() => {
+    for (const { source, positions } of wanted.values()) {
+      if (source.chunkManager !== chunkManager) continue;
+      for (const position3 of positions) {
+        chunkManager.requestChunk(source.getChunk(position3), ChunkPriorityTier.VISIBLE, 0);
+      }
+    }
+  });
+}
+var LANDED_RPC_ID, WANT_RPC_ID, starting, stockDownload, wanted;
+var init_worker_landed = __esm({
+  "src/engine/worker_landed.js"() {
+    init_base();
+    init_backend6();
+    init_worker_rpc();
+    LANDED_RPC_ID = "mesospim.landed";
+    WANT_RPC_ID = "mesospim.want";
+    starting = null;
+    stockDownload = ZarrVolumeChunkSource.prototype.download;
+    ZarrVolumeChunkSource.prototype.download = function download(chunk, signal) {
+      rememberKeys(this.chunkKvStore);
+      chunk.absent = false;
+      starting = chunk;
+      let pending2;
+      try {
+        pending2 = stockDownload.call(this, chunk, signal);
+      } finally {
+        starting = null;
+      }
+      return pending2.then(
+        () => {
+          chunk.absent = chunk.data === null;
+        },
+        (error) => {
+          chunk.absent = true;
+          throw error;
+        }
+      );
+    };
+    registerRPC(LANDED_RPC_ID, function landed(x) {
+      const source = this.get(x.source);
+      if (source === void 0 || source.chunks === void 0) return;
+      const prefix = x.prefix ?? "";
+      const listed = x.files ? new Set(x.files) : null;
+      const named = (file) => {
+        if (typeof file !== "string") return false;
+        const at2 = file.indexOf(prefix);
+        return at2 !== -1 && (listed === null || listed.has(file.slice(at2 + prefix.length)));
+      };
+      if (source.chunkKvStore) forgetShardIndexes(source.chunkKvStore, named);
+      const manager = source.chunkManager.queueManager;
+      let any3 = false;
+      for (const chunk of Array.from(source.chunks.values())) {
+        if (chunk.fileKey === void 0 || !named(chunk.fileKey)) continue;
+        if (!chunk.absent && chunk.state !== ChunkState.DOWNLOADING) continue;
+        readAgain(manager, chunk);
+        any3 = true;
+      }
+      if (any3) manager.scheduleUpdate();
+    });
+    wanted = /* @__PURE__ */ new Map();
+    registerRPC(WANT_RPC_ID, function want(x) {
+      var _a;
+      const source = this.get(x.source);
+      if (source === void 0 || typeof source.getChunk !== "function") return;
+      if ((_a = x.positions) == null ? void 0 : _a.length) {
+        wanted.set(x.source, { source, positions: x.positions.map((position3) => Float32Array.from(position3)) });
+      } else {
+        wanted.delete(x.source);
+      }
+      hold(source.chunkManager);
+      source.chunkManager.scheduleUpdateChunkPriorities();
+    });
+  }
+});
+
 // node_modules/core-js/internals/global-this.js
 var require_global_this = __commonJS({
   "node_modules/core-js/internals/global-this.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var check2 = function(it) {
       return it && it.Math === Math && it;
     };
@@ -197,6 +10188,7 @@ var require_path = __commonJS({
   "node_modules/core-js/internals/path.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     module.exports = globalThis2;
   }
@@ -207,6 +10199,7 @@ var require_fails = __commonJS({
   "node_modules/core-js/internals/fails.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     module.exports = function(exec) {
       try {
         return !!exec();
@@ -222,6 +10215,7 @@ var require_function_bind_native = __commonJS({
   "node_modules/core-js/internals/function-bind-native.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var fails = require_fails();
     module.exports = !fails(function() {
       var test = function() {
@@ -236,6 +10230,7 @@ var require_function_uncurry_this = __commonJS({
   "node_modules/core-js/internals/function-uncurry-this.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var NATIVE_BIND = require_function_bind_native();
     var FunctionPrototype = Function.prototype;
     var call = FunctionPrototype.call;
@@ -253,6 +10248,7 @@ var require_is_null_or_undefined = __commonJS({
   "node_modules/core-js/internals/is-null-or-undefined.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     module.exports = function(it) {
       return it === null || it === void 0;
     };
@@ -264,6 +10260,7 @@ var require_require_object_coercible = __commonJS({
   "node_modules/core-js/internals/require-object-coercible.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var isNullOrUndefined = require_is_null_or_undefined();
     var $TypeError = TypeError;
     module.exports = function(it) {
@@ -278,6 +10275,7 @@ var require_to_object = __commonJS({
   "node_modules/core-js/internals/to-object.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var requireObjectCoercible = require_require_object_coercible();
     var $Object = Object;
     module.exports = function(argument) {
@@ -291,6 +10289,7 @@ var require_has_own_property = __commonJS({
   "node_modules/core-js/internals/has-own-property.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var uncurryThis = require_function_uncurry_this();
     var toObject = require_to_object();
     var hasOwnProperty2 = uncurryThis({}.hasOwnProperty);
@@ -305,6 +10304,7 @@ var require_is_pure = __commonJS({
   "node_modules/core-js/internals/is-pure.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     module.exports = false;
   }
 });
@@ -314,6 +10314,7 @@ var require_define_global_property = __commonJS({
   "node_modules/core-js/internals/define-global-property.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var defineProperty = Object.defineProperty;
     module.exports = function(key, value) {
@@ -332,6 +10333,7 @@ var require_shared_store = __commonJS({
   "node_modules/core-js/internals/shared-store.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var IS_PURE = require_is_pure();
     var globalThis2 = require_global_this();
     var defineGlobalProperty = require_define_global_property();
@@ -352,6 +10354,7 @@ var require_shared = __commonJS({
   "node_modules/core-js/internals/shared.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var store = require_shared_store();
     var create6 = Object.create || Object;
     module.exports = function(key, value) {
@@ -365,6 +10368,7 @@ var require_uid = __commonJS({
   "node_modules/core-js/internals/uid.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var uncurryThis = require_function_uncurry_this();
     var id = 0;
     var postfix = Math.random();
@@ -380,6 +10384,7 @@ var require_environment_user_agent = __commonJS({
   "node_modules/core-js/internals/environment-user-agent.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var navigator2 = globalThis2.navigator;
     var userAgent = navigator2 && navigator2.userAgent;
@@ -392,6 +10397,7 @@ var require_environment_v8_version = __commonJS({
   "node_modules/core-js/internals/environment-v8-version.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var userAgent = require_environment_user_agent();
     var process = globalThis2.process;
@@ -420,6 +10426,7 @@ var require_symbol_constructor_detection = __commonJS({
   "node_modules/core-js/internals/symbol-constructor-detection.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var V8_VERSION = require_environment_v8_version();
     var fails = require_fails();
     var globalThis2 = require_global_this();
@@ -437,6 +10444,7 @@ var require_use_symbol_as_uid = __commonJS({
   "node_modules/core-js/internals/use-symbol-as-uid.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var NATIVE_SYMBOL = require_symbol_constructor_detection();
     module.exports = NATIVE_SYMBOL && !Symbol.sham && typeof Symbol.iterator == "symbol";
   }
@@ -447,6 +10455,7 @@ var require_well_known_symbol = __commonJS({
   "node_modules/core-js/internals/well-known-symbol.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var shared = require_shared();
     var hasOwn = require_has_own_property();
@@ -470,6 +10479,7 @@ var require_well_known_symbol_wrapped = __commonJS({
   "node_modules/core-js/internals/well-known-symbol-wrapped.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var wellKnownSymbol = require_well_known_symbol();
     exports.f = wellKnownSymbol;
   }
@@ -480,6 +10490,7 @@ var require_descriptors = __commonJS({
   "node_modules/core-js/internals/descriptors.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var fails = require_fails();
     module.exports = !fails(function() {
       return Object.defineProperty({}, 1, { get: function() {
@@ -494,6 +10505,7 @@ var require_is_callable = __commonJS({
   "node_modules/core-js/internals/is-callable.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var documentAll = typeof document == "object" && document.all;
     module.exports = typeof documentAll == "undefined" && documentAll !== void 0 ? function(argument) {
       return typeof argument == "function" || argument === documentAll;
@@ -508,6 +10520,7 @@ var require_is_object = __commonJS({
   "node_modules/core-js/internals/is-object.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var isCallable = require_is_callable();
     module.exports = function(it) {
       return typeof it == "object" ? it !== null : isCallable(it);
@@ -520,6 +10533,7 @@ var require_document_create_element = __commonJS({
   "node_modules/core-js/internals/document-create-element.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var isObject2 = require_is_object();
     var document2 = globalThis2.document;
@@ -535,6 +10549,7 @@ var require_ie8_dom_define = __commonJS({
   "node_modules/core-js/internals/ie8-dom-define.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var DESCRIPTORS = require_descriptors();
     var fails = require_fails();
     var createElement = require_document_create_element();
@@ -553,6 +10568,7 @@ var require_v8_prototype_define_bug = __commonJS({
   "node_modules/core-js/internals/v8-prototype-define-bug.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var DESCRIPTORS = require_descriptors();
     var fails = require_fails();
     module.exports = DESCRIPTORS && fails(function() {
@@ -570,6 +10586,7 @@ var require_an_object = __commonJS({
   "node_modules/core-js/internals/an-object.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var isObject2 = require_is_object();
     var $String = String;
     var $TypeError = TypeError;
@@ -585,6 +10602,7 @@ var require_function_call = __commonJS({
   "node_modules/core-js/internals/function-call.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var NATIVE_BIND = require_function_bind_native();
     var call = Function.prototype.call;
     module.exports = NATIVE_BIND ? call.bind(call) : function() {
@@ -598,6 +10616,7 @@ var require_get_built_in = __commonJS({
   "node_modules/core-js/internals/get-built-in.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var isCallable = require_is_callable();
     var aFunction = function(argument) {
@@ -614,6 +10633,7 @@ var require_object_is_prototype_of = __commonJS({
   "node_modules/core-js/internals/object-is-prototype-of.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var uncurryThis = require_function_uncurry_this();
     module.exports = uncurryThis({}.isPrototypeOf);
   }
@@ -624,6 +10644,7 @@ var require_is_symbol = __commonJS({
   "node_modules/core-js/internals/is-symbol.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var getBuiltIn = require_get_built_in();
     var isCallable = require_is_callable();
     var isPrototypeOf = require_object_is_prototype_of();
@@ -643,6 +10664,7 @@ var require_try_to_string = __commonJS({
   "node_modules/core-js/internals/try-to-string.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var $String = String;
     module.exports = function(argument) {
       try {
@@ -659,6 +10681,7 @@ var require_a_callable = __commonJS({
   "node_modules/core-js/internals/a-callable.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var isCallable = require_is_callable();
     var tryToString = require_try_to_string();
     var $TypeError = TypeError;
@@ -674,6 +10697,7 @@ var require_get_method = __commonJS({
   "node_modules/core-js/internals/get-method.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var aCallable = require_a_callable();
     var isNullOrUndefined = require_is_null_or_undefined();
     module.exports = function(V, P) {
@@ -688,6 +10712,7 @@ var require_ordinary_to_primitive = __commonJS({
   "node_modules/core-js/internals/ordinary-to-primitive.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var call = require_function_call();
     var isCallable = require_is_callable();
     var isObject2 = require_is_object();
@@ -707,6 +10732,7 @@ var require_to_primitive = __commonJS({
   "node_modules/core-js/internals/to-primitive.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var call = require_function_call();
     var isObject2 = require_is_object();
     var isSymbol2 = require_is_symbol();
@@ -736,6 +10762,7 @@ var require_to_property_key = __commonJS({
   "node_modules/core-js/internals/to-property-key.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var toPrimitive = require_to_primitive();
     var isSymbol2 = require_is_symbol();
     module.exports = function(argument) {
@@ -750,6 +10777,7 @@ var require_object_define_property = __commonJS({
   "node_modules/core-js/internals/object-define-property.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var DESCRIPTORS = require_descriptors();
     var IE8_DOM_DEFINE = require_ie8_dom_define();
     var V8_PROTOTYPE_DEFINE_BUG = require_v8_prototype_define_bug();
@@ -797,6 +10825,7 @@ var require_well_known_symbol_define = __commonJS({
   "node_modules/core-js/internals/well-known-symbol-define.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var path = require_path();
     var hasOwn = require_has_own_property();
     var wrappedWellKnownSymbolModule = require_well_known_symbol_wrapped();
@@ -815,6 +10844,7 @@ var require_object_property_is_enumerable = __commonJS({
   "node_modules/core-js/internals/object-property-is-enumerable.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var $propertyIsEnumerable = {}.propertyIsEnumerable;
     var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
     var NASHORN_BUG = getOwnPropertyDescriptor && !$propertyIsEnumerable.call({ 1: 2 }, 1);
@@ -830,6 +10860,7 @@ var require_create_property_descriptor = __commonJS({
   "node_modules/core-js/internals/create-property-descriptor.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     module.exports = function(bitmap, value) {
       return {
         enumerable: !(bitmap & 1),
@@ -846,6 +10877,7 @@ var require_classof_raw = __commonJS({
   "node_modules/core-js/internals/classof-raw.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var uncurryThis = require_function_uncurry_this();
     var toString = uncurryThis({}.toString);
     var stringSlice = uncurryThis("".slice);
@@ -860,6 +10892,7 @@ var require_indexed_object = __commonJS({
   "node_modules/core-js/internals/indexed-object.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var uncurryThis = require_function_uncurry_this();
     var fails = require_fails();
     var classof = require_classof_raw();
@@ -878,6 +10911,7 @@ var require_to_indexed_object = __commonJS({
   "node_modules/core-js/internals/to-indexed-object.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var IndexedObject = require_indexed_object();
     var requireObjectCoercible = require_require_object_coercible();
     module.exports = function(it) {
@@ -891,6 +10925,7 @@ var require_object_get_own_property_descriptor = __commonJS({
   "node_modules/core-js/internals/object-get-own-property-descriptor.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var DESCRIPTORS = require_descriptors();
     var call = require_function_call();
     var propertyIsEnumerableModule = require_object_property_is_enumerable();
@@ -917,6 +10952,7 @@ var require_es_symbol_dispose = __commonJS({
   "node_modules/core-js/modules/es.symbol.dispose.js"() {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var defineWellKnownSymbol = require_well_known_symbol_define();
     var defineProperty = require_object_define_property().f;
@@ -938,6 +10974,7 @@ var require_dispose = __commonJS({
   "node_modules/core-js/es/symbol/dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     require_es_symbol_dispose();
     var WrappedWellKnownSymbolModule = require_well_known_symbol_wrapped();
     module.exports = WrappedWellKnownSymbolModule.f("dispose");
@@ -949,6 +10986,7 @@ var require_dispose2 = __commonJS({
   "node_modules/core-js/stable/symbol/dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var parent = require_dispose();
     module.exports = parent;
   }
@@ -959,6 +10997,7 @@ var require_esnext_symbol_dispose = __commonJS({
   "node_modules/core-js/modules/esnext.symbol.dispose.js"() {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     require_es_symbol_dispose();
   }
 });
@@ -968,6 +11007,7 @@ var require_dispose3 = __commonJS({
   "node_modules/core-js/actual/symbol/dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var parent = require_dispose2();
     require_esnext_symbol_dispose();
     module.exports = parent;
@@ -979,6 +11019,7 @@ var require_es_symbol_async_dispose = __commonJS({
   "node_modules/core-js/modules/es.symbol.async-dispose.js"() {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var globalThis2 = require_global_this();
     var defineWellKnownSymbol = require_well_known_symbol_define();
     var defineProperty = require_object_define_property().f;
@@ -1000,6 +11041,7 @@ var require_async_dispose = __commonJS({
   "node_modules/core-js/es/symbol/async-dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     require_es_symbol_async_dispose();
     var WrappedWellKnownSymbolModule = require_well_known_symbol_wrapped();
     module.exports = WrappedWellKnownSymbolModule.f("asyncDispose");
@@ -1011,6 +11053,7 @@ var require_async_dispose2 = __commonJS({
   "node_modules/core-js/stable/symbol/async-dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var parent = require_async_dispose();
     module.exports = parent;
   }
@@ -1021,6 +11064,7 @@ var require_esnext_symbol_async_dispose = __commonJS({
   "node_modules/core-js/modules/esnext.symbol.async-dispose.js"() {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     require_es_symbol_async_dispose();
   }
 });
@@ -1030,6 +11074,7 @@ var require_async_dispose3 = __commonJS({
   "node_modules/core-js/actual/symbol/async-dispose.js"(exports, module) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var parent = require_async_dispose2();
     require_esnext_symbol_async_dispose();
     module.exports = parent;
@@ -1041,6 +11086,7 @@ var require_browser = __commonJS({
   "node_modules/fflate/lib/browser.cjs"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     exports.deflate = deflate;
     exports.deflateSync = deflateSync;
     exports.inflate = inflate;
@@ -3389,6 +13435,7 @@ var require_nifti_extension = __commonJS({
   "node_modules/nifti-reader-js/dist/src/nifti-extension.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.NIFTIEXTENSION = void 0;
     var NIFTIEXTENSION = class {
@@ -3428,6 +13475,7 @@ var require_utilities = __commonJS({
   "node_modules/nifti-reader-js/dist/src/utilities.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Utils = void 0;
     var nifti_extension_1 = require_nifti_extension();
@@ -3565,6 +13613,7 @@ var require_nifti1 = __commonJS({
   "node_modules/nifti-reader-js/dist/src/nifti1.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.NIFTI1 = void 0;
     var utilities_1 = require_utilities();
@@ -4336,6 +14385,7 @@ var require_nifti2 = __commonJS({
   "node_modules/nifti-reader-js/dist/src/nifti2.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.NIFTI2 = void 0;
     var nifti1_1 = require_nifti1();
@@ -4674,6 +14724,7 @@ var require_nifti = __commonJS({
   "node_modules/nifti-reader-js/dist/src/nifti.js"(exports) {
     "use strict";
     init_legacy_browser();
+    init_worker_landed();
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k22) {
       if (k22 === void 0) k22 = k;
       var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -4827,6 +14878,7 @@ var require_nifti = __commonJS({
 var require_crc32c = __commonJS({
   "node_modules/crc-32/crc32c.js"(exports) {
     init_legacy_browser();
+    init_worker_landed();
     var CRC32C;
     (function(factory) {
       if (typeof DO_NOT_EXPORT_CRC === "undefined") {
@@ -4926,6 +14978,7 @@ var require_crc32c = __commonJS({
 var require_crc32 = __commonJS({
   "node_modules/crc-32/crc32.js"(exports) {
     init_legacy_browser();
+    init_worker_landed();
     var CRC32;
     (function(factory) {
       if (typeof DO_NOT_EXPORT_CRC === "undefined") {
@@ -5023,1036 +15076,27 @@ var require_crc32 = __commonJS({
 
 // node_modules/neuroglancer/lib/chunk_worker.bundle.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/util/polyfills.js
 init_legacy_browser();
+init_worker_landed();
 var import_dispose = __toESM(require_dispose3(), 1);
 var import_async_dispose = __toESM(require_async_dispose3(), 1);
 
 // node_modules/neuroglancer/lib/shared_watchable_value.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/trackable_value.js
-init_legacy_browser();
-
-// node_modules/lodash-es/lodash.js
-init_legacy_browser();
-
-// node_modules/lodash-es/isSymbol.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_baseGetTag.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_Symbol.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_root.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_freeGlobal.js
-init_legacy_browser();
-var freeGlobal = typeof global == "object" && global && global.Object === Object && global;
-var freeGlobal_default = freeGlobal;
-
-// node_modules/lodash-es/_root.js
-var freeSelf = typeof self == "object" && self && self.Object === Object && self;
-var root = freeGlobal_default || freeSelf || Function("return this")();
-var root_default = root;
-
-// node_modules/lodash-es/_Symbol.js
-var Symbol2 = root_default.Symbol;
-var Symbol_default = Symbol2;
-
-// node_modules/lodash-es/_getRawTag.js
-init_legacy_browser();
-var objectProto = Object.prototype;
-var hasOwnProperty = objectProto.hasOwnProperty;
-var nativeObjectToString = objectProto.toString;
-var symToStringTag = Symbol_default ? Symbol_default.toStringTag : void 0;
-function getRawTag(value) {
-  var isOwn = hasOwnProperty.call(value, symToStringTag), tag = value[symToStringTag];
-  try {
-    value[symToStringTag] = void 0;
-    var unmasked = true;
-  } catch (e) {
-  }
-  var result = nativeObjectToString.call(value);
-  if (unmasked) {
-    if (isOwn) {
-      value[symToStringTag] = tag;
-    } else {
-      delete value[symToStringTag];
-    }
-  }
-  return result;
-}
-var getRawTag_default = getRawTag;
-
-// node_modules/lodash-es/_objectToString.js
-init_legacy_browser();
-var objectProto2 = Object.prototype;
-var nativeObjectToString2 = objectProto2.toString;
-function objectToString(value) {
-  return nativeObjectToString2.call(value);
-}
-var objectToString_default = objectToString;
-
-// node_modules/lodash-es/_baseGetTag.js
-var nullTag = "[object Null]";
-var undefinedTag = "[object Undefined]";
-var symToStringTag2 = Symbol_default ? Symbol_default.toStringTag : void 0;
-function baseGetTag(value) {
-  if (value == null) {
-    return value === void 0 ? undefinedTag : nullTag;
-  }
-  return symToStringTag2 && symToStringTag2 in Object(value) ? getRawTag_default(value) : objectToString_default(value);
-}
-var baseGetTag_default = baseGetTag;
-
-// node_modules/lodash-es/isObjectLike.js
-init_legacy_browser();
-function isObjectLike(value) {
-  return value != null && typeof value == "object";
-}
-var isObjectLike_default = isObjectLike;
-
-// node_modules/lodash-es/isSymbol.js
-var symbolTag = "[object Symbol]";
-function isSymbol(value) {
-  return typeof value == "symbol" || isObjectLike_default(value) && baseGetTag_default(value) == symbolTag;
-}
-var isSymbol_default = isSymbol;
-
-// node_modules/lodash-es/toNumber.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_baseTrim.js
-init_legacy_browser();
-
-// node_modules/lodash-es/_trimmedEndIndex.js
-init_legacy_browser();
-var reWhitespace = /\s/;
-function trimmedEndIndex(string2) {
-  var index = string2.length;
-  while (index-- && reWhitespace.test(string2.charAt(index))) {
-  }
-  return index;
-}
-var trimmedEndIndex_default = trimmedEndIndex;
-
-// node_modules/lodash-es/_baseTrim.js
-var reTrimStart = /^\s+/;
-function baseTrim(string2) {
-  return string2 ? string2.slice(0, trimmedEndIndex_default(string2) + 1).replace(reTrimStart, "") : string2;
-}
-var baseTrim_default = baseTrim;
-
-// node_modules/lodash-es/isObject.js
-init_legacy_browser();
-function isObject(value) {
-  var type = typeof value;
-  return value != null && (type == "object" || type == "function");
-}
-var isObject_default = isObject;
-
-// node_modules/lodash-es/toNumber.js
-var NAN = 0 / 0;
-var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
-var reIsBinary = /^0b[01]+$/i;
-var reIsOctal = /^0o[0-7]+$/i;
-var freeParseInt = parseInt;
-function toNumber(value) {
-  if (typeof value == "number") {
-    return value;
-  }
-  if (isSymbol_default(value)) {
-    return NAN;
-  }
-  if (isObject_default(value)) {
-    var other = typeof value.valueOf == "function" ? value.valueOf() : value;
-    value = isObject_default(other) ? other + "" : other;
-  }
-  if (typeof value != "string") {
-    return value === 0 ? value : +value;
-  }
-  value = baseTrim_default(value);
-  var isBinary = reIsBinary.test(value);
-  return isBinary || reIsOctal.test(value) ? freeParseInt(value.slice(2), isBinary ? 2 : 8) : reIsBadHex.test(value) ? NAN : +value;
-}
-var toNumber_default = toNumber;
-
-// node_modules/lodash-es/debounce.js
-init_legacy_browser();
-
-// node_modules/lodash-es/now.js
-init_legacy_browser();
-var now = function() {
-  return root_default.Date.now();
-};
-var now_default = now;
-
-// node_modules/lodash-es/debounce.js
-var FUNC_ERROR_TEXT = "Expected a function";
-var nativeMax = Math.max;
-var nativeMin = Math.min;
-function debounce(func, wait, options) {
-  var lastArgs, lastThis, maxWait, result, timerId, lastCallTime, lastInvokeTime = 0, leading = false, maxing = false, trailing = true;
-  if (typeof func != "function") {
-    throw new TypeError(FUNC_ERROR_TEXT);
-  }
-  wait = toNumber_default(wait) || 0;
-  if (isObject_default(options)) {
-    leading = !!options.leading;
-    maxing = "maxWait" in options;
-    maxWait = maxing ? nativeMax(toNumber_default(options.maxWait) || 0, wait) : maxWait;
-    trailing = "trailing" in options ? !!options.trailing : trailing;
-  }
-  function invokeFunc(time) {
-    var args = lastArgs, thisArg = lastThis;
-    lastArgs = lastThis = void 0;
-    lastInvokeTime = time;
-    result = func.apply(thisArg, args);
-    return result;
-  }
-  function leadingEdge(time) {
-    lastInvokeTime = time;
-    timerId = setTimeout(timerExpired, wait);
-    return leading ? invokeFunc(time) : result;
-  }
-  function remainingWait(time) {
-    var timeSinceLastCall = time - lastCallTime, timeSinceLastInvoke = time - lastInvokeTime, timeWaiting = wait - timeSinceLastCall;
-    return maxing ? nativeMin(timeWaiting, maxWait - timeSinceLastInvoke) : timeWaiting;
-  }
-  function shouldInvoke(time) {
-    var timeSinceLastCall = time - lastCallTime, timeSinceLastInvoke = time - lastInvokeTime;
-    return lastCallTime === void 0 || timeSinceLastCall >= wait || timeSinceLastCall < 0 || maxing && timeSinceLastInvoke >= maxWait;
-  }
-  function timerExpired() {
-    var time = now_default();
-    if (shouldInvoke(time)) {
-      return trailingEdge(time);
-    }
-    timerId = setTimeout(timerExpired, remainingWait(time));
-  }
-  function trailingEdge(time) {
-    timerId = void 0;
-    if (trailing && lastArgs) {
-      return invokeFunc(time);
-    }
-    lastArgs = lastThis = void 0;
-    return result;
-  }
-  function cancel() {
-    if (timerId !== void 0) {
-      clearTimeout(timerId);
-    }
-    lastInvokeTime = 0;
-    lastArgs = lastCallTime = lastThis = timerId = void 0;
-  }
-  function flush() {
-    return timerId === void 0 ? result : trailingEdge(now_default());
-  }
-  function debounced() {
-    var time = now_default(), isInvoking = shouldInvoke(time);
-    lastArgs = arguments;
-    lastThis = this;
-    lastCallTime = time;
-    if (isInvoking) {
-      if (timerId === void 0) {
-        return leadingEdge(lastCallTime);
-      }
-      if (maxing) {
-        clearTimeout(timerId);
-        timerId = setTimeout(timerExpired, wait);
-        return invokeFunc(lastCallTime);
-      }
-    }
-    if (timerId === void 0) {
-      timerId = setTimeout(timerExpired, wait);
-    }
-    return result;
-  }
-  debounced.cancel = cancel;
-  debounced.flush = flush;
-  return debounced;
-}
-var debounce_default = debounce;
-
-// node_modules/lodash-es/throttle.js
-init_legacy_browser();
-var FUNC_ERROR_TEXT2 = "Expected a function";
-function throttle(func, wait, options) {
-  var leading = true, trailing = true;
-  if (typeof func != "function") {
-    throw new TypeError(FUNC_ERROR_TEXT2);
-  }
-  if (isObject_default(options)) {
-    leading = "leading" in options ? !!options.leading : leading;
-    trailing = "trailing" in options ? !!options.trailing : trailing;
-  }
-  return debounce_default(func, wait, {
-    "leading": leading,
-    "maxWait": wait,
-    "trailing": trailing
-  });
-}
-var throttle_default = throttle;
-
-// node_modules/neuroglancer/lib/util/disposable.js
-init_legacy_browser();
-var DEBUG_REF_COUNTS = false;
-function invokeDisposer(disposer) {
-  if (typeof disposer === "object") {
-    disposer.dispose();
-  } else {
-    disposer();
-  }
-}
-function invokeDisposers(disposers) {
-  for (let i = disposers.length; i > 0; --i) {
-    invokeDisposer(disposers[i - 1]);
-  }
-}
-function registerEventListener(target2, type, listener, options) {
-  target2.addEventListener(type, listener, options);
-  return () => target2.removeEventListener(type, listener, options);
-}
-var RefCounted = class {
-  refCount = 1;
-  wasDisposed;
-  disposers;
-  addRef() {
-    ++this.refCount;
-    return this;
-  }
-  disposedStacks;
-  dispose() {
-    if (DEBUG_REF_COUNTS) {
-      (this.disposedStacks = this.disposedStacks || []).push(new Error().stack);
-    }
-    if (--this.refCount !== 0) {
-      return;
-    }
-    this.refCountReachedZero();
-  }
-  [Symbol.dispose]() {
-    this.dispose();
-  }
-  refCountReachedZero() {
-    this.disposed();
-    const { disposers } = this;
-    if (disposers !== void 0) {
-      invokeDisposers(disposers);
-      this.disposers = void 0;
-    }
-    this.wasDisposed = true;
-  }
-  disposed() {
-  }
-  registerDisposer(f) {
-    const { disposers } = this;
-    if (disposers == null) {
-      this.disposers = [f];
-    } else {
-      disposers.push(f);
-    }
-    return f;
-  }
-  unregisterDisposer(f) {
-    const { disposers } = this;
-    if (disposers != null) {
-      const index = disposers.indexOf(f);
-      if (index !== -1) {
-        disposers.splice(index, 1);
-      }
-    }
-    return f;
-  }
-  registerEventListener(target2, type, listener, options) {
-    this.registerDisposer(
-      registerEventListener(target2, type, listener, options)
-    );
-  }
-  registerCancellable(cancellable) {
-    this.registerDisposer(() => {
-      cancellable.cancel();
-    });
-    return cancellable;
-  }
-};
-var RefCountedValue = class extends RefCounted {
-  constructor(value) {
-    super();
-    this.value = value;
-  }
-};
-
-// node_modules/neuroglancer/lib/util/signal.js
-init_legacy_browser();
-var Signal = class {
-  handlers = /* @__PURE__ */ new Set();
-  /**
-   * Count of number of times this signal has been dispatched.  This is incremented each time
-   * `dispatch` is called prior to invoking the handlers.
-   */
-  count = 0;
-  constructor() {
-    const obj = this;
-    this.dispatch = function() {
-      ++obj.count;
-      obj.handlers.forEach((handler) => {
-        handler.apply(this, arguments);
-      });
-    };
-  }
-  /**
-   * Add a handler function.  If `dispatch` is currently be called, then the new handler will be
-   * called before `dispatch` returns.
-   *
-   * @param handler The handler function to add.
-   *
-   * @return A function that unregisters the handler.
-   */
-  add(handler) {
-    this.handlers.add(handler);
-    return () => {
-      return this.remove(handler);
-    };
-  }
-  addOnce(handler) {
-    const { handlers: handlers2 } = this;
-    function onceWrapper(...args) {
-      handlers2.delete(onceWrapper);
-      handler(...args);
-    }
-    handlers2.add(onceWrapper);
-  }
-  /**
-   * Remove a handler function.  If `dispatch` is currently be called and the new handler has not
-   * yet been called, then it will not be called.
-   *
-   * @param handler Handler to remove.
-   * @return `true` if the handler was present, `false` otherwise.
-   */
-  remove(handler) {
-    return this.handlers.delete(handler);
-  }
-  /**
-   * Invokes each handler function with the same parameters (including `this`) with which it is
-   * called.  Handlers are invoked in the order in which they were added.
-   */
-  dispatch;
-  /**
-   * Disposes of resources.  No methods, including `dispatch`, may be invoked afterwards.
-   */
-  dispose() {
-    this.handlers = void 0;
-  }
-};
-var NullarySignal = class extends Signal {
-};
-
-// node_modules/neuroglancer/lib/trackable_value.js
-var WatchableValue = class {
-  constructor(value_) {
-    this.value_ = value_;
-  }
-  get value() {
-    return this.value_;
-  }
-  set value(newValue) {
-    if (newValue !== this.value_) {
-      this.value_ = newValue;
-      this.changed.dispatch();
-    }
-  }
-  changed = new NullarySignal();
-};
-function registerNested(f, ...watchables) {
-  const values = watchables.map((w) => w.value);
-  const count = watchables.length;
-  let context = new RefCounted();
-  let result = f(context, ...values);
-  const handleChange = debounce_default(() => {
-    let changed = false;
-    for (let i = 0; i < count; ++i) {
-      const watchable = watchables[i];
-      const value = watchable.value;
-      if (values[i] !== value) {
-        values[i] = value;
-        changed = true;
-      }
-    }
-    if (!changed) return;
-    context.dispose();
-    context = new RefCounted();
-    result = f(context, ...values);
-  }, 0);
-  const signalDisposers = watchables.map((w) => w.changed.add(handleChange));
-  return {
-    flush() {
-      handleChange.flush();
-    },
-    dispose() {
-      handleChange.cancel();
-      invokeDisposers(signalDisposers);
-      context.dispose();
-    },
-    get value() {
-      handleChange.flush();
-      return result;
-    }
-  };
-}
-
-// node_modules/neuroglancer/lib/worker_rpc.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/abort.js
-init_legacy_browser();
-function scopedAbortCallback(signal, callback) {
-  if (signal === void 0) return void 0;
-  if (signal.aborted) {
-    callback(signal.reason);
-    return void 0;
-  }
-  function wrappedCallback() {
-    callback(this.reason);
-  }
-  signal.addEventListener("abort", wrappedCallback, { once: true });
-  return {
-    [Symbol.dispose]() {
-      signal.removeEventListener("abort", wrappedCallback);
-    }
-  };
-}
-var SharedAbortController = class {
-  consumers = /* @__PURE__ */ new Map();
-  controller = new AbortController();
-  retainCount = 0;
-  get signal() {
-    return this.controller.signal;
-  }
-  addConsumer(signal) {
-    if (this.controller.signal.aborted) return void 0;
-    if (signal !== void 0) {
-      let wrappedCallback2 = function() {
-        self2.consumers.delete(wrappedCallback2);
-        if (--self2.retainCount === 0) {
-          self2.controller.abort();
-          self2[Symbol.dispose]();
-        }
-      };
-      var wrappedCallback = wrappedCallback2;
-      if (signal.aborted) return;
-      const self2 = this;
-      signal.addEventListener("abort", wrappedCallback2, { once: true });
-    }
-    ++this.retainCount;
-  }
-  [Symbol.dispose]() {
-    for (const [wrappedCallback, signal] of this.consumers) {
-      signal.removeEventListener("abort", wrappedCallback);
-    }
-    this.consumers.clear();
-    this.retainCount = 0;
-  }
-  // Marks this controller as started. Aborts if there are no consumers.
-  start() {
-    if (this.retainCount === 0) {
-      this.controller.abort();
-    }
-  }
-};
-function promiseWithResolversAndAbortCallback(signal, abortCallback) {
-  const { promise, resolve, reject } = Promise.withResolvers();
-  const cleanup = scopedAbortCallback(signal, abortCallback);
-  return {
-    promise,
-    resolve: (value) => {
-      cleanup == null ? void 0 : cleanup[Symbol.dispose]();
-      resolve(value);
-    },
-    reject: (reason) => {
-      cleanup == null ? void 0 : cleanup[Symbol.dispose]();
-      reject(reason);
-    }
-  };
-}
-function raceWithAbort(promise, signal) {
-  if (signal === void 0) return promise;
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise((resolve, reject) => {
-    const cleanup = scopedAbortCallback(signal, (reason) => {
-      reject(reason);
-    });
-    promise.then(
-      (value) => {
-        cleanup == null ? void 0 : cleanup[Symbol.dispose]();
-        resolve(value);
-      },
-      (reason) => {
-        cleanup == null ? void 0 : cleanup[Symbol.dispose]();
-        reject(reason);
-      }
-    );
-  });
-}
-
-// node_modules/neuroglancer/lib/util/progress_listener.js
-init_legacy_browser();
-var ProgressSpan = class {
-  constructor(listener, options) {
-    this.listener = listener;
-    const { id = Math.random(), startTime = Date.now(), message } = options;
-    this.id = id;
-    this.startTime = startTime;
-    this.message = message;
-    listener.addSpan(this);
-  }
-  id;
-  startTime;
-  message;
-  [Symbol.dispose]() {
-    this.listener.removeSpan(this.id);
-  }
-};
-var MultiSet = class {
-  items = /* @__PURE__ */ new Map();
-  add(item) {
-    const { items } = this;
-    const count = (items.get(item) ?? 0) + 1;
-    items.set(item, count);
-    return count;
-  }
-  delete(item) {
-    const { items } = this;
-    let count = items.get(item);
-    if (count > 1) {
-      count -= 1;
-      items.set(item, count);
-      return count;
-    }
-    items.delete(item);
-    return 0;
-  }
-  has(item) {
-    return this.items.has(item);
-  }
-  keys() {
-    return this.items.keys();
-  }
-  entries() {
-    return this.items.entries();
-  }
-  [Symbol.iterator]() {
-    return this.items.keys();
-  }
-};
-var KeyedMultiSet = class {
-  constructor(getKey) {
-    this.getKey = getKey;
-  }
-  items = /* @__PURE__ */ new Map();
-  add(item) {
-    const { items } = this;
-    const key = this.getKey(item);
-    const obj = items.get(key);
-    if (obj === void 0) {
-      items.set(key, { value: item, count: 1 });
-      return 1;
-    } else {
-      return obj.count += 1;
-    }
-  }
-  delete(item) {
-    return this.deleteKey(this.getKey(item));
-  }
-  deleteKey(key) {
-    const { items } = this;
-    const obj = items.get(key);
-    if (obj !== void 0 && obj.count > 1) {
-      return obj.count -= 1;
-    }
-    items.delete(key);
-    return 0;
-  }
-  has(item) {
-    return this.items.has(this.getKey(item));
-  }
-  *[Symbol.iterator]() {
-    for (const obj of this.items.values()) {
-      yield obj.value;
-    }
-  }
-};
-function getId(span) {
-  return span.id;
-}
-var ProgressSpanSet = class extends KeyedMultiSet {
-  constructor() {
-    super(getId);
-  }
-};
-var MultiConsumerProgressListener = class {
-  spans = new ProgressSpanSet();
-  listeners = new MultiSet();
-  addSpan(span) {
-    if (this.spans.add(span) !== 1) return;
-    for (const listener of this.listeners) {
-      listener.addSpan(span);
-    }
-  }
-  removeSpan(spanId) {
-    if (this.spans.deleteKey(spanId) !== 0) return;
-    for (const listener of this.listeners) {
-      listener.removeSpan(spanId);
-    }
-  }
-  addListener(listener) {
-    if (listener === void 0) return;
-    if (this.listeners.add(listener) !== 1) return;
-    for (const span of this.spans) {
-      listener.addSpan(span);
-    }
-  }
-  removeListener(listener) {
-    if (listener === void 0) return;
-    if (this.listeners.delete(listener) !== 0) return;
-    for (const span of this.spans) {
-      listener.removeSpan(span.id);
-    }
-  }
-};
-
-// node_modules/neuroglancer/lib/worker_rpc.js
-var IS_WORKER = !(typeof Window !== "undefined" && self instanceof Window);
-var DEBUG = false;
-var DEBUG_MESSAGES = false;
-var PROMISE_RESPONSE_ID = "rpc.promise.response";
-var PROMISE_CANCEL_ID = "rpc.promise.cancel";
-var PROMISE_PROGRESS_ADD_SPAN_ID = "rpc.promise.addProgressSpan";
-var PROMISE_PROGRESS_REMOVE_SPAN_ID = "rpc.promise.removeProgressSpan";
-var READY_ID = "rpc.ready";
-var handlers = /* @__PURE__ */ new Map();
-function registerRPC(key, handler) {
-  handlers.set(key, handler);
-}
-var ProxyProgressListener = class {
-  constructor(rpc2, id) {
-    this.rpc = rpc2;
-    this.id = id;
-  }
-  addSpan(span) {
-    this.rpc.invoke(PROMISE_PROGRESS_ADD_SPAN_ID, {
-      id: this.id,
-      span: {
-        id: span.id,
-        message: span.message,
-        startTime: span.startTime
-      }
-    });
-  }
-  removeSpan(spanId) {
-    this.rpc.invoke(PROMISE_PROGRESS_REMOVE_SPAN_ID, {
-      id: this.id,
-      spanId
-    });
-  }
-};
-function registerPromiseRPC(key, handler) {
-  registerRPC(key, function(x) {
-    const id = x.id;
-    const abortController = new AbortController();
-    let progressListener;
-    if (x.progressListener === true) {
-      progressListener = new ProxyProgressListener(this, id);
-    }
-    const promise = handler.call(this, x, {
-      signal: abortController.signal,
-      progressListener
-    });
-    this.set(id, { promise, abortController });
-    promise.then(
-      ({ value, transfers }) => {
-        this.delete(id);
-        this.invoke(PROMISE_RESPONSE_ID, { id, value }, transfers);
-      },
-      (error) => {
-        this.delete(id);
-        this.invoke(PROMISE_RESPONSE_ID, {
-          id,
-          error
-        });
-      }
-    );
-  });
-}
-registerRPC(PROMISE_CANCEL_ID, function(x) {
-  const id = x.id;
-  const request = this.get(id);
-  if (request !== void 0) {
-    const { abortController } = request;
-    abortController.abort();
-  }
-});
-registerRPC(PROMISE_RESPONSE_ID, function(x) {
-  const id = x.id;
-  const { resolve, reject } = this.get(id);
-  this.delete(id);
-  if (Object.prototype.hasOwnProperty.call(x, "value")) {
-    resolve(x.value);
-  } else {
-    reject(x.error);
-  }
-});
-registerRPC(PROMISE_PROGRESS_ADD_SPAN_ID, function(x) {
-  const id = x.id;
-  const { progressListener } = this.get(id);
-  new ProgressSpan(progressListener, x.span);
-});
-registerRPC(PROMISE_PROGRESS_REMOVE_SPAN_ID, function(x) {
-  const id = x.id;
-  const { progressListener } = this.get(id);
-  progressListener.removeSpan(x.spanId);
-});
-registerRPC(READY_ID, function(x) {
-  x;
-  this.onPeerReady();
-});
-var INITIAL_RPC_ID = IS_WORKER ? -1 : 0;
-var RPC = class {
-  constructor(target2, waitUntilReady) {
-    this.target = target2;
-    if (waitUntilReady) {
-      this.queue = [];
-    }
-    target2.onmessage = (e) => {
-      const data = e.data;
-      if (DEBUG_MESSAGES) {
-        console.log("Received message", data);
-      }
-      const handler = handlers.get(data.functionName);
-      if (handler === void 0) {
-        throw new Error(`Missing RPC function: ${data.functionName}`);
-      }
-      handlers.get(data.functionName).call(this, data);
-    };
-  }
-  objects = /* @__PURE__ */ new Map();
-  nextId = INITIAL_RPC_ID;
-  queue;
-  sendReady() {
-    this.invoke(READY_ID, {});
-  }
-  onPeerReady() {
-    const { queue } = this;
-    if (queue === void 0) return;
-    this.queue = void 0;
-    for (const { data, transfers } of queue) {
-      this.target.postMessage(data, transfers);
-    }
-  }
-  get numObjects() {
-    return this.objects.size;
-  }
-  set(id, value) {
-    this.objects.set(id, value);
-  }
-  delete(id) {
-    this.objects.delete(id);
-  }
-  get(id) {
-    return this.objects.get(id);
-  }
-  getRef(x) {
-    const rpcId = x.id;
-    const obj = this.get(rpcId);
-    obj.referencedGeneration = x.gen;
-    obj.addRef();
-    return obj;
-  }
-  getOptionalRef(x) {
-    if (x === void 0) return void 0;
-    const rpcId = x.id;
-    const obj = this.get(rpcId);
-    obj.referencedGeneration = x.gen;
-    obj.addRef();
-    return obj;
-  }
-  invoke(name, x, transfers) {
-    x.functionName = name;
-    if (DEBUG_MESSAGES) {
-      console.trace("Sending message", x);
-    }
-    const { queue } = this;
-    if (queue !== void 0) {
-      queue.push({ data: x, transfers });
-      return;
-    }
-    this.target.postMessage(x, transfers);
-  }
-  promiseInvoke(name, x, options) {
-    let signal;
-    let progressListener;
-    let transfers;
-    if (options !== void 0) {
-      ({ signal, progressListener, transfers } = options);
-    }
-    if (signal == null ? void 0 : signal.aborted) {
-      return Promise.reject(signal.reason);
-    }
-    if (progressListener !== void 0) {
-      x.progressListener = true;
-    }
-    const id = x.id = this.newId();
-    this.invoke(name, x, transfers);
-    const { promise, resolve, reject } = signal === void 0 ? Promise.withResolvers() : promiseWithResolversAndAbortCallback(signal, () => {
-      this.invoke(PROMISE_CANCEL_ID, { id });
-    });
-    this.set(id, { resolve, reject, progressListener });
-    return promise;
-  }
-  newId() {
-    return IS_WORKER ? this.nextId-- : this.nextId++;
-  }
-};
-var SharedObject = class extends RefCounted {
-  rpc = null;
-  rpcId = null;
-  isOwner;
-  unreferencedGeneration;
-  referencedGeneration;
-  initializeSharedObject(rpc2, rpcId = rpc2.newId()) {
-    this.rpc = rpc2;
-    this.rpcId = rpcId;
-    this.isOwner = false;
-    rpc2.set(rpcId, this);
-  }
-  initializeCounterpart(rpc2, options = {}) {
-    this.initializeSharedObject(rpc2);
-    this.unreferencedGeneration = 0;
-    this.referencedGeneration = 0;
-    this.isOwner = true;
-    options.id = this.rpcId;
-    options.type = this.RPC_TYPE_ID;
-    rpc2.invoke("SharedObject.new", options);
-  }
-  dispose() {
-    super.dispose();
-  }
-  /**
-   * Precondition: this.isOwner === true.
-   */
-  addCounterpartRef() {
-    return { id: this.rpcId, gen: ++this.referencedGeneration };
-  }
-  refCountReachedZero() {
-    if (this.isOwner === true) {
-      if (this.referencedGeneration === this.unreferencedGeneration) {
-        this.ownerDispose();
-      }
-    } else if (this.isOwner === false) {
-      this.rpc.invoke("SharedObject.refCountReachedZero", {
-        id: this.rpcId,
-        gen: this.referencedGeneration
-      });
-    } else {
-      super.refCountReachedZero();
-    }
-  }
-  /**
-   * Precondition: this.isOwner === true.
-   */
-  ownerDispose() {
-    if (DEBUG) {
-      console.log(`[${IS_WORKER}] #rpc object = ${this.rpc.numObjects}`);
-    }
-    const { rpc: rpc2, rpcId } = this;
-    super.refCountReachedZero();
-    rpc2.delete(rpcId);
-    rpc2.invoke("SharedObject.dispose", { id: rpcId });
-  }
-  /**
-   * Precondition: this.isOwner === true.
-   *
-   * This should be called when the counterpart's refCount is decremented and reaches zero.
-   */
-  counterpartRefCountReachedZero(generation) {
-    this.unreferencedGeneration = generation;
-    if (this.refCount === 0 && generation === this.referencedGeneration) {
-      this.ownerDispose();
-    }
-  }
-};
-function initializeSharedObjectCounterpart(obj, rpc2, options = {}) {
-  if (rpc2 != null) {
-    obj.initializeSharedObject(rpc2, options.id);
-  }
-}
-var SharedObjectCounterpart = class extends SharedObject {
-  constructor(rpc2, options = {}) {
-    super();
-    initializeSharedObjectCounterpart(this, rpc2, options);
-  }
-};
-registerRPC("SharedObject.dispose", function(x) {
-  const obj = this.get(x.id);
-  if (obj.refCount !== 0) {
-    throw new Error(
-      "Attempted to dispose object with non-zero reference count."
-    );
-  }
-  if (DEBUG) {
-    console.log(`[${IS_WORKER}] #rpc objects: ${this.numObjects}`);
-  }
-  obj.disposed();
-  this.delete(obj.rpcId);
-  obj.rpcId = null;
-  obj.rpc = null;
-});
-registerRPC("SharedObject.refCountReachedZero", function(x) {
-  const obj = this.get(x.id);
-  const generation = x.gen;
-  obj.counterpartRefCountReachedZero(generation);
-});
-var sharedObjectConstructors = /* @__PURE__ */ new Map();
-function registerSharedObjectOwner(identifier) {
-  return (constructorFunction) => {
-    constructorFunction.prototype.RPC_TYPE_ID = identifier;
-  };
-}
-function registerSharedObject(identifier) {
-  return (constructorFunction) => {
-    if (identifier !== void 0) {
-      constructorFunction.prototype.RPC_TYPE_ID = identifier;
-    } else {
-      identifier = constructorFunction.prototype.RPC_TYPE_ID;
-      if (identifier === void 0) {
-        throw new Error("RPC_TYPE_ID should have already been defined");
-      }
-    }
-    sharedObjectConstructors.set(identifier, constructorFunction);
-  };
-}
-registerRPC("SharedObject.new", function(x) {
-  const rpc2 = this;
-  const typeName = x.type;
-  const constructorFunction = sharedObjectConstructors.get(typeName);
-  const obj = new constructorFunction(rpc2, x);
-  --obj.refCount;
-});
-
-// node_modules/neuroglancer/lib/shared_watchable_value.js
-var __defProp2 = Object.defineProperty;
-var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
-var __decorateClass = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc2(target2, key) : target2;
+init_worker_landed();
+init_trackable_value();
+init_worker_rpc();
+var __defProp8 = Object.defineProperty;
+var __getOwnPropDesc8 = Object.getOwnPropertyDescriptor;
+var __decorateClass7 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc8(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp2(target2, key, result);
+  if (kind && result) __defProp8(target2, key, result);
   return result;
 };
 var CHANGED_RPC_METHOD_ID = "SharedWatchableValue.changed";
@@ -6114,7 +15158,7 @@ var SharedWatchableValue = class extends SharedObjectCounterpart {
     return this.base.changed;
   }
 };
-SharedWatchableValue = __decorateClass([
+SharedWatchableValue = __decorateClass7([
   registerSharedObject("SharedWatchableValue")
 ], SharedWatchableValue);
 registerRPC(CHANGED_RPC_METHOD_ID, function(x) {
@@ -6124,6828 +15168,31 @@ registerRPC(CHANGED_RPC_METHOD_ID, function(x) {
   obj.updatingValue_ = false;
 });
 
-// node_modules/neuroglancer/lib/chunk_manager/backend.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/chunk_manager/base.js
-init_legacy_browser();
-var ChunkState = /* @__PURE__ */ ((ChunkState2) => {
-  ChunkState2[ChunkState2["GPU_MEMORY"] = 0] = "GPU_MEMORY";
-  ChunkState2[ChunkState2["SYSTEM_MEMORY"] = 1] = "SYSTEM_MEMORY";
-  ChunkState2[ChunkState2["SYSTEM_MEMORY_WORKER"] = 2] = "SYSTEM_MEMORY_WORKER";
-  ChunkState2[ChunkState2["DOWNLOADING"] = 3] = "DOWNLOADING";
-  ChunkState2[ChunkState2["QUEUED"] = 4] = "QUEUED";
-  ChunkState2[ChunkState2["NEW"] = 5] = "NEW";
-  ChunkState2[ChunkState2["FAILED"] = 6] = "FAILED";
-  ChunkState2[ChunkState2["EXPIRED"] = 7] = "EXPIRED";
-  return ChunkState2;
-})(ChunkState || {});
-var numChunkStates = 8;
-var ChunkPriorityTier = /* @__PURE__ */ ((ChunkPriorityTier2) => {
-  ChunkPriorityTier2[ChunkPriorityTier2["FIRST_TIER"] = 0] = "FIRST_TIER";
-  ChunkPriorityTier2[ChunkPriorityTier2["FIRST_ORDERED_TIER"] = 0] = "FIRST_ORDERED_TIER";
-  ChunkPriorityTier2[ChunkPriorityTier2["VISIBLE"] = 0] = "VISIBLE";
-  ChunkPriorityTier2[ChunkPriorityTier2["PREFETCH"] = 1] = "PREFETCH";
-  ChunkPriorityTier2[ChunkPriorityTier2["LAST_ORDERED_TIER"] = 1] = "LAST_ORDERED_TIER";
-  ChunkPriorityTier2[ChunkPriorityTier2["RECENT"] = 2] = "RECENT";
-  ChunkPriorityTier2[ChunkPriorityTier2["LAST_TIER"] = 2] = "LAST_TIER";
-  return ChunkPriorityTier2;
-})(ChunkPriorityTier || {});
-var numChunkPriorityTiers = 3;
-var ChunkDownloadStatistics = /* @__PURE__ */ ((ChunkDownloadStatistics2) => {
-  ChunkDownloadStatistics2[ChunkDownloadStatistics2["totalTime"] = 0] = "totalTime";
-  ChunkDownloadStatistics2[ChunkDownloadStatistics2["totalChunks"] = 1] = "totalChunks";
-  return ChunkDownloadStatistics2;
-})(ChunkDownloadStatistics || {});
-var ChunkMemoryStatistics = /* @__PURE__ */ ((ChunkMemoryStatistics2) => {
-  ChunkMemoryStatistics2[ChunkMemoryStatistics2["numChunks"] = 0] = "numChunks";
-  ChunkMemoryStatistics2[ChunkMemoryStatistics2["systemMemoryBytes"] = 1] = "systemMemoryBytes";
-  ChunkMemoryStatistics2[ChunkMemoryStatistics2["gpuMemoryBytes"] = 2] = "gpuMemoryBytes";
-  return ChunkMemoryStatistics2;
-})(ChunkMemoryStatistics || {});
-var numChunkMemoryStatistics = 3;
-var numChunkDownloadStatistics = 2;
-var numChunkStatistics = numChunkStates * numChunkPriorityTiers * numChunkMemoryStatistics + numChunkDownloadStatistics;
-function getChunkStateStatisticIndex(state, priorityTier) {
-  return state * numChunkPriorityTiers + priorityTier;
-}
-function getChunkDownloadStatisticIndex(statistic) {
-  return numChunkStates * numChunkPriorityTiers * numChunkMemoryStatistics + statistic;
-}
-var PREFETCH_PRIORITY_MULTIPLIER = 1e13;
-var CHUNK_QUEUE_MANAGER_RPC_ID = "ChunkQueueManager";
-var CHUNK_MANAGER_RPC_ID = "ChunkManager";
-var CHUNK_SOURCE_INVALIDATE_RPC_ID = "ChunkSource.invalidate";
-var REQUEST_CHUNK_STATISTICS_RPC_ID = "ChunkQueueManager.requestChunkStatistics";
-var CHUNK_LAYER_STATISTICS_RPC_ID = "ChunkManager.chunkLayerStatistics";
-
-// node_modules/neuroglancer/lib/util/linked_list.js
-init_legacy_browser();
-function linkedListOperations(options) {
-  const { next: NEXT, prev: PREV } = options;
-  return {
-    insertAfter(head, x) {
-      const next = head[NEXT];
-      x[NEXT] = next;
-      x[PREV] = head;
-      head[NEXT] = x;
-      next[PREV] = x;
-    },
-    insertBefore(head, x) {
-      const prev = head[PREV];
-      x[PREV] = prev;
-      x[NEXT] = head;
-      head[PREV] = x;
-      prev[NEXT] = x;
-    },
-    front(head) {
-      const next = head[NEXT];
-      if (next === head) {
-        return null;
-      }
-      return next;
-    },
-    back(head) {
-      const next = head[PREV];
-      if (next === head) {
-        return null;
-      }
-      return next;
-    },
-    pop(x) {
-      const next = x[NEXT];
-      const prev = x[PREV];
-      next[PREV] = prev;
-      prev[NEXT] = next;
-      x[NEXT] = null;
-      x[PREV] = null;
-      return x;
-    },
-    *iterator(head) {
-      for (let x = head[NEXT]; x !== head; x = x[NEXT]) {
-        yield x;
-      }
-    },
-    *reverseIterator(head) {
-      for (let x = head[PREV]; x !== head; x = x[PREV]) {
-        yield x;
-      }
-    },
-    initializeHead(head) {
-      head[NEXT] = head[PREV] = head;
-    }
-  };
-}
-
-// node_modules/neuroglancer/lib/util/memoize.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/json.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/bigint.js
-init_legacy_browser();
-function bigintCompare(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function uint64FromLowHigh(low, high) {
-  return BigInt(low) | BigInt(high) << 32n;
-}
-function randomUint64() {
-  const low = Math.random() * 4294967296 >>> 0;
-  const high = Math.random() * 4294967296 >>> 0;
-  return uint64FromLowHigh(low, high);
-}
-var UINT64_MAX = 0xffffffffffffffffn;
-
-// node_modules/neuroglancer/lib/util/geom.js
-init_legacy_browser();
-
-// node_modules/gl-matrix/esm/index.js
-init_legacy_browser();
-
-// node_modules/gl-matrix/esm/common.js
-init_legacy_browser();
-var EPSILON = 1e-6;
-var ARRAY_TYPE = typeof Float32Array !== "undefined" ? Float32Array : Array;
-var RANDOM = Math.random;
-var degree = Math.PI / 180;
-if (!Math.hypot) Math.hypot = function() {
-  var y = 0, i = arguments.length;
-  while (i--) {
-    y += arguments[i] * arguments[i];
-  }
-  return Math.sqrt(y);
-};
-
-// node_modules/gl-matrix/esm/mat3.js
-var mat3_exports = {};
-__export(mat3_exports, {
-  add: () => add,
-  adjoint: () => adjoint,
-  clone: () => clone2,
-  copy: () => copy,
-  create: () => create,
-  determinant: () => determinant,
-  equals: () => equals,
-  exactEquals: () => exactEquals,
-  frob: () => frob,
-  fromMat2d: () => fromMat2d,
-  fromMat4: () => fromMat4,
-  fromQuat: () => fromQuat,
-  fromRotation: () => fromRotation,
-  fromScaling: () => fromScaling,
-  fromTranslation: () => fromTranslation,
-  fromValues: () => fromValues,
-  identity: () => identity,
-  invert: () => invert,
-  mul: () => mul,
-  multiply: () => multiply,
-  multiplyScalar: () => multiplyScalar,
-  multiplyScalarAndAdd: () => multiplyScalarAndAdd,
-  normalFromMat4: () => normalFromMat4,
-  projection: () => projection,
-  rotate: () => rotate,
-  scale: () => scale,
-  set: () => set,
-  str: () => str,
-  sub: () => sub,
-  subtract: () => subtract,
-  translate: () => translate,
-  transpose: () => transpose
-});
-init_legacy_browser();
-function create() {
-  var out = new ARRAY_TYPE(9);
-  if (ARRAY_TYPE != Float32Array) {
-    out[1] = 0;
-    out[2] = 0;
-    out[3] = 0;
-    out[5] = 0;
-    out[6] = 0;
-    out[7] = 0;
-  }
-  out[0] = 1;
-  out[4] = 1;
-  out[8] = 1;
-  return out;
-}
-function fromMat4(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[4];
-  out[4] = a[5];
-  out[5] = a[6];
-  out[6] = a[8];
-  out[7] = a[9];
-  out[8] = a[10];
-  return out;
-}
-function clone2(a) {
-  var out = new ARRAY_TYPE(9);
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  out[4] = a[4];
-  out[5] = a[5];
-  out[6] = a[6];
-  out[7] = a[7];
-  out[8] = a[8];
-  return out;
-}
-function copy(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  out[4] = a[4];
-  out[5] = a[5];
-  out[6] = a[6];
-  out[7] = a[7];
-  out[8] = a[8];
-  return out;
-}
-function fromValues(m00, m01, m02, m10, m11, m12, m20, m21, m22) {
-  var out = new ARRAY_TYPE(9);
-  out[0] = m00;
-  out[1] = m01;
-  out[2] = m02;
-  out[3] = m10;
-  out[4] = m11;
-  out[5] = m12;
-  out[6] = m20;
-  out[7] = m21;
-  out[8] = m22;
-  return out;
-}
-function set(out, m00, m01, m02, m10, m11, m12, m20, m21, m22) {
-  out[0] = m00;
-  out[1] = m01;
-  out[2] = m02;
-  out[3] = m10;
-  out[4] = m11;
-  out[5] = m12;
-  out[6] = m20;
-  out[7] = m21;
-  out[8] = m22;
-  return out;
-}
-function identity(out) {
-  out[0] = 1;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 1;
-  out[5] = 0;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 1;
-  return out;
-}
-function transpose(out, a) {
-  if (out === a) {
-    var a01 = a[1], a02 = a[2], a12 = a[5];
-    out[1] = a[3];
-    out[2] = a[6];
-    out[3] = a01;
-    out[5] = a[7];
-    out[6] = a02;
-    out[7] = a12;
-  } else {
-    out[0] = a[0];
-    out[1] = a[3];
-    out[2] = a[6];
-    out[3] = a[1];
-    out[4] = a[4];
-    out[5] = a[7];
-    out[6] = a[2];
-    out[7] = a[5];
-    out[8] = a[8];
-  }
-  return out;
-}
-function invert(out, a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2];
-  var a10 = a[3], a11 = a[4], a12 = a[5];
-  var a20 = a[6], a21 = a[7], a22 = a[8];
-  var b01 = a22 * a11 - a12 * a21;
-  var b11 = -a22 * a10 + a12 * a20;
-  var b21 = a21 * a10 - a11 * a20;
-  var det = a00 * b01 + a01 * b11 + a02 * b21;
-  if (!det) {
-    return null;
-  }
-  det = 1 / det;
-  out[0] = b01 * det;
-  out[1] = (-a22 * a01 + a02 * a21) * det;
-  out[2] = (a12 * a01 - a02 * a11) * det;
-  out[3] = b11 * det;
-  out[4] = (a22 * a00 - a02 * a20) * det;
-  out[5] = (-a12 * a00 + a02 * a10) * det;
-  out[6] = b21 * det;
-  out[7] = (-a21 * a00 + a01 * a20) * det;
-  out[8] = (a11 * a00 - a01 * a10) * det;
-  return out;
-}
-function adjoint(out, a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2];
-  var a10 = a[3], a11 = a[4], a12 = a[5];
-  var a20 = a[6], a21 = a[7], a22 = a[8];
-  out[0] = a11 * a22 - a12 * a21;
-  out[1] = a02 * a21 - a01 * a22;
-  out[2] = a01 * a12 - a02 * a11;
-  out[3] = a12 * a20 - a10 * a22;
-  out[4] = a00 * a22 - a02 * a20;
-  out[5] = a02 * a10 - a00 * a12;
-  out[6] = a10 * a21 - a11 * a20;
-  out[7] = a01 * a20 - a00 * a21;
-  out[8] = a00 * a11 - a01 * a10;
-  return out;
-}
-function determinant(a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2];
-  var a10 = a[3], a11 = a[4], a12 = a[5];
-  var a20 = a[6], a21 = a[7], a22 = a[8];
-  return a00 * (a22 * a11 - a12 * a21) + a01 * (-a22 * a10 + a12 * a20) + a02 * (a21 * a10 - a11 * a20);
-}
-function multiply(out, a, b) {
-  var a00 = a[0], a01 = a[1], a02 = a[2];
-  var a10 = a[3], a11 = a[4], a12 = a[5];
-  var a20 = a[6], a21 = a[7], a22 = a[8];
-  var b00 = b[0], b01 = b[1], b02 = b[2];
-  var b10 = b[3], b11 = b[4], b12 = b[5];
-  var b20 = b[6], b21 = b[7], b22 = b[8];
-  out[0] = b00 * a00 + b01 * a10 + b02 * a20;
-  out[1] = b00 * a01 + b01 * a11 + b02 * a21;
-  out[2] = b00 * a02 + b01 * a12 + b02 * a22;
-  out[3] = b10 * a00 + b11 * a10 + b12 * a20;
-  out[4] = b10 * a01 + b11 * a11 + b12 * a21;
-  out[5] = b10 * a02 + b11 * a12 + b12 * a22;
-  out[6] = b20 * a00 + b21 * a10 + b22 * a20;
-  out[7] = b20 * a01 + b21 * a11 + b22 * a21;
-  out[8] = b20 * a02 + b21 * a12 + b22 * a22;
-  return out;
-}
-function translate(out, a, v) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a10 = a[3], a11 = a[4], a12 = a[5], a20 = a[6], a21 = a[7], a22 = a[8], x = v[0], y = v[1];
-  out[0] = a00;
-  out[1] = a01;
-  out[2] = a02;
-  out[3] = a10;
-  out[4] = a11;
-  out[5] = a12;
-  out[6] = x * a00 + y * a10 + a20;
-  out[7] = x * a01 + y * a11 + a21;
-  out[8] = x * a02 + y * a12 + a22;
-  return out;
-}
-function rotate(out, a, rad) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a10 = a[3], a11 = a[4], a12 = a[5], a20 = a[6], a21 = a[7], a22 = a[8], s = Math.sin(rad), c = Math.cos(rad);
-  out[0] = c * a00 + s * a10;
-  out[1] = c * a01 + s * a11;
-  out[2] = c * a02 + s * a12;
-  out[3] = c * a10 - s * a00;
-  out[4] = c * a11 - s * a01;
-  out[5] = c * a12 - s * a02;
-  out[6] = a20;
-  out[7] = a21;
-  out[8] = a22;
-  return out;
-}
-function scale(out, a, v) {
-  var x = v[0], y = v[1];
-  out[0] = x * a[0];
-  out[1] = x * a[1];
-  out[2] = x * a[2];
-  out[3] = y * a[3];
-  out[4] = y * a[4];
-  out[5] = y * a[5];
-  out[6] = a[6];
-  out[7] = a[7];
-  out[8] = a[8];
-  return out;
-}
-function fromTranslation(out, v) {
-  out[0] = 1;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 1;
-  out[5] = 0;
-  out[6] = v[0];
-  out[7] = v[1];
-  out[8] = 1;
-  return out;
-}
-function fromRotation(out, rad) {
-  var s = Math.sin(rad), c = Math.cos(rad);
-  out[0] = c;
-  out[1] = s;
-  out[2] = 0;
-  out[3] = -s;
-  out[4] = c;
-  out[5] = 0;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 1;
-  return out;
-}
-function fromScaling(out, v) {
-  out[0] = v[0];
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = v[1];
-  out[5] = 0;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 1;
-  return out;
-}
-function fromMat2d(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = 0;
-  out[3] = a[2];
-  out[4] = a[3];
-  out[5] = 0;
-  out[6] = a[4];
-  out[7] = a[5];
-  out[8] = 1;
-  return out;
-}
-function fromQuat(out, q) {
-  var x = q[0], y = q[1], z = q[2], w = q[3];
-  var x2 = x + x;
-  var y2 = y + y;
-  var z2 = z + z;
-  var xx = x * x2;
-  var yx = y * x2;
-  var yy = y * y2;
-  var zx = z * x2;
-  var zy = z * y2;
-  var zz = z * z2;
-  var wx = w * x2;
-  var wy = w * y2;
-  var wz = w * z2;
-  out[0] = 1 - yy - zz;
-  out[3] = yx - wz;
-  out[6] = zx + wy;
-  out[1] = yx + wz;
-  out[4] = 1 - xx - zz;
-  out[7] = zy - wx;
-  out[2] = zx - wy;
-  out[5] = zy + wx;
-  out[8] = 1 - xx - yy;
-  return out;
-}
-function normalFromMat4(out, a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
-  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
-  var b00 = a00 * a11 - a01 * a10;
-  var b01 = a00 * a12 - a02 * a10;
-  var b02 = a00 * a13 - a03 * a10;
-  var b03 = a01 * a12 - a02 * a11;
-  var b04 = a01 * a13 - a03 * a11;
-  var b05 = a02 * a13 - a03 * a12;
-  var b06 = a20 * a31 - a21 * a30;
-  var b07 = a20 * a32 - a22 * a30;
-  var b08 = a20 * a33 - a23 * a30;
-  var b09 = a21 * a32 - a22 * a31;
-  var b10 = a21 * a33 - a23 * a31;
-  var b11 = a22 * a33 - a23 * a32;
-  var det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
-  if (!det) {
-    return null;
-  }
-  det = 1 / det;
-  out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
-  out[1] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
-  out[2] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
-  out[3] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
-  out[4] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
-  out[5] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
-  out[6] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
-  out[7] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
-  out[8] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
-  return out;
-}
-function projection(out, width, height) {
-  out[0] = 2 / width;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = -2 / height;
-  out[5] = 0;
-  out[6] = -1;
-  out[7] = 1;
-  out[8] = 1;
-  return out;
-}
-function str(a) {
-  return "mat3(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ", " + a[4] + ", " + a[5] + ", " + a[6] + ", " + a[7] + ", " + a[8] + ")";
-}
-function frob(a) {
-  return Math.hypot(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]);
-}
-function add(out, a, b) {
-  out[0] = a[0] + b[0];
-  out[1] = a[1] + b[1];
-  out[2] = a[2] + b[2];
-  out[3] = a[3] + b[3];
-  out[4] = a[4] + b[4];
-  out[5] = a[5] + b[5];
-  out[6] = a[6] + b[6];
-  out[7] = a[7] + b[7];
-  out[8] = a[8] + b[8];
-  return out;
-}
-function subtract(out, a, b) {
-  out[0] = a[0] - b[0];
-  out[1] = a[1] - b[1];
-  out[2] = a[2] - b[2];
-  out[3] = a[3] - b[3];
-  out[4] = a[4] - b[4];
-  out[5] = a[5] - b[5];
-  out[6] = a[6] - b[6];
-  out[7] = a[7] - b[7];
-  out[8] = a[8] - b[8];
-  return out;
-}
-function multiplyScalar(out, a, b) {
-  out[0] = a[0] * b;
-  out[1] = a[1] * b;
-  out[2] = a[2] * b;
-  out[3] = a[3] * b;
-  out[4] = a[4] * b;
-  out[5] = a[5] * b;
-  out[6] = a[6] * b;
-  out[7] = a[7] * b;
-  out[8] = a[8] * b;
-  return out;
-}
-function multiplyScalarAndAdd(out, a, b, scale6) {
-  out[0] = a[0] + b[0] * scale6;
-  out[1] = a[1] + b[1] * scale6;
-  out[2] = a[2] + b[2] * scale6;
-  out[3] = a[3] + b[3] * scale6;
-  out[4] = a[4] + b[4] * scale6;
-  out[5] = a[5] + b[5] * scale6;
-  out[6] = a[6] + b[6] * scale6;
-  out[7] = a[7] + b[7] * scale6;
-  out[8] = a[8] + b[8] * scale6;
-  return out;
-}
-function exactEquals(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5] && a[6] === b[6] && a[7] === b[7] && a[8] === b[8];
-}
-function equals(a, b) {
-  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7], a8 = a[8];
-  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3], b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7], b8 = b[8];
-  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3)) && Math.abs(a4 - b4) <= EPSILON * Math.max(1, Math.abs(a4), Math.abs(b4)) && Math.abs(a5 - b5) <= EPSILON * Math.max(1, Math.abs(a5), Math.abs(b5)) && Math.abs(a6 - b6) <= EPSILON * Math.max(1, Math.abs(a6), Math.abs(b6)) && Math.abs(a7 - b7) <= EPSILON * Math.max(1, Math.abs(a7), Math.abs(b7)) && Math.abs(a8 - b8) <= EPSILON * Math.max(1, Math.abs(a8), Math.abs(b8));
-}
-var mul = multiply;
-var sub = subtract;
-
-// node_modules/gl-matrix/esm/mat4.js
-var mat4_exports = {};
-__export(mat4_exports, {
-  add: () => add2,
-  adjoint: () => adjoint2,
-  clone: () => clone3,
-  copy: () => copy2,
-  create: () => create2,
-  determinant: () => determinant2,
-  equals: () => equals2,
-  exactEquals: () => exactEquals2,
-  frob: () => frob2,
-  fromQuat: () => fromQuat3,
-  fromQuat2: () => fromQuat2,
-  fromRotation: () => fromRotation2,
-  fromRotationTranslation: () => fromRotationTranslation,
-  fromRotationTranslationScale: () => fromRotationTranslationScale,
-  fromRotationTranslationScaleOrigin: () => fromRotationTranslationScaleOrigin,
-  fromScaling: () => fromScaling2,
-  fromTranslation: () => fromTranslation2,
-  fromValues: () => fromValues2,
-  fromXRotation: () => fromXRotation,
-  fromYRotation: () => fromYRotation,
-  fromZRotation: () => fromZRotation,
-  frustum: () => frustum,
-  getRotation: () => getRotation,
-  getScaling: () => getScaling,
-  getTranslation: () => getTranslation,
-  identity: () => identity2,
-  invert: () => invert2,
-  lookAt: () => lookAt,
-  mul: () => mul2,
-  multiply: () => multiply2,
-  multiplyScalar: () => multiplyScalar2,
-  multiplyScalarAndAdd: () => multiplyScalarAndAdd2,
-  ortho: () => ortho,
-  perspective: () => perspective,
-  perspectiveFromFieldOfView: () => perspectiveFromFieldOfView,
-  rotate: () => rotate2,
-  rotateX: () => rotateX,
-  rotateY: () => rotateY,
-  rotateZ: () => rotateZ,
-  scale: () => scale2,
-  set: () => set2,
-  str: () => str2,
-  sub: () => sub2,
-  subtract: () => subtract2,
-  targetTo: () => targetTo,
-  translate: () => translate2,
-  transpose: () => transpose2
-});
-init_legacy_browser();
-function create2() {
-  var out = new ARRAY_TYPE(16);
-  if (ARRAY_TYPE != Float32Array) {
-    out[1] = 0;
-    out[2] = 0;
-    out[3] = 0;
-    out[4] = 0;
-    out[6] = 0;
-    out[7] = 0;
-    out[8] = 0;
-    out[9] = 0;
-    out[11] = 0;
-    out[12] = 0;
-    out[13] = 0;
-    out[14] = 0;
-  }
-  out[0] = 1;
-  out[5] = 1;
-  out[10] = 1;
-  out[15] = 1;
-  return out;
-}
-function clone3(a) {
-  var out = new ARRAY_TYPE(16);
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  out[4] = a[4];
-  out[5] = a[5];
-  out[6] = a[6];
-  out[7] = a[7];
-  out[8] = a[8];
-  out[9] = a[9];
-  out[10] = a[10];
-  out[11] = a[11];
-  out[12] = a[12];
-  out[13] = a[13];
-  out[14] = a[14];
-  out[15] = a[15];
-  return out;
-}
-function copy2(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  out[4] = a[4];
-  out[5] = a[5];
-  out[6] = a[6];
-  out[7] = a[7];
-  out[8] = a[8];
-  out[9] = a[9];
-  out[10] = a[10];
-  out[11] = a[11];
-  out[12] = a[12];
-  out[13] = a[13];
-  out[14] = a[14];
-  out[15] = a[15];
-  return out;
-}
-function fromValues2(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
-  var out = new ARRAY_TYPE(16);
-  out[0] = m00;
-  out[1] = m01;
-  out[2] = m02;
-  out[3] = m03;
-  out[4] = m10;
-  out[5] = m11;
-  out[6] = m12;
-  out[7] = m13;
-  out[8] = m20;
-  out[9] = m21;
-  out[10] = m22;
-  out[11] = m23;
-  out[12] = m30;
-  out[13] = m31;
-  out[14] = m32;
-  out[15] = m33;
-  return out;
-}
-function set2(out, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
-  out[0] = m00;
-  out[1] = m01;
-  out[2] = m02;
-  out[3] = m03;
-  out[4] = m10;
-  out[5] = m11;
-  out[6] = m12;
-  out[7] = m13;
-  out[8] = m20;
-  out[9] = m21;
-  out[10] = m22;
-  out[11] = m23;
-  out[12] = m30;
-  out[13] = m31;
-  out[14] = m32;
-  out[15] = m33;
-  return out;
-}
-function identity2(out) {
-  out[0] = 1;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = 1;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = 1;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function transpose2(out, a) {
-  if (out === a) {
-    var a01 = a[1], a02 = a[2], a03 = a[3];
-    var a12 = a[6], a13 = a[7];
-    var a23 = a[11];
-    out[1] = a[4];
-    out[2] = a[8];
-    out[3] = a[12];
-    out[4] = a01;
-    out[6] = a[9];
-    out[7] = a[13];
-    out[8] = a02;
-    out[9] = a12;
-    out[11] = a[14];
-    out[12] = a03;
-    out[13] = a13;
-    out[14] = a23;
-  } else {
-    out[0] = a[0];
-    out[1] = a[4];
-    out[2] = a[8];
-    out[3] = a[12];
-    out[4] = a[1];
-    out[5] = a[5];
-    out[6] = a[9];
-    out[7] = a[13];
-    out[8] = a[2];
-    out[9] = a[6];
-    out[10] = a[10];
-    out[11] = a[14];
-    out[12] = a[3];
-    out[13] = a[7];
-    out[14] = a[11];
-    out[15] = a[15];
-  }
-  return out;
-}
-function invert2(out, a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
-  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
-  var b00 = a00 * a11 - a01 * a10;
-  var b01 = a00 * a12 - a02 * a10;
-  var b02 = a00 * a13 - a03 * a10;
-  var b03 = a01 * a12 - a02 * a11;
-  var b04 = a01 * a13 - a03 * a11;
-  var b05 = a02 * a13 - a03 * a12;
-  var b06 = a20 * a31 - a21 * a30;
-  var b07 = a20 * a32 - a22 * a30;
-  var b08 = a20 * a33 - a23 * a30;
-  var b09 = a21 * a32 - a22 * a31;
-  var b10 = a21 * a33 - a23 * a31;
-  var b11 = a22 * a33 - a23 * a32;
-  var det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
-  if (!det) {
-    return null;
-  }
-  det = 1 / det;
-  out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
-  out[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
-  out[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
-  out[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
-  out[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
-  out[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
-  out[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
-  out[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
-  out[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
-  out[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
-  out[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
-  out[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
-  out[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det;
-  out[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
-  out[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det;
-  out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
-  return out;
-}
-function adjoint2(out, a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
-  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
-  out[0] = a11 * (a22 * a33 - a23 * a32) - a21 * (a12 * a33 - a13 * a32) + a31 * (a12 * a23 - a13 * a22);
-  out[1] = -(a01 * (a22 * a33 - a23 * a32) - a21 * (a02 * a33 - a03 * a32) + a31 * (a02 * a23 - a03 * a22));
-  out[2] = a01 * (a12 * a33 - a13 * a32) - a11 * (a02 * a33 - a03 * a32) + a31 * (a02 * a13 - a03 * a12);
-  out[3] = -(a01 * (a12 * a23 - a13 * a22) - a11 * (a02 * a23 - a03 * a22) + a21 * (a02 * a13 - a03 * a12));
-  out[4] = -(a10 * (a22 * a33 - a23 * a32) - a20 * (a12 * a33 - a13 * a32) + a30 * (a12 * a23 - a13 * a22));
-  out[5] = a00 * (a22 * a33 - a23 * a32) - a20 * (a02 * a33 - a03 * a32) + a30 * (a02 * a23 - a03 * a22);
-  out[6] = -(a00 * (a12 * a33 - a13 * a32) - a10 * (a02 * a33 - a03 * a32) + a30 * (a02 * a13 - a03 * a12));
-  out[7] = a00 * (a12 * a23 - a13 * a22) - a10 * (a02 * a23 - a03 * a22) + a20 * (a02 * a13 - a03 * a12);
-  out[8] = a10 * (a21 * a33 - a23 * a31) - a20 * (a11 * a33 - a13 * a31) + a30 * (a11 * a23 - a13 * a21);
-  out[9] = -(a00 * (a21 * a33 - a23 * a31) - a20 * (a01 * a33 - a03 * a31) + a30 * (a01 * a23 - a03 * a21));
-  out[10] = a00 * (a11 * a33 - a13 * a31) - a10 * (a01 * a33 - a03 * a31) + a30 * (a01 * a13 - a03 * a11);
-  out[11] = -(a00 * (a11 * a23 - a13 * a21) - a10 * (a01 * a23 - a03 * a21) + a20 * (a01 * a13 - a03 * a11));
-  out[12] = -(a10 * (a21 * a32 - a22 * a31) - a20 * (a11 * a32 - a12 * a31) + a30 * (a11 * a22 - a12 * a21));
-  out[13] = a00 * (a21 * a32 - a22 * a31) - a20 * (a01 * a32 - a02 * a31) + a30 * (a01 * a22 - a02 * a21);
-  out[14] = -(a00 * (a11 * a32 - a12 * a31) - a10 * (a01 * a32 - a02 * a31) + a30 * (a01 * a12 - a02 * a11));
-  out[15] = a00 * (a11 * a22 - a12 * a21) - a10 * (a01 * a22 - a02 * a21) + a20 * (a01 * a12 - a02 * a11);
-  return out;
-}
-function determinant2(a) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
-  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
-  var b00 = a00 * a11 - a01 * a10;
-  var b01 = a00 * a12 - a02 * a10;
-  var b02 = a00 * a13 - a03 * a10;
-  var b03 = a01 * a12 - a02 * a11;
-  var b04 = a01 * a13 - a03 * a11;
-  var b05 = a02 * a13 - a03 * a12;
-  var b06 = a20 * a31 - a21 * a30;
-  var b07 = a20 * a32 - a22 * a30;
-  var b08 = a20 * a33 - a23 * a30;
-  var b09 = a21 * a32 - a22 * a31;
-  var b10 = a21 * a33 - a23 * a31;
-  var b11 = a22 * a33 - a23 * a32;
-  return b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
-}
-function multiply2(out, a, b) {
-  var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-  var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-  var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
-  var a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
-  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
-  out[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
-  out[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
-  out[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
-  out[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
-  b0 = b[4];
-  b1 = b[5];
-  b2 = b[6];
-  b3 = b[7];
-  out[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
-  out[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
-  out[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
-  out[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
-  b0 = b[8];
-  b1 = b[9];
-  b2 = b[10];
-  b3 = b[11];
-  out[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
-  out[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
-  out[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
-  out[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
-  b0 = b[12];
-  b1 = b[13];
-  b2 = b[14];
-  b3 = b[15];
-  out[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
-  out[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
-  out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
-  out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
-  return out;
-}
-function translate2(out, a, v) {
-  var x = v[0], y = v[1], z = v[2];
-  var a00, a01, a02, a03;
-  var a10, a11, a12, a13;
-  var a20, a21, a22, a23;
-  if (a === out) {
-    out[12] = a[0] * x + a[4] * y + a[8] * z + a[12];
-    out[13] = a[1] * x + a[5] * y + a[9] * z + a[13];
-    out[14] = a[2] * x + a[6] * y + a[10] * z + a[14];
-    out[15] = a[3] * x + a[7] * y + a[11] * z + a[15];
-  } else {
-    a00 = a[0];
-    a01 = a[1];
-    a02 = a[2];
-    a03 = a[3];
-    a10 = a[4];
-    a11 = a[5];
-    a12 = a[6];
-    a13 = a[7];
-    a20 = a[8];
-    a21 = a[9];
-    a22 = a[10];
-    a23 = a[11];
-    out[0] = a00;
-    out[1] = a01;
-    out[2] = a02;
-    out[3] = a03;
-    out[4] = a10;
-    out[5] = a11;
-    out[6] = a12;
-    out[7] = a13;
-    out[8] = a20;
-    out[9] = a21;
-    out[10] = a22;
-    out[11] = a23;
-    out[12] = a00 * x + a10 * y + a20 * z + a[12];
-    out[13] = a01 * x + a11 * y + a21 * z + a[13];
-    out[14] = a02 * x + a12 * y + a22 * z + a[14];
-    out[15] = a03 * x + a13 * y + a23 * z + a[15];
-  }
-  return out;
-}
-function scale2(out, a, v) {
-  var x = v[0], y = v[1], z = v[2];
-  out[0] = a[0] * x;
-  out[1] = a[1] * x;
-  out[2] = a[2] * x;
-  out[3] = a[3] * x;
-  out[4] = a[4] * y;
-  out[5] = a[5] * y;
-  out[6] = a[6] * y;
-  out[7] = a[7] * y;
-  out[8] = a[8] * z;
-  out[9] = a[9] * z;
-  out[10] = a[10] * z;
-  out[11] = a[11] * z;
-  out[12] = a[12];
-  out[13] = a[13];
-  out[14] = a[14];
-  out[15] = a[15];
-  return out;
-}
-function rotate2(out, a, rad, axis) {
-  var x = axis[0], y = axis[1], z = axis[2];
-  var len4 = Math.hypot(x, y, z);
-  var s, c, t;
-  var a00, a01, a02, a03;
-  var a10, a11, a12, a13;
-  var a20, a21, a22, a23;
-  var b00, b01, b02;
-  var b10, b11, b12;
-  var b20, b21, b22;
-  if (len4 < EPSILON) {
-    return null;
-  }
-  len4 = 1 / len4;
-  x *= len4;
-  y *= len4;
-  z *= len4;
-  s = Math.sin(rad);
-  c = Math.cos(rad);
-  t = 1 - c;
-  a00 = a[0];
-  a01 = a[1];
-  a02 = a[2];
-  a03 = a[3];
-  a10 = a[4];
-  a11 = a[5];
-  a12 = a[6];
-  a13 = a[7];
-  a20 = a[8];
-  a21 = a[9];
-  a22 = a[10];
-  a23 = a[11];
-  b00 = x * x * t + c;
-  b01 = y * x * t + z * s;
-  b02 = z * x * t - y * s;
-  b10 = x * y * t - z * s;
-  b11 = y * y * t + c;
-  b12 = z * y * t + x * s;
-  b20 = x * z * t + y * s;
-  b21 = y * z * t - x * s;
-  b22 = z * z * t + c;
-  out[0] = a00 * b00 + a10 * b01 + a20 * b02;
-  out[1] = a01 * b00 + a11 * b01 + a21 * b02;
-  out[2] = a02 * b00 + a12 * b01 + a22 * b02;
-  out[3] = a03 * b00 + a13 * b01 + a23 * b02;
-  out[4] = a00 * b10 + a10 * b11 + a20 * b12;
-  out[5] = a01 * b10 + a11 * b11 + a21 * b12;
-  out[6] = a02 * b10 + a12 * b11 + a22 * b12;
-  out[7] = a03 * b10 + a13 * b11 + a23 * b12;
-  out[8] = a00 * b20 + a10 * b21 + a20 * b22;
-  out[9] = a01 * b20 + a11 * b21 + a21 * b22;
-  out[10] = a02 * b20 + a12 * b21 + a22 * b22;
-  out[11] = a03 * b20 + a13 * b21 + a23 * b22;
-  if (a !== out) {
-    out[12] = a[12];
-    out[13] = a[13];
-    out[14] = a[14];
-    out[15] = a[15];
-  }
-  return out;
-}
-function rotateX(out, a, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  var a10 = a[4];
-  var a11 = a[5];
-  var a12 = a[6];
-  var a13 = a[7];
-  var a20 = a[8];
-  var a21 = a[9];
-  var a22 = a[10];
-  var a23 = a[11];
-  if (a !== out) {
-    out[0] = a[0];
-    out[1] = a[1];
-    out[2] = a[2];
-    out[3] = a[3];
-    out[12] = a[12];
-    out[13] = a[13];
-    out[14] = a[14];
-    out[15] = a[15];
-  }
-  out[4] = a10 * c + a20 * s;
-  out[5] = a11 * c + a21 * s;
-  out[6] = a12 * c + a22 * s;
-  out[7] = a13 * c + a23 * s;
-  out[8] = a20 * c - a10 * s;
-  out[9] = a21 * c - a11 * s;
-  out[10] = a22 * c - a12 * s;
-  out[11] = a23 * c - a13 * s;
-  return out;
-}
-function rotateY(out, a, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  var a00 = a[0];
-  var a01 = a[1];
-  var a02 = a[2];
-  var a03 = a[3];
-  var a20 = a[8];
-  var a21 = a[9];
-  var a22 = a[10];
-  var a23 = a[11];
-  if (a !== out) {
-    out[4] = a[4];
-    out[5] = a[5];
-    out[6] = a[6];
-    out[7] = a[7];
-    out[12] = a[12];
-    out[13] = a[13];
-    out[14] = a[14];
-    out[15] = a[15];
-  }
-  out[0] = a00 * c - a20 * s;
-  out[1] = a01 * c - a21 * s;
-  out[2] = a02 * c - a22 * s;
-  out[3] = a03 * c - a23 * s;
-  out[8] = a00 * s + a20 * c;
-  out[9] = a01 * s + a21 * c;
-  out[10] = a02 * s + a22 * c;
-  out[11] = a03 * s + a23 * c;
-  return out;
-}
-function rotateZ(out, a, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  var a00 = a[0];
-  var a01 = a[1];
-  var a02 = a[2];
-  var a03 = a[3];
-  var a10 = a[4];
-  var a11 = a[5];
-  var a12 = a[6];
-  var a13 = a[7];
-  if (a !== out) {
-    out[8] = a[8];
-    out[9] = a[9];
-    out[10] = a[10];
-    out[11] = a[11];
-    out[12] = a[12];
-    out[13] = a[13];
-    out[14] = a[14];
-    out[15] = a[15];
-  }
-  out[0] = a00 * c + a10 * s;
-  out[1] = a01 * c + a11 * s;
-  out[2] = a02 * c + a12 * s;
-  out[3] = a03 * c + a13 * s;
-  out[4] = a10 * c - a00 * s;
-  out[5] = a11 * c - a01 * s;
-  out[6] = a12 * c - a02 * s;
-  out[7] = a13 * c - a03 * s;
-  return out;
-}
-function fromTranslation2(out, v) {
-  out[0] = 1;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = 1;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = 1;
-  out[11] = 0;
-  out[12] = v[0];
-  out[13] = v[1];
-  out[14] = v[2];
-  out[15] = 1;
-  return out;
-}
-function fromScaling2(out, v) {
-  out[0] = v[0];
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = v[1];
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = v[2];
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function fromRotation2(out, rad, axis) {
-  var x = axis[0], y = axis[1], z = axis[2];
-  var len4 = Math.hypot(x, y, z);
-  var s, c, t;
-  if (len4 < EPSILON) {
-    return null;
-  }
-  len4 = 1 / len4;
-  x *= len4;
-  y *= len4;
-  z *= len4;
-  s = Math.sin(rad);
-  c = Math.cos(rad);
-  t = 1 - c;
-  out[0] = x * x * t + c;
-  out[1] = y * x * t + z * s;
-  out[2] = z * x * t - y * s;
-  out[3] = 0;
-  out[4] = x * y * t - z * s;
-  out[5] = y * y * t + c;
-  out[6] = z * y * t + x * s;
-  out[7] = 0;
-  out[8] = x * z * t + y * s;
-  out[9] = y * z * t - x * s;
-  out[10] = z * z * t + c;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function fromXRotation(out, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  out[0] = 1;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = c;
-  out[6] = s;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = -s;
-  out[10] = c;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function fromYRotation(out, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  out[0] = c;
-  out[1] = 0;
-  out[2] = -s;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = 1;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = s;
-  out[9] = 0;
-  out[10] = c;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function fromZRotation(out, rad) {
-  var s = Math.sin(rad);
-  var c = Math.cos(rad);
-  out[0] = c;
-  out[1] = s;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = -s;
-  out[5] = c;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = 1;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function fromRotationTranslation(out, q, v) {
-  var x = q[0], y = q[1], z = q[2], w = q[3];
-  var x2 = x + x;
-  var y2 = y + y;
-  var z2 = z + z;
-  var xx = x * x2;
-  var xy = x * y2;
-  var xz = x * z2;
-  var yy = y * y2;
-  var yz = y * z2;
-  var zz = z * z2;
-  var wx = w * x2;
-  var wy = w * y2;
-  var wz = w * z2;
-  out[0] = 1 - (yy + zz);
-  out[1] = xy + wz;
-  out[2] = xz - wy;
-  out[3] = 0;
-  out[4] = xy - wz;
-  out[5] = 1 - (xx + zz);
-  out[6] = yz + wx;
-  out[7] = 0;
-  out[8] = xz + wy;
-  out[9] = yz - wx;
-  out[10] = 1 - (xx + yy);
-  out[11] = 0;
-  out[12] = v[0];
-  out[13] = v[1];
-  out[14] = v[2];
-  out[15] = 1;
-  return out;
-}
-function fromQuat2(out, a) {
-  var translation = new ARRAY_TYPE(3);
-  var bx = -a[0], by = -a[1], bz = -a[2], bw = a[3], ax = a[4], ay = a[5], az = a[6], aw = a[7];
-  var magnitude = bx * bx + by * by + bz * bz + bw * bw;
-  if (magnitude > 0) {
-    translation[0] = (ax * bw + aw * bx + ay * bz - az * by) * 2 / magnitude;
-    translation[1] = (ay * bw + aw * by + az * bx - ax * bz) * 2 / magnitude;
-    translation[2] = (az * bw + aw * bz + ax * by - ay * bx) * 2 / magnitude;
-  } else {
-    translation[0] = (ax * bw + aw * bx + ay * bz - az * by) * 2;
-    translation[1] = (ay * bw + aw * by + az * bx - ax * bz) * 2;
-    translation[2] = (az * bw + aw * bz + ax * by - ay * bx) * 2;
-  }
-  fromRotationTranslation(out, a, translation);
-  return out;
-}
-function getTranslation(out, mat) {
-  out[0] = mat[12];
-  out[1] = mat[13];
-  out[2] = mat[14];
-  return out;
-}
-function getScaling(out, mat) {
-  var m11 = mat[0];
-  var m12 = mat[1];
-  var m13 = mat[2];
-  var m21 = mat[4];
-  var m22 = mat[5];
-  var m23 = mat[6];
-  var m31 = mat[8];
-  var m32 = mat[9];
-  var m33 = mat[10];
-  out[0] = Math.hypot(m11, m12, m13);
-  out[1] = Math.hypot(m21, m22, m23);
-  out[2] = Math.hypot(m31, m32, m33);
-  return out;
-}
-function getRotation(out, mat) {
-  var scaling = new ARRAY_TYPE(3);
-  getScaling(scaling, mat);
-  var is1 = 1 / scaling[0];
-  var is2 = 1 / scaling[1];
-  var is3 = 1 / scaling[2];
-  var sm11 = mat[0] * is1;
-  var sm12 = mat[1] * is2;
-  var sm13 = mat[2] * is3;
-  var sm21 = mat[4] * is1;
-  var sm22 = mat[5] * is2;
-  var sm23 = mat[6] * is3;
-  var sm31 = mat[8] * is1;
-  var sm32 = mat[9] * is2;
-  var sm33 = mat[10] * is3;
-  var trace = sm11 + sm22 + sm33;
-  var S = 0;
-  if (trace > 0) {
-    S = Math.sqrt(trace + 1) * 2;
-    out[3] = 0.25 * S;
-    out[0] = (sm23 - sm32) / S;
-    out[1] = (sm31 - sm13) / S;
-    out[2] = (sm12 - sm21) / S;
-  } else if (sm11 > sm22 && sm11 > sm33) {
-    S = Math.sqrt(1 + sm11 - sm22 - sm33) * 2;
-    out[3] = (sm23 - sm32) / S;
-    out[0] = 0.25 * S;
-    out[1] = (sm12 + sm21) / S;
-    out[2] = (sm31 + sm13) / S;
-  } else if (sm22 > sm33) {
-    S = Math.sqrt(1 + sm22 - sm11 - sm33) * 2;
-    out[3] = (sm31 - sm13) / S;
-    out[0] = (sm12 + sm21) / S;
-    out[1] = 0.25 * S;
-    out[2] = (sm23 + sm32) / S;
-  } else {
-    S = Math.sqrt(1 + sm33 - sm11 - sm22) * 2;
-    out[3] = (sm12 - sm21) / S;
-    out[0] = (sm31 + sm13) / S;
-    out[1] = (sm23 + sm32) / S;
-    out[2] = 0.25 * S;
-  }
-  return out;
-}
-function fromRotationTranslationScale(out, q, v, s) {
-  var x = q[0], y = q[1], z = q[2], w = q[3];
-  var x2 = x + x;
-  var y2 = y + y;
-  var z2 = z + z;
-  var xx = x * x2;
-  var xy = x * y2;
-  var xz = x * z2;
-  var yy = y * y2;
-  var yz = y * z2;
-  var zz = z * z2;
-  var wx = w * x2;
-  var wy = w * y2;
-  var wz = w * z2;
-  var sx = s[0];
-  var sy = s[1];
-  var sz = s[2];
-  out[0] = (1 - (yy + zz)) * sx;
-  out[1] = (xy + wz) * sx;
-  out[2] = (xz - wy) * sx;
-  out[3] = 0;
-  out[4] = (xy - wz) * sy;
-  out[5] = (1 - (xx + zz)) * sy;
-  out[6] = (yz + wx) * sy;
-  out[7] = 0;
-  out[8] = (xz + wy) * sz;
-  out[9] = (yz - wx) * sz;
-  out[10] = (1 - (xx + yy)) * sz;
-  out[11] = 0;
-  out[12] = v[0];
-  out[13] = v[1];
-  out[14] = v[2];
-  out[15] = 1;
-  return out;
-}
-function fromRotationTranslationScaleOrigin(out, q, v, s, o) {
-  var x = q[0], y = q[1], z = q[2], w = q[3];
-  var x2 = x + x;
-  var y2 = y + y;
-  var z2 = z + z;
-  var xx = x * x2;
-  var xy = x * y2;
-  var xz = x * z2;
-  var yy = y * y2;
-  var yz = y * z2;
-  var zz = z * z2;
-  var wx = w * x2;
-  var wy = w * y2;
-  var wz = w * z2;
-  var sx = s[0];
-  var sy = s[1];
-  var sz = s[2];
-  var ox = o[0];
-  var oy = o[1];
-  var oz = o[2];
-  var out0 = (1 - (yy + zz)) * sx;
-  var out1 = (xy + wz) * sx;
-  var out2 = (xz - wy) * sx;
-  var out4 = (xy - wz) * sy;
-  var out5 = (1 - (xx + zz)) * sy;
-  var out6 = (yz + wx) * sy;
-  var out8 = (xz + wy) * sz;
-  var out9 = (yz - wx) * sz;
-  var out10 = (1 - (xx + yy)) * sz;
-  out[0] = out0;
-  out[1] = out1;
-  out[2] = out2;
-  out[3] = 0;
-  out[4] = out4;
-  out[5] = out5;
-  out[6] = out6;
-  out[7] = 0;
-  out[8] = out8;
-  out[9] = out9;
-  out[10] = out10;
-  out[11] = 0;
-  out[12] = v[0] + ox - (out0 * ox + out4 * oy + out8 * oz);
-  out[13] = v[1] + oy - (out1 * ox + out5 * oy + out9 * oz);
-  out[14] = v[2] + oz - (out2 * ox + out6 * oy + out10 * oz);
-  out[15] = 1;
-  return out;
-}
-function fromQuat3(out, q) {
-  var x = q[0], y = q[1], z = q[2], w = q[3];
-  var x2 = x + x;
-  var y2 = y + y;
-  var z2 = z + z;
-  var xx = x * x2;
-  var yx = y * x2;
-  var yy = y * y2;
-  var zx = z * x2;
-  var zy = z * y2;
-  var zz = z * z2;
-  var wx = w * x2;
-  var wy = w * y2;
-  var wz = w * z2;
-  out[0] = 1 - yy - zz;
-  out[1] = yx + wz;
-  out[2] = zx - wy;
-  out[3] = 0;
-  out[4] = yx - wz;
-  out[5] = 1 - xx - zz;
-  out[6] = zy + wx;
-  out[7] = 0;
-  out[8] = zx + wy;
-  out[9] = zy - wx;
-  out[10] = 1 - xx - yy;
-  out[11] = 0;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = 0;
-  out[15] = 1;
-  return out;
-}
-function frustum(out, left, right, bottom, top, near, far) {
-  var rl = 1 / (right - left);
-  var tb = 1 / (top - bottom);
-  var nf = 1 / (near - far);
-  out[0] = near * 2 * rl;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = near * 2 * tb;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = (right + left) * rl;
-  out[9] = (top + bottom) * tb;
-  out[10] = (far + near) * nf;
-  out[11] = -1;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = far * near * 2 * nf;
-  out[15] = 0;
-  return out;
-}
-function perspective(out, fovy, aspect, near, far) {
-  var f = 1 / Math.tan(fovy / 2), nf;
-  out[0] = f / aspect;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = f;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[11] = -1;
-  out[12] = 0;
-  out[13] = 0;
-  out[15] = 0;
-  if (far != null && far !== Infinity) {
-    nf = 1 / (near - far);
-    out[10] = (far + near) * nf;
-    out[14] = 2 * far * near * nf;
-  } else {
-    out[10] = -1;
-    out[14] = -2 * near;
-  }
-  return out;
-}
-function perspectiveFromFieldOfView(out, fov, near, far) {
-  var upTan = Math.tan(fov.upDegrees * Math.PI / 180);
-  var downTan = Math.tan(fov.downDegrees * Math.PI / 180);
-  var leftTan = Math.tan(fov.leftDegrees * Math.PI / 180);
-  var rightTan = Math.tan(fov.rightDegrees * Math.PI / 180);
-  var xScale = 2 / (leftTan + rightTan);
-  var yScale = 2 / (upTan + downTan);
-  out[0] = xScale;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = yScale;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = -((leftTan - rightTan) * xScale * 0.5);
-  out[9] = (upTan - downTan) * yScale * 0.5;
-  out[10] = far / (near - far);
-  out[11] = -1;
-  out[12] = 0;
-  out[13] = 0;
-  out[14] = far * near / (near - far);
-  out[15] = 0;
-  return out;
-}
-function ortho(out, left, right, bottom, top, near, far) {
-  var lr = 1 / (left - right);
-  var bt = 1 / (bottom - top);
-  var nf = 1 / (near - far);
-  out[0] = -2 * lr;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  out[4] = 0;
-  out[5] = -2 * bt;
-  out[6] = 0;
-  out[7] = 0;
-  out[8] = 0;
-  out[9] = 0;
-  out[10] = 2 * nf;
-  out[11] = 0;
-  out[12] = (left + right) * lr;
-  out[13] = (top + bottom) * bt;
-  out[14] = (far + near) * nf;
-  out[15] = 1;
-  return out;
-}
-function lookAt(out, eye, center, up) {
-  var x0, x1, x2, y0, y1, y2, z0, z1, z2, len4;
-  var eyex = eye[0];
-  var eyey = eye[1];
-  var eyez = eye[2];
-  var upx = up[0];
-  var upy = up[1];
-  var upz = up[2];
-  var centerx = center[0];
-  var centery = center[1];
-  var centerz = center[2];
-  if (Math.abs(eyex - centerx) < EPSILON && Math.abs(eyey - centery) < EPSILON && Math.abs(eyez - centerz) < EPSILON) {
-    return identity2(out);
-  }
-  z0 = eyex - centerx;
-  z1 = eyey - centery;
-  z2 = eyez - centerz;
-  len4 = 1 / Math.hypot(z0, z1, z2);
-  z0 *= len4;
-  z1 *= len4;
-  z2 *= len4;
-  x0 = upy * z2 - upz * z1;
-  x1 = upz * z0 - upx * z2;
-  x2 = upx * z1 - upy * z0;
-  len4 = Math.hypot(x0, x1, x2);
-  if (!len4) {
-    x0 = 0;
-    x1 = 0;
-    x2 = 0;
-  } else {
-    len4 = 1 / len4;
-    x0 *= len4;
-    x1 *= len4;
-    x2 *= len4;
-  }
-  y0 = z1 * x2 - z2 * x1;
-  y1 = z2 * x0 - z0 * x2;
-  y2 = z0 * x1 - z1 * x0;
-  len4 = Math.hypot(y0, y1, y2);
-  if (!len4) {
-    y0 = 0;
-    y1 = 0;
-    y2 = 0;
-  } else {
-    len4 = 1 / len4;
-    y0 *= len4;
-    y1 *= len4;
-    y2 *= len4;
-  }
-  out[0] = x0;
-  out[1] = y0;
-  out[2] = z0;
-  out[3] = 0;
-  out[4] = x1;
-  out[5] = y1;
-  out[6] = z1;
-  out[7] = 0;
-  out[8] = x2;
-  out[9] = y2;
-  out[10] = z2;
-  out[11] = 0;
-  out[12] = -(x0 * eyex + x1 * eyey + x2 * eyez);
-  out[13] = -(y0 * eyex + y1 * eyey + y2 * eyez);
-  out[14] = -(z0 * eyex + z1 * eyey + z2 * eyez);
-  out[15] = 1;
-  return out;
-}
-function targetTo(out, eye, target2, up) {
-  var eyex = eye[0], eyey = eye[1], eyez = eye[2], upx = up[0], upy = up[1], upz = up[2];
-  var z0 = eyex - target2[0], z1 = eyey - target2[1], z2 = eyez - target2[2];
-  var len4 = z0 * z0 + z1 * z1 + z2 * z2;
-  if (len4 > 0) {
-    len4 = 1 / Math.sqrt(len4);
-    z0 *= len4;
-    z1 *= len4;
-    z2 *= len4;
-  }
-  var x0 = upy * z2 - upz * z1, x1 = upz * z0 - upx * z2, x2 = upx * z1 - upy * z0;
-  len4 = x0 * x0 + x1 * x1 + x2 * x2;
-  if (len4 > 0) {
-    len4 = 1 / Math.sqrt(len4);
-    x0 *= len4;
-    x1 *= len4;
-    x2 *= len4;
-  }
-  out[0] = x0;
-  out[1] = x1;
-  out[2] = x2;
-  out[3] = 0;
-  out[4] = z1 * x2 - z2 * x1;
-  out[5] = z2 * x0 - z0 * x2;
-  out[6] = z0 * x1 - z1 * x0;
-  out[7] = 0;
-  out[8] = z0;
-  out[9] = z1;
-  out[10] = z2;
-  out[11] = 0;
-  out[12] = eyex;
-  out[13] = eyey;
-  out[14] = eyez;
-  out[15] = 1;
-  return out;
-}
-function str2(a) {
-  return "mat4(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ", " + a[4] + ", " + a[5] + ", " + a[6] + ", " + a[7] + ", " + a[8] + ", " + a[9] + ", " + a[10] + ", " + a[11] + ", " + a[12] + ", " + a[13] + ", " + a[14] + ", " + a[15] + ")";
-}
-function frob2(a) {
-  return Math.hypot(a[0], a[1], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]);
-}
-function add2(out, a, b) {
-  out[0] = a[0] + b[0];
-  out[1] = a[1] + b[1];
-  out[2] = a[2] + b[2];
-  out[3] = a[3] + b[3];
-  out[4] = a[4] + b[4];
-  out[5] = a[5] + b[5];
-  out[6] = a[6] + b[6];
-  out[7] = a[7] + b[7];
-  out[8] = a[8] + b[8];
-  out[9] = a[9] + b[9];
-  out[10] = a[10] + b[10];
-  out[11] = a[11] + b[11];
-  out[12] = a[12] + b[12];
-  out[13] = a[13] + b[13];
-  out[14] = a[14] + b[14];
-  out[15] = a[15] + b[15];
-  return out;
-}
-function subtract2(out, a, b) {
-  out[0] = a[0] - b[0];
-  out[1] = a[1] - b[1];
-  out[2] = a[2] - b[2];
-  out[3] = a[3] - b[3];
-  out[4] = a[4] - b[4];
-  out[5] = a[5] - b[5];
-  out[6] = a[6] - b[6];
-  out[7] = a[7] - b[7];
-  out[8] = a[8] - b[8];
-  out[9] = a[9] - b[9];
-  out[10] = a[10] - b[10];
-  out[11] = a[11] - b[11];
-  out[12] = a[12] - b[12];
-  out[13] = a[13] - b[13];
-  out[14] = a[14] - b[14];
-  out[15] = a[15] - b[15];
-  return out;
-}
-function multiplyScalar2(out, a, b) {
-  out[0] = a[0] * b;
-  out[1] = a[1] * b;
-  out[2] = a[2] * b;
-  out[3] = a[3] * b;
-  out[4] = a[4] * b;
-  out[5] = a[5] * b;
-  out[6] = a[6] * b;
-  out[7] = a[7] * b;
-  out[8] = a[8] * b;
-  out[9] = a[9] * b;
-  out[10] = a[10] * b;
-  out[11] = a[11] * b;
-  out[12] = a[12] * b;
-  out[13] = a[13] * b;
-  out[14] = a[14] * b;
-  out[15] = a[15] * b;
-  return out;
-}
-function multiplyScalarAndAdd2(out, a, b, scale6) {
-  out[0] = a[0] + b[0] * scale6;
-  out[1] = a[1] + b[1] * scale6;
-  out[2] = a[2] + b[2] * scale6;
-  out[3] = a[3] + b[3] * scale6;
-  out[4] = a[4] + b[4] * scale6;
-  out[5] = a[5] + b[5] * scale6;
-  out[6] = a[6] + b[6] * scale6;
-  out[7] = a[7] + b[7] * scale6;
-  out[8] = a[8] + b[8] * scale6;
-  out[9] = a[9] + b[9] * scale6;
-  out[10] = a[10] + b[10] * scale6;
-  out[11] = a[11] + b[11] * scale6;
-  out[12] = a[12] + b[12] * scale6;
-  out[13] = a[13] + b[13] * scale6;
-  out[14] = a[14] + b[14] * scale6;
-  out[15] = a[15] + b[15] * scale6;
-  return out;
-}
-function exactEquals2(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5] && a[6] === b[6] && a[7] === b[7] && a[8] === b[8] && a[9] === b[9] && a[10] === b[10] && a[11] === b[11] && a[12] === b[12] && a[13] === b[13] && a[14] === b[14] && a[15] === b[15];
-}
-function equals2(a, b) {
-  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
-  var a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7];
-  var a8 = a[8], a9 = a[9], a10 = a[10], a11 = a[11];
-  var a12 = a[12], a13 = a[13], a14 = a[14], a15 = a[15];
-  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
-  var b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7];
-  var b8 = b[8], b9 = b[9], b10 = b[10], b11 = b[11];
-  var b12 = b[12], b13 = b[13], b14 = b[14], b15 = b[15];
-  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3)) && Math.abs(a4 - b4) <= EPSILON * Math.max(1, Math.abs(a4), Math.abs(b4)) && Math.abs(a5 - b5) <= EPSILON * Math.max(1, Math.abs(a5), Math.abs(b5)) && Math.abs(a6 - b6) <= EPSILON * Math.max(1, Math.abs(a6), Math.abs(b6)) && Math.abs(a7 - b7) <= EPSILON * Math.max(1, Math.abs(a7), Math.abs(b7)) && Math.abs(a8 - b8) <= EPSILON * Math.max(1, Math.abs(a8), Math.abs(b8)) && Math.abs(a9 - b9) <= EPSILON * Math.max(1, Math.abs(a9), Math.abs(b9)) && Math.abs(a10 - b10) <= EPSILON * Math.max(1, Math.abs(a10), Math.abs(b10)) && Math.abs(a11 - b11) <= EPSILON * Math.max(1, Math.abs(a11), Math.abs(b11)) && Math.abs(a12 - b12) <= EPSILON * Math.max(1, Math.abs(a12), Math.abs(b12)) && Math.abs(a13 - b13) <= EPSILON * Math.max(1, Math.abs(a13), Math.abs(b13)) && Math.abs(a14 - b14) <= EPSILON * Math.max(1, Math.abs(a14), Math.abs(b14)) && Math.abs(a15 - b15) <= EPSILON * Math.max(1, Math.abs(a15), Math.abs(b15));
-}
-var mul2 = multiply2;
-var sub2 = subtract2;
-
-// node_modules/gl-matrix/esm/quat.js
-var quat_exports = {};
-__export(quat_exports, {
-  add: () => add5,
-  calculateW: () => calculateW,
-  clone: () => clone6,
-  conjugate: () => conjugate,
-  copy: () => copy5,
-  create: () => create5,
-  dot: () => dot3,
-  equals: () => equals5,
-  exactEquals: () => exactEquals5,
-  exp: () => exp,
-  fromEuler: () => fromEuler,
-  fromMat3: () => fromMat3,
-  fromValues: () => fromValues5,
-  getAngle: () => getAngle,
-  getAxisAngle: () => getAxisAngle,
-  identity: () => identity3,
-  invert: () => invert3,
-  len: () => len3,
-  length: () => length4,
-  lerp: () => lerp3,
-  ln: () => ln,
-  mul: () => mul5,
-  multiply: () => multiply5,
-  normalize: () => normalize3,
-  pow: () => pow,
-  random: () => random3,
-  rotateX: () => rotateX3,
-  rotateY: () => rotateY3,
-  rotateZ: () => rotateZ3,
-  rotationTo: () => rotationTo,
-  scale: () => scale5,
-  set: () => set5,
-  setAxes: () => setAxes,
-  setAxisAngle: () => setAxisAngle,
-  slerp: () => slerp,
-  sqlerp: () => sqlerp,
-  sqrLen: () => sqrLen3,
-  squaredLength: () => squaredLength3,
-  str: () => str5
-});
-init_legacy_browser();
-
-// node_modules/gl-matrix/esm/vec3.js
-var vec3_exports = {};
-__export(vec3_exports, {
-  add: () => add3,
-  angle: () => angle,
-  bezier: () => bezier,
-  ceil: () => ceil,
-  clone: () => clone4,
-  copy: () => copy3,
-  create: () => create3,
-  cross: () => cross,
-  dist: () => dist,
-  distance: () => distance,
-  div: () => div,
-  divide: () => divide,
-  dot: () => dot,
-  equals: () => equals3,
-  exactEquals: () => exactEquals3,
-  floor: () => floor,
-  forEach: () => forEach,
-  fromValues: () => fromValues3,
-  hermite: () => hermite,
-  inverse: () => inverse,
-  len: () => len,
-  length: () => length2,
-  lerp: () => lerp,
-  max: () => max,
-  min: () => min,
-  mul: () => mul3,
-  multiply: () => multiply3,
-  negate: () => negate,
-  normalize: () => normalize,
-  random: () => random,
-  rotateX: () => rotateX2,
-  rotateY: () => rotateY2,
-  rotateZ: () => rotateZ2,
-  round: () => round,
-  scale: () => scale3,
-  scaleAndAdd: () => scaleAndAdd,
-  set: () => set3,
-  sqrDist: () => sqrDist,
-  sqrLen: () => sqrLen,
-  squaredDistance: () => squaredDistance,
-  squaredLength: () => squaredLength,
-  str: () => str3,
-  sub: () => sub3,
-  subtract: () => subtract3,
-  transformMat3: () => transformMat3,
-  transformMat4: () => transformMat4,
-  transformQuat: () => transformQuat,
-  zero: () => zero
-});
-init_legacy_browser();
-function create3() {
-  var out = new ARRAY_TYPE(3);
-  if (ARRAY_TYPE != Float32Array) {
-    out[0] = 0;
-    out[1] = 0;
-    out[2] = 0;
-  }
-  return out;
-}
-function clone4(a) {
-  var out = new ARRAY_TYPE(3);
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  return out;
-}
-function length2(a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  return Math.hypot(x, y, z);
-}
-function fromValues3(x, y, z) {
-  var out = new ARRAY_TYPE(3);
-  out[0] = x;
-  out[1] = y;
-  out[2] = z;
-  return out;
-}
-function copy3(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  return out;
-}
-function set3(out, x, y, z) {
-  out[0] = x;
-  out[1] = y;
-  out[2] = z;
-  return out;
-}
-function add3(out, a, b) {
-  out[0] = a[0] + b[0];
-  out[1] = a[1] + b[1];
-  out[2] = a[2] + b[2];
-  return out;
-}
-function subtract3(out, a, b) {
-  out[0] = a[0] - b[0];
-  out[1] = a[1] - b[1];
-  out[2] = a[2] - b[2];
-  return out;
-}
-function multiply3(out, a, b) {
-  out[0] = a[0] * b[0];
-  out[1] = a[1] * b[1];
-  out[2] = a[2] * b[2];
-  return out;
-}
-function divide(out, a, b) {
-  out[0] = a[0] / b[0];
-  out[1] = a[1] / b[1];
-  out[2] = a[2] / b[2];
-  return out;
-}
-function ceil(out, a) {
-  out[0] = Math.ceil(a[0]);
-  out[1] = Math.ceil(a[1]);
-  out[2] = Math.ceil(a[2]);
-  return out;
-}
-function floor(out, a) {
-  out[0] = Math.floor(a[0]);
-  out[1] = Math.floor(a[1]);
-  out[2] = Math.floor(a[2]);
-  return out;
-}
-function min(out, a, b) {
-  out[0] = Math.min(a[0], b[0]);
-  out[1] = Math.min(a[1], b[1]);
-  out[2] = Math.min(a[2], b[2]);
-  return out;
-}
-function max(out, a, b) {
-  out[0] = Math.max(a[0], b[0]);
-  out[1] = Math.max(a[1], b[1]);
-  out[2] = Math.max(a[2], b[2]);
-  return out;
-}
-function round(out, a) {
-  out[0] = Math.round(a[0]);
-  out[1] = Math.round(a[1]);
-  out[2] = Math.round(a[2]);
-  return out;
-}
-function scale3(out, a, b) {
-  out[0] = a[0] * b;
-  out[1] = a[1] * b;
-  out[2] = a[2] * b;
-  return out;
-}
-function scaleAndAdd(out, a, b, scale6) {
-  out[0] = a[0] + b[0] * scale6;
-  out[1] = a[1] + b[1] * scale6;
-  out[2] = a[2] + b[2] * scale6;
-  return out;
-}
-function distance(a, b) {
-  var x = b[0] - a[0];
-  var y = b[1] - a[1];
-  var z = b[2] - a[2];
-  return Math.hypot(x, y, z);
-}
-function squaredDistance(a, b) {
-  var x = b[0] - a[0];
-  var y = b[1] - a[1];
-  var z = b[2] - a[2];
-  return x * x + y * y + z * z;
-}
-function squaredLength(a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  return x * x + y * y + z * z;
-}
-function negate(out, a) {
-  out[0] = -a[0];
-  out[1] = -a[1];
-  out[2] = -a[2];
-  return out;
-}
-function inverse(out, a) {
-  out[0] = 1 / a[0];
-  out[1] = 1 / a[1];
-  out[2] = 1 / a[2];
-  return out;
-}
-function normalize(out, a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  var len4 = x * x + y * y + z * z;
-  if (len4 > 0) {
-    len4 = 1 / Math.sqrt(len4);
-  }
-  out[0] = a[0] * len4;
-  out[1] = a[1] * len4;
-  out[2] = a[2] * len4;
-  return out;
-}
-function dot(a, b) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-function cross(out, a, b) {
-  var ax = a[0], ay = a[1], az = a[2];
-  var bx = b[0], by = b[1], bz = b[2];
-  out[0] = ay * bz - az * by;
-  out[1] = az * bx - ax * bz;
-  out[2] = ax * by - ay * bx;
-  return out;
-}
-function lerp(out, a, b, t) {
-  var ax = a[0];
-  var ay = a[1];
-  var az = a[2];
-  out[0] = ax + t * (b[0] - ax);
-  out[1] = ay + t * (b[1] - ay);
-  out[2] = az + t * (b[2] - az);
-  return out;
-}
-function hermite(out, a, b, c, d, t) {
-  var factorTimes2 = t * t;
-  var factor1 = factorTimes2 * (2 * t - 3) + 1;
-  var factor2 = factorTimes2 * (t - 2) + t;
-  var factor3 = factorTimes2 * (t - 1);
-  var factor4 = factorTimes2 * (3 - 2 * t);
-  out[0] = a[0] * factor1 + b[0] * factor2 + c[0] * factor3 + d[0] * factor4;
-  out[1] = a[1] * factor1 + b[1] * factor2 + c[1] * factor3 + d[1] * factor4;
-  out[2] = a[2] * factor1 + b[2] * factor2 + c[2] * factor3 + d[2] * factor4;
-  return out;
-}
-function bezier(out, a, b, c, d, t) {
-  var inverseFactor = 1 - t;
-  var inverseFactorTimesTwo = inverseFactor * inverseFactor;
-  var factorTimes2 = t * t;
-  var factor1 = inverseFactorTimesTwo * inverseFactor;
-  var factor2 = 3 * t * inverseFactorTimesTwo;
-  var factor3 = 3 * factorTimes2 * inverseFactor;
-  var factor4 = factorTimes2 * t;
-  out[0] = a[0] * factor1 + b[0] * factor2 + c[0] * factor3 + d[0] * factor4;
-  out[1] = a[1] * factor1 + b[1] * factor2 + c[1] * factor3 + d[1] * factor4;
-  out[2] = a[2] * factor1 + b[2] * factor2 + c[2] * factor3 + d[2] * factor4;
-  return out;
-}
-function random(out, scale6) {
-  scale6 = scale6 || 1;
-  var r = RANDOM() * 2 * Math.PI;
-  var z = RANDOM() * 2 - 1;
-  var zScale = Math.sqrt(1 - z * z) * scale6;
-  out[0] = Math.cos(r) * zScale;
-  out[1] = Math.sin(r) * zScale;
-  out[2] = z * scale6;
-  return out;
-}
-function transformMat4(out, a, m) {
-  var x = a[0], y = a[1], z = a[2];
-  var w = m[3] * x + m[7] * y + m[11] * z + m[15];
-  w = w || 1;
-  out[0] = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
-  out[1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
-  out[2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) / w;
-  return out;
-}
-function transformMat3(out, a, m) {
-  var x = a[0], y = a[1], z = a[2];
-  out[0] = x * m[0] + y * m[3] + z * m[6];
-  out[1] = x * m[1] + y * m[4] + z * m[7];
-  out[2] = x * m[2] + y * m[5] + z * m[8];
-  return out;
-}
-function transformQuat(out, a, q) {
-  var qx = q[0], qy = q[1], qz = q[2], qw = q[3];
-  var x = a[0], y = a[1], z = a[2];
-  var uvx = qy * z - qz * y, uvy = qz * x - qx * z, uvz = qx * y - qy * x;
-  var uuvx = qy * uvz - qz * uvy, uuvy = qz * uvx - qx * uvz, uuvz = qx * uvy - qy * uvx;
-  var w2 = qw * 2;
-  uvx *= w2;
-  uvy *= w2;
-  uvz *= w2;
-  uuvx *= 2;
-  uuvy *= 2;
-  uuvz *= 2;
-  out[0] = x + uvx + uuvx;
-  out[1] = y + uvy + uuvy;
-  out[2] = z + uvz + uuvz;
-  return out;
-}
-function rotateX2(out, a, b, c) {
-  var p = [], r = [];
-  p[0] = a[0] - b[0];
-  p[1] = a[1] - b[1];
-  p[2] = a[2] - b[2];
-  r[0] = p[0];
-  r[1] = p[1] * Math.cos(c) - p[2] * Math.sin(c);
-  r[2] = p[1] * Math.sin(c) + p[2] * Math.cos(c);
-  out[0] = r[0] + b[0];
-  out[1] = r[1] + b[1];
-  out[2] = r[2] + b[2];
-  return out;
-}
-function rotateY2(out, a, b, c) {
-  var p = [], r = [];
-  p[0] = a[0] - b[0];
-  p[1] = a[1] - b[1];
-  p[2] = a[2] - b[2];
-  r[0] = p[2] * Math.sin(c) + p[0] * Math.cos(c);
-  r[1] = p[1];
-  r[2] = p[2] * Math.cos(c) - p[0] * Math.sin(c);
-  out[0] = r[0] + b[0];
-  out[1] = r[1] + b[1];
-  out[2] = r[2] + b[2];
-  return out;
-}
-function rotateZ2(out, a, b, c) {
-  var p = [], r = [];
-  p[0] = a[0] - b[0];
-  p[1] = a[1] - b[1];
-  p[2] = a[2] - b[2];
-  r[0] = p[0] * Math.cos(c) - p[1] * Math.sin(c);
-  r[1] = p[0] * Math.sin(c) + p[1] * Math.cos(c);
-  r[2] = p[2];
-  out[0] = r[0] + b[0];
-  out[1] = r[1] + b[1];
-  out[2] = r[2] + b[2];
-  return out;
-}
-function angle(a, b) {
-  var tempA = fromValues3(a[0], a[1], a[2]);
-  var tempB = fromValues3(b[0], b[1], b[2]);
-  normalize(tempA, tempA);
-  normalize(tempB, tempB);
-  var cosine = dot(tempA, tempB);
-  if (cosine > 1) {
-    return 0;
-  } else if (cosine < -1) {
-    return Math.PI;
-  } else {
-    return Math.acos(cosine);
-  }
-}
-function zero(out) {
-  out[0] = 0;
-  out[1] = 0;
-  out[2] = 0;
-  return out;
-}
-function str3(a) {
-  return "vec3(" + a[0] + ", " + a[1] + ", " + a[2] + ")";
-}
-function exactEquals3(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
-}
-function equals3(a, b) {
-  var a0 = a[0], a1 = a[1], a2 = a[2];
-  var b0 = b[0], b1 = b[1], b2 = b[2];
-  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2));
-}
-var sub3 = subtract3;
-var mul3 = multiply3;
-var div = divide;
-var dist = distance;
-var sqrDist = squaredDistance;
-var len = length2;
-var sqrLen = squaredLength;
-var forEach = (function() {
-  var vec = create3();
-  return function(a, stride, offset, count, fn, arg) {
-    var i, l;
-    if (!stride) {
-      stride = 3;
-    }
-    if (!offset) {
-      offset = 0;
-    }
-    if (count) {
-      l = Math.min(count * stride + offset, a.length);
-    } else {
-      l = a.length;
-    }
-    for (i = offset; i < l; i += stride) {
-      vec[0] = a[i];
-      vec[1] = a[i + 1];
-      vec[2] = a[i + 2];
-      fn(vec, vec, arg);
-      a[i] = vec[0];
-      a[i + 1] = vec[1];
-      a[i + 2] = vec[2];
-    }
-    return a;
-  };
-})();
-
-// node_modules/gl-matrix/esm/vec4.js
-var vec4_exports = {};
-__export(vec4_exports, {
-  add: () => add4,
-  ceil: () => ceil2,
-  clone: () => clone5,
-  copy: () => copy4,
-  create: () => create4,
-  cross: () => cross2,
-  dist: () => dist2,
-  distance: () => distance2,
-  div: () => div2,
-  divide: () => divide2,
-  dot: () => dot2,
-  equals: () => equals4,
-  exactEquals: () => exactEquals4,
-  floor: () => floor2,
-  forEach: () => forEach2,
-  fromValues: () => fromValues4,
-  inverse: () => inverse2,
-  len: () => len2,
-  length: () => length3,
-  lerp: () => lerp2,
-  max: () => max2,
-  min: () => min2,
-  mul: () => mul4,
-  multiply: () => multiply4,
-  negate: () => negate2,
-  normalize: () => normalize2,
-  random: () => random2,
-  round: () => round2,
-  scale: () => scale4,
-  scaleAndAdd: () => scaleAndAdd2,
-  set: () => set4,
-  sqrDist: () => sqrDist2,
-  sqrLen: () => sqrLen2,
-  squaredDistance: () => squaredDistance2,
-  squaredLength: () => squaredLength2,
-  str: () => str4,
-  sub: () => sub4,
-  subtract: () => subtract4,
-  transformMat4: () => transformMat42,
-  transformQuat: () => transformQuat2,
-  zero: () => zero2
-});
-init_legacy_browser();
-function create4() {
-  var out = new ARRAY_TYPE(4);
-  if (ARRAY_TYPE != Float32Array) {
-    out[0] = 0;
-    out[1] = 0;
-    out[2] = 0;
-    out[3] = 0;
-  }
-  return out;
-}
-function clone5(a) {
-  var out = new ARRAY_TYPE(4);
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  return out;
-}
-function fromValues4(x, y, z, w) {
-  var out = new ARRAY_TYPE(4);
-  out[0] = x;
-  out[1] = y;
-  out[2] = z;
-  out[3] = w;
-  return out;
-}
-function copy4(out, a) {
-  out[0] = a[0];
-  out[1] = a[1];
-  out[2] = a[2];
-  out[3] = a[3];
-  return out;
-}
-function set4(out, x, y, z, w) {
-  out[0] = x;
-  out[1] = y;
-  out[2] = z;
-  out[3] = w;
-  return out;
-}
-function add4(out, a, b) {
-  out[0] = a[0] + b[0];
-  out[1] = a[1] + b[1];
-  out[2] = a[2] + b[2];
-  out[3] = a[3] + b[3];
-  return out;
-}
-function subtract4(out, a, b) {
-  out[0] = a[0] - b[0];
-  out[1] = a[1] - b[1];
-  out[2] = a[2] - b[2];
-  out[3] = a[3] - b[3];
-  return out;
-}
-function multiply4(out, a, b) {
-  out[0] = a[0] * b[0];
-  out[1] = a[1] * b[1];
-  out[2] = a[2] * b[2];
-  out[3] = a[3] * b[3];
-  return out;
-}
-function divide2(out, a, b) {
-  out[0] = a[0] / b[0];
-  out[1] = a[1] / b[1];
-  out[2] = a[2] / b[2];
-  out[3] = a[3] / b[3];
-  return out;
-}
-function ceil2(out, a) {
-  out[0] = Math.ceil(a[0]);
-  out[1] = Math.ceil(a[1]);
-  out[2] = Math.ceil(a[2]);
-  out[3] = Math.ceil(a[3]);
-  return out;
-}
-function floor2(out, a) {
-  out[0] = Math.floor(a[0]);
-  out[1] = Math.floor(a[1]);
-  out[2] = Math.floor(a[2]);
-  out[3] = Math.floor(a[3]);
-  return out;
-}
-function min2(out, a, b) {
-  out[0] = Math.min(a[0], b[0]);
-  out[1] = Math.min(a[1], b[1]);
-  out[2] = Math.min(a[2], b[2]);
-  out[3] = Math.min(a[3], b[3]);
-  return out;
-}
-function max2(out, a, b) {
-  out[0] = Math.max(a[0], b[0]);
-  out[1] = Math.max(a[1], b[1]);
-  out[2] = Math.max(a[2], b[2]);
-  out[3] = Math.max(a[3], b[3]);
-  return out;
-}
-function round2(out, a) {
-  out[0] = Math.round(a[0]);
-  out[1] = Math.round(a[1]);
-  out[2] = Math.round(a[2]);
-  out[3] = Math.round(a[3]);
-  return out;
-}
-function scale4(out, a, b) {
-  out[0] = a[0] * b;
-  out[1] = a[1] * b;
-  out[2] = a[2] * b;
-  out[3] = a[3] * b;
-  return out;
-}
-function scaleAndAdd2(out, a, b, scale6) {
-  out[0] = a[0] + b[0] * scale6;
-  out[1] = a[1] + b[1] * scale6;
-  out[2] = a[2] + b[2] * scale6;
-  out[3] = a[3] + b[3] * scale6;
-  return out;
-}
-function distance2(a, b) {
-  var x = b[0] - a[0];
-  var y = b[1] - a[1];
-  var z = b[2] - a[2];
-  var w = b[3] - a[3];
-  return Math.hypot(x, y, z, w);
-}
-function squaredDistance2(a, b) {
-  var x = b[0] - a[0];
-  var y = b[1] - a[1];
-  var z = b[2] - a[2];
-  var w = b[3] - a[3];
-  return x * x + y * y + z * z + w * w;
-}
-function length3(a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  var w = a[3];
-  return Math.hypot(x, y, z, w);
-}
-function squaredLength2(a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  var w = a[3];
-  return x * x + y * y + z * z + w * w;
-}
-function negate2(out, a) {
-  out[0] = -a[0];
-  out[1] = -a[1];
-  out[2] = -a[2];
-  out[3] = -a[3];
-  return out;
-}
-function inverse2(out, a) {
-  out[0] = 1 / a[0];
-  out[1] = 1 / a[1];
-  out[2] = 1 / a[2];
-  out[3] = 1 / a[3];
-  return out;
-}
-function normalize2(out, a) {
-  var x = a[0];
-  var y = a[1];
-  var z = a[2];
-  var w = a[3];
-  var len4 = x * x + y * y + z * z + w * w;
-  if (len4 > 0) {
-    len4 = 1 / Math.sqrt(len4);
-  }
-  out[0] = x * len4;
-  out[1] = y * len4;
-  out[2] = z * len4;
-  out[3] = w * len4;
-  return out;
-}
-function dot2(a, b) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-}
-function cross2(out, u, v, w) {
-  var A = v[0] * w[1] - v[1] * w[0], B = v[0] * w[2] - v[2] * w[0], C = v[0] * w[3] - v[3] * w[0], D = v[1] * w[2] - v[2] * w[1], E = v[1] * w[3] - v[3] * w[1], F = v[2] * w[3] - v[3] * w[2];
-  var G = u[0];
-  var H = u[1];
-  var I = u[2];
-  var J = u[3];
-  out[0] = H * F - I * E + J * D;
-  out[1] = -(G * F) + I * C - J * B;
-  out[2] = G * E - H * C + J * A;
-  out[3] = -(G * D) + H * B - I * A;
-  return out;
-}
-function lerp2(out, a, b, t) {
-  var ax = a[0];
-  var ay = a[1];
-  var az = a[2];
-  var aw = a[3];
-  out[0] = ax + t * (b[0] - ax);
-  out[1] = ay + t * (b[1] - ay);
-  out[2] = az + t * (b[2] - az);
-  out[3] = aw + t * (b[3] - aw);
-  return out;
-}
-function random2(out, scale6) {
-  scale6 = scale6 || 1;
-  var v1, v2, v3, v4;
-  var s1, s2;
-  do {
-    v1 = RANDOM() * 2 - 1;
-    v2 = RANDOM() * 2 - 1;
-    s1 = v1 * v1 + v2 * v2;
-  } while (s1 >= 1);
-  do {
-    v3 = RANDOM() * 2 - 1;
-    v4 = RANDOM() * 2 - 1;
-    s2 = v3 * v3 + v4 * v4;
-  } while (s2 >= 1);
-  var d = Math.sqrt((1 - s1) / s2);
-  out[0] = scale6 * v1;
-  out[1] = scale6 * v2;
-  out[2] = scale6 * v3 * d;
-  out[3] = scale6 * v4 * d;
-  return out;
-}
-function transformMat42(out, a, m) {
-  var x = a[0], y = a[1], z = a[2], w = a[3];
-  out[0] = m[0] * x + m[4] * y + m[8] * z + m[12] * w;
-  out[1] = m[1] * x + m[5] * y + m[9] * z + m[13] * w;
-  out[2] = m[2] * x + m[6] * y + m[10] * z + m[14] * w;
-  out[3] = m[3] * x + m[7] * y + m[11] * z + m[15] * w;
-  return out;
-}
-function transformQuat2(out, a, q) {
-  var x = a[0], y = a[1], z = a[2];
-  var qx = q[0], qy = q[1], qz = q[2], qw = q[3];
-  var ix = qw * x + qy * z - qz * y;
-  var iy = qw * y + qz * x - qx * z;
-  var iz = qw * z + qx * y - qy * x;
-  var iw = -qx * x - qy * y - qz * z;
-  out[0] = ix * qw + iw * -qx + iy * -qz - iz * -qy;
-  out[1] = iy * qw + iw * -qy + iz * -qx - ix * -qz;
-  out[2] = iz * qw + iw * -qz + ix * -qy - iy * -qx;
-  out[3] = a[3];
-  return out;
-}
-function zero2(out) {
-  out[0] = 0;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 0;
-  return out;
-}
-function str4(a) {
-  return "vec4(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ")";
-}
-function exactEquals4(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
-}
-function equals4(a, b) {
-  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
-  var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
-  return Math.abs(a0 - b0) <= EPSILON * Math.max(1, Math.abs(a0), Math.abs(b0)) && Math.abs(a1 - b1) <= EPSILON * Math.max(1, Math.abs(a1), Math.abs(b1)) && Math.abs(a2 - b2) <= EPSILON * Math.max(1, Math.abs(a2), Math.abs(b2)) && Math.abs(a3 - b3) <= EPSILON * Math.max(1, Math.abs(a3), Math.abs(b3));
-}
-var sub4 = subtract4;
-var mul4 = multiply4;
-var div2 = divide2;
-var dist2 = distance2;
-var sqrDist2 = squaredDistance2;
-var len2 = length3;
-var sqrLen2 = squaredLength2;
-var forEach2 = (function() {
-  var vec = create4();
-  return function(a, stride, offset, count, fn, arg) {
-    var i, l;
-    if (!stride) {
-      stride = 4;
-    }
-    if (!offset) {
-      offset = 0;
-    }
-    if (count) {
-      l = Math.min(count * stride + offset, a.length);
-    } else {
-      l = a.length;
-    }
-    for (i = offset; i < l; i += stride) {
-      vec[0] = a[i];
-      vec[1] = a[i + 1];
-      vec[2] = a[i + 2];
-      vec[3] = a[i + 3];
-      fn(vec, vec, arg);
-      a[i] = vec[0];
-      a[i + 1] = vec[1];
-      a[i + 2] = vec[2];
-      a[i + 3] = vec[3];
-    }
-    return a;
-  };
-})();
-
-// node_modules/gl-matrix/esm/quat.js
-function create5() {
-  var out = new ARRAY_TYPE(4);
-  if (ARRAY_TYPE != Float32Array) {
-    out[0] = 0;
-    out[1] = 0;
-    out[2] = 0;
-  }
-  out[3] = 1;
-  return out;
-}
-function identity3(out) {
-  out[0] = 0;
-  out[1] = 0;
-  out[2] = 0;
-  out[3] = 1;
-  return out;
-}
-function setAxisAngle(out, axis, rad) {
-  rad = rad * 0.5;
-  var s = Math.sin(rad);
-  out[0] = s * axis[0];
-  out[1] = s * axis[1];
-  out[2] = s * axis[2];
-  out[3] = Math.cos(rad);
-  return out;
-}
-function getAxisAngle(out_axis, q) {
-  var rad = Math.acos(q[3]) * 2;
-  var s = Math.sin(rad / 2);
-  if (s > EPSILON) {
-    out_axis[0] = q[0] / s;
-    out_axis[1] = q[1] / s;
-    out_axis[2] = q[2] / s;
-  } else {
-    out_axis[0] = 1;
-    out_axis[1] = 0;
-    out_axis[2] = 0;
-  }
-  return rad;
-}
-function getAngle(a, b) {
-  var dotproduct = dot3(a, b);
-  return Math.acos(2 * dotproduct * dotproduct - 1);
-}
-function multiply5(out, a, b) {
-  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
-  var bx = b[0], by = b[1], bz = b[2], bw = b[3];
-  out[0] = ax * bw + aw * bx + ay * bz - az * by;
-  out[1] = ay * bw + aw * by + az * bx - ax * bz;
-  out[2] = az * bw + aw * bz + ax * by - ay * bx;
-  out[3] = aw * bw - ax * bx - ay * by - az * bz;
-  return out;
-}
-function rotateX3(out, a, rad) {
-  rad *= 0.5;
-  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
-  var bx = Math.sin(rad), bw = Math.cos(rad);
-  out[0] = ax * bw + aw * bx;
-  out[1] = ay * bw + az * bx;
-  out[2] = az * bw - ay * bx;
-  out[3] = aw * bw - ax * bx;
-  return out;
-}
-function rotateY3(out, a, rad) {
-  rad *= 0.5;
-  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
-  var by = Math.sin(rad), bw = Math.cos(rad);
-  out[0] = ax * bw - az * by;
-  out[1] = ay * bw + aw * by;
-  out[2] = az * bw + ax * by;
-  out[3] = aw * bw - ay * by;
-  return out;
-}
-function rotateZ3(out, a, rad) {
-  rad *= 0.5;
-  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
-  var bz = Math.sin(rad), bw = Math.cos(rad);
-  out[0] = ax * bw + ay * bz;
-  out[1] = ay * bw - ax * bz;
-  out[2] = az * bw + aw * bz;
-  out[3] = aw * bw - az * bz;
-  return out;
-}
-function calculateW(out, a) {
-  var x = a[0], y = a[1], z = a[2];
-  out[0] = x;
-  out[1] = y;
-  out[2] = z;
-  out[3] = Math.sqrt(Math.abs(1 - x * x - y * y - z * z));
-  return out;
-}
-function exp(out, a) {
-  var x = a[0], y = a[1], z = a[2], w = a[3];
-  var r = Math.sqrt(x * x + y * y + z * z);
-  var et = Math.exp(w);
-  var s = r > 0 ? et * Math.sin(r) / r : 0;
-  out[0] = x * s;
-  out[1] = y * s;
-  out[2] = z * s;
-  out[3] = et * Math.cos(r);
-  return out;
-}
-function ln(out, a) {
-  var x = a[0], y = a[1], z = a[2], w = a[3];
-  var r = Math.sqrt(x * x + y * y + z * z);
-  var t = r > 0 ? Math.atan2(r, w) / r : 0;
-  out[0] = x * t;
-  out[1] = y * t;
-  out[2] = z * t;
-  out[3] = 0.5 * Math.log(x * x + y * y + z * z + w * w);
-  return out;
-}
-function pow(out, a, b) {
-  ln(out, a);
-  scale5(out, out, b);
-  exp(out, out);
-  return out;
-}
-function slerp(out, a, b, t) {
-  var ax = a[0], ay = a[1], az = a[2], aw = a[3];
-  var bx = b[0], by = b[1], bz = b[2], bw = b[3];
-  var omega, cosom, sinom, scale0, scale1;
-  cosom = ax * bx + ay * by + az * bz + aw * bw;
-  if (cosom < 0) {
-    cosom = -cosom;
-    bx = -bx;
-    by = -by;
-    bz = -bz;
-    bw = -bw;
-  }
-  if (1 - cosom > EPSILON) {
-    omega = Math.acos(cosom);
-    sinom = Math.sin(omega);
-    scale0 = Math.sin((1 - t) * omega) / sinom;
-    scale1 = Math.sin(t * omega) / sinom;
-  } else {
-    scale0 = 1 - t;
-    scale1 = t;
-  }
-  out[0] = scale0 * ax + scale1 * bx;
-  out[1] = scale0 * ay + scale1 * by;
-  out[2] = scale0 * az + scale1 * bz;
-  out[3] = scale0 * aw + scale1 * bw;
-  return out;
-}
-function random3(out) {
-  var u1 = RANDOM();
-  var u2 = RANDOM();
-  var u3 = RANDOM();
-  var sqrt1MinusU1 = Math.sqrt(1 - u1);
-  var sqrtU1 = Math.sqrt(u1);
-  out[0] = sqrt1MinusU1 * Math.sin(2 * Math.PI * u2);
-  out[1] = sqrt1MinusU1 * Math.cos(2 * Math.PI * u2);
-  out[2] = sqrtU1 * Math.sin(2 * Math.PI * u3);
-  out[3] = sqrtU1 * Math.cos(2 * Math.PI * u3);
-  return out;
-}
-function invert3(out, a) {
-  var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
-  var dot4 = a0 * a0 + a1 * a1 + a2 * a2 + a3 * a3;
-  var invDot = dot4 ? 1 / dot4 : 0;
-  out[0] = -a0 * invDot;
-  out[1] = -a1 * invDot;
-  out[2] = -a2 * invDot;
-  out[3] = a3 * invDot;
-  return out;
-}
-function conjugate(out, a) {
-  out[0] = -a[0];
-  out[1] = -a[1];
-  out[2] = -a[2];
-  out[3] = a[3];
-  return out;
-}
-function fromMat3(out, m) {
-  var fTrace = m[0] + m[4] + m[8];
-  var fRoot;
-  if (fTrace > 0) {
-    fRoot = Math.sqrt(fTrace + 1);
-    out[3] = 0.5 * fRoot;
-    fRoot = 0.5 / fRoot;
-    out[0] = (m[5] - m[7]) * fRoot;
-    out[1] = (m[6] - m[2]) * fRoot;
-    out[2] = (m[1] - m[3]) * fRoot;
-  } else {
-    var i = 0;
-    if (m[4] > m[0]) i = 1;
-    if (m[8] > m[i * 3 + i]) i = 2;
-    var j = (i + 1) % 3;
-    var k = (i + 2) % 3;
-    fRoot = Math.sqrt(m[i * 3 + i] - m[j * 3 + j] - m[k * 3 + k] + 1);
-    out[i] = 0.5 * fRoot;
-    fRoot = 0.5 / fRoot;
-    out[3] = (m[j * 3 + k] - m[k * 3 + j]) * fRoot;
-    out[j] = (m[j * 3 + i] + m[i * 3 + j]) * fRoot;
-    out[k] = (m[k * 3 + i] + m[i * 3 + k]) * fRoot;
-  }
-  return out;
-}
-function fromEuler(out, x, y, z) {
-  var halfToRad = 0.5 * Math.PI / 180;
-  x *= halfToRad;
-  y *= halfToRad;
-  z *= halfToRad;
-  var sx = Math.sin(x);
-  var cx = Math.cos(x);
-  var sy = Math.sin(y);
-  var cy = Math.cos(y);
-  var sz = Math.sin(z);
-  var cz = Math.cos(z);
-  out[0] = sx * cy * cz - cx * sy * sz;
-  out[1] = cx * sy * cz + sx * cy * sz;
-  out[2] = cx * cy * sz - sx * sy * cz;
-  out[3] = cx * cy * cz + sx * sy * sz;
-  return out;
-}
-function str5(a) {
-  return "quat(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + a[3] + ")";
-}
-var clone6 = clone5;
-var fromValues5 = fromValues4;
-var copy5 = copy4;
-var set5 = set4;
-var add5 = add4;
-var mul5 = multiply5;
-var scale5 = scale4;
-var dot3 = dot2;
-var lerp3 = lerp2;
-var length4 = length3;
-var len3 = length4;
-var squaredLength3 = squaredLength2;
-var sqrLen3 = squaredLength3;
-var normalize3 = normalize2;
-var exactEquals5 = exactEquals4;
-var equals5 = equals4;
-var rotationTo = (function() {
-  var tmpvec3 = create3();
-  var xUnitVec3 = fromValues3(1, 0, 0);
-  var yUnitVec3 = fromValues3(0, 1, 0);
-  return function(out, a, b) {
-    var dot4 = dot(a, b);
-    if (dot4 < -0.999999) {
-      cross(tmpvec3, xUnitVec3, a);
-      if (len(tmpvec3) < 1e-6) cross(tmpvec3, yUnitVec3, a);
-      normalize(tmpvec3, tmpvec3);
-      setAxisAngle(out, tmpvec3, Math.PI);
-      return out;
-    } else if (dot4 > 0.999999) {
-      out[0] = 0;
-      out[1] = 0;
-      out[2] = 0;
-      out[3] = 1;
-      return out;
-    } else {
-      cross(tmpvec3, a, b);
-      out[0] = tmpvec3[0];
-      out[1] = tmpvec3[1];
-      out[2] = tmpvec3[2];
-      out[3] = 1 + dot4;
-      return normalize3(out, out);
-    }
-  };
-})();
-var sqlerp = (function() {
-  var temp1 = create5();
-  var temp2 = create5();
-  return function(out, a, b, c, d, t) {
-    slerp(temp1, a, d, t);
-    slerp(temp2, b, c, t);
-    slerp(out, temp1, temp2, 2 * t * (1 - t));
-    return out;
-  };
-})();
-var setAxes = (function() {
-  var matr = create();
-  return function(out, view, right, up) {
-    matr[0] = right[0];
-    matr[3] = right[1];
-    matr[6] = right[2];
-    matr[1] = up[0];
-    matr[4] = up[1];
-    matr[7] = up[2];
-    matr[2] = -view[0];
-    matr[5] = -view[1];
-    matr[8] = -view[2];
-    return normalize3(out, fromMat3(out, matr));
-  };
-})();
-
-// node_modules/neuroglancer/lib/util/array.js
-init_legacy_browser();
-function filterArrayInplace(array2, predicate) {
-  const length22 = array2.length;
-  let outIndex = 0;
-  for (let i = 0; i < length22; ++i) {
-    if (predicate(array2[i], i, array2)) {
-      array2[outIndex] = array2[i];
-      ++outIndex;
-    }
-  }
-  array2.length = outIndex;
-}
-function transposeArray2d(array2, majorSize, minorSize) {
-  const transpose3 = new array2.constructor(array2.length);
-  for (let i = 0; i < majorSize * minorSize; i += minorSize) {
-    for (let j = 0; j < minorSize; j++) {
-      const index = i / minorSize;
-      transpose3[j * majorSize + index] = array2[i + j];
-    }
-  }
-  return transpose3;
-}
-function binarySearch(haystack, needle, compare, low = 0, high = haystack.length) {
-  while (low < high) {
-    const mid = low + high - 1 >> 1;
-    const compareResult = compare(needle, haystack[mid]);
-    if (compareResult > 0) {
-      low = mid + 1;
-    } else if (compareResult < 0) {
-      high = mid;
-    } else {
-      return mid;
-    }
-  }
-  return ~low;
-}
-function binarySearchLowerBound(begin, end, predicate) {
-  let count = end - begin;
-  while (count > 0) {
-    const step = Math.floor(count / 2);
-    const i = begin + step;
-    if (predicate(i)) {
-      count = step;
-    } else {
-      begin = i + 1;
-      count -= step + 1;
-    }
-  }
-  return begin;
-}
-function arraysEqual(a, b) {
-  const length22 = a.length;
-  if (b.length !== length22) return false;
-  for (let i = 0; i < length22; ++i) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-// node_modules/neuroglancer/lib/util/geom.js
-var identityMat4 = mat4_exports.create();
-var kAxes = [
-  vec3_exports.fromValues(1, 0, 0),
-  vec3_exports.fromValues(0, 1, 0),
-  vec3_exports.fromValues(0, 0, 1)
-];
-var kZeroVec = vec3_exports.fromValues(0, 0, 0);
-var kZeroVec4 = vec4_exports.fromValues(0, 0, 0, 0);
-var kOneVec = vec3_exports.fromValues(1, 1, 1);
-var kInfinityVec = vec3_exports.fromValues(Infinity, Infinity, Infinity);
-var kIdentityQuat = quat_exports.create();
-function prod3(x) {
-  return x[0] * x[1] * x[2];
-}
-function vec3Key(x) {
-  return `${x[0]},${x[1]},${x[2]}`;
-}
-function transformVectorByMat4(out, a, m) {
-  const x = a[0];
-  const y = a[1];
-  const z = a[2];
-  out[0] = m[0] * x + m[4] * y + m[8] * z;
-  out[1] = m[1] * x + m[5] * y + m[9] * z;
-  out[2] = m[2] * x + m[6] * y + m[10] * z;
-  return out;
-}
-function transformVectorByMat4Transpose(out, a, m) {
-  const x = a[0];
-  const y = a[1];
-  const z = a[2];
-  out[0] = m[0] * x + m[1] * y + m[2] * z;
-  out[1] = m[4] * x + m[5] * y + m[6] * z;
-  out[2] = m[8] * x + m[9] * y + m[10] * z;
-  return out;
-}
-function translationRotationScaleZReflectionToMat4(out, translation, rotation, scale6, zReflection) {
-  const temp = out;
-  out[0] = scale6[0];
-  out[1] = scale6[1];
-  out[2] = scale6[2] * zReflection;
-  return mat4_exports.fromRotationTranslationScale(
-    out,
-    rotation,
-    translation,
-    temp
-  );
-}
-function mat3FromMat4(out, m) {
-  const m00 = m[0];
-  const m01 = m[1];
-  const m02 = m[2];
-  const m10 = m[4];
-  const m11 = m[5];
-  const m12 = m[6];
-  const m20 = m[8];
-  const m21 = m[9];
-  const m22 = m[10];
-  out[0] = m00;
-  out[1] = m01;
-  out[2] = m02;
-  out[3] = m10;
-  out[4] = m11;
-  out[5] = m12;
-  out[6] = m20;
-  out[7] = m21;
-  out[8] = m22;
-  return out;
-}
-function getFrustrumPlanes(out, m) {
-  const m00 = m[0];
-  const m10 = m[1];
-  const m20 = m[2];
-  const m30 = m[3];
-  const m01 = m[4];
-  const m11 = m[5];
-  const m21 = m[6];
-  const m31 = m[7];
-  const m02 = m[8];
-  const m12 = m[9];
-  const m22 = m[10];
-  const m32 = m[11];
-  const m03 = m[12];
-  const m13 = m[13];
-  const m23 = m[14];
-  const m33 = m[15];
-  out[0] = m30 + m00;
-  out[1] = m31 + m01;
-  out[2] = m32 + m02;
-  out[3] = m33 + m03;
-  out[4] = m30 - m00;
-  out[5] = m31 - m01;
-  out[6] = m32 - m02;
-  out[7] = m33 - m03;
-  out[8] = m30 + m10;
-  out[9] = m31 + m11;
-  out[10] = m32 + m12;
-  out[11] = m33 + m13;
-  out[12] = m30 - m10;
-  out[13] = m31 - m11;
-  out[14] = m32 - m12;
-  out[15] = m33 - m13;
-  const nearA = m30 + m20;
-  const nearB = m31 + m21;
-  const nearC = m32 + m22;
-  const nearD = m33 + m23;
-  const farA = m30 - m20;
-  const farB = m31 - m21;
-  const farC = m32 - m22;
-  const farD = m33 - m23;
-  const nearNorm = Math.sqrt(nearA ** 2 + nearB ** 2 + nearC ** 2);
-  out[16] = nearA / nearNorm;
-  out[17] = nearB / nearNorm;
-  out[18] = nearC / nearNorm;
-  out[19] = nearD / nearNorm;
-  const farNorm = Math.sqrt(farA ** 2 + farB ** 2 + farC ** 2);
-  out[20] = farA / farNorm;
-  out[21] = farB / farNorm;
-  out[22] = farC / farNorm;
-  out[23] = farD / farNorm;
-  return out;
-}
-function isAABBVisible(xLower, yLower, zLower, xUpper, yUpper, zUpper, clippingPlanes) {
-  for (let i = 0; i < 6; ++i) {
-    const a = clippingPlanes[i * 4];
-    const b = clippingPlanes[i * 4 + 1];
-    const c = clippingPlanes[i * 4 + 2];
-    const d = clippingPlanes[i * 4 + 3];
-    const sum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper) + d;
-    if (sum < 0) {
-      return false;
-    }
-  }
-  return true;
-}
-function isAABBIntersectingPlane(xLower, yLower, zLower, xUpper, yUpper, zUpper, clippingPlanes) {
-  for (let i = 0; i < 4; ++i) {
-    const a = clippingPlanes[i * 4];
-    const b = clippingPlanes[i * 4 + 1];
-    const c = clippingPlanes[i * 4 + 2];
-    const d = clippingPlanes[i * 4 + 3];
-    const sum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper) + d;
-    if (sum < 0) {
-      return false;
-    }
-  }
-  {
-    const i = 5;
-    const a = clippingPlanes[i * 4];
-    const b = clippingPlanes[i * 4 + 1];
-    const c = clippingPlanes[i * 4 + 2];
-    const d = clippingPlanes[i * 4 + 3];
-    const maxSum = Math.max(a * xLower, a * xUpper) + Math.max(b * yLower, b * yUpper) + Math.max(c * zLower, c * zUpper);
-    const minSum = Math.min(a * xLower, a * xUpper) + Math.min(b * yLower, b * yUpper) + Math.min(c * zLower, c * zUpper);
-    const epsilon = Math.abs(d) * 1e-6;
-    if (minSum > -d + epsilon || maxSum < -d - epsilon) return false;
-  }
-  return true;
-}
-function getViewFrustrumVolume(projectionMat) {
-  if (projectionMat[15] === 1) {
-    const depth = 2 / Math.abs(projectionMat[10]);
-    const width = 2 / Math.abs(projectionMat[0]);
-    const height = 2 / Math.abs(projectionMat[5]);
-    return width * height * depth;
-  }
-  const a = projectionMat[10];
-  const b = projectionMat[14];
-  const near = 2 * b / (2 * a - 2);
-  const far = (a - 1) * near / (a + 1);
-  const baseArea = 4 / (projectionMat[0] * projectionMat[5]);
-  return baseArea / 3 * (Math.abs(far) ** 3 - Math.abs(near) ** 3);
-}
-function getViewFrustrumDepthRange(projectionMat) {
-  if (projectionMat[15] === 1) {
-    const depth2 = 2 / Math.abs(projectionMat[10]);
-    return depth2;
-  }
-  const a = projectionMat[10];
-  const b = projectionMat[14];
-  const near = 2 * b / (2 * a - 2);
-  const far = (a - 1) * near / (a + 1);
-  const depth = Math.abs(far - near);
-  return depth;
-}
-var tempVec3 = vec3_exports.create();
-
-// node_modules/neuroglancer/lib/util/json.js
-function verifyFloat(obj) {
-  const t = typeof obj;
-  if (t === "number" || t === "string") {
-    const x = parseFloat("" + obj);
-    if (!Number.isNaN(x)) {
-      return x;
-    }
-  }
-  throw new Error(
-    `Expected floating-point number, but received: ${JSON.stringify(obj)}.`
-  );
-}
-function verifyFiniteFloat(obj) {
-  const x = verifyFloat(obj);
-  if (Number.isFinite(x)) {
-    return x;
-  }
-  throw new Error(`Expected finite floating-point number, but received: ${x}.`);
-}
-function verifyFiniteNonNegativeFloat(obj) {
-  const x = verifyFloat(obj);
-  if (Number.isFinite(x) && x >= 0) {
-    return x;
-  }
-  throw new Error(
-    `Expected finite non-negative floating-point number, but received: ${x}.`
-  );
-}
-function stableStringify(x) {
-  if (typeof x === "object") {
-    if (x === null) {
-      return "null";
-    }
-    if (Array.isArray(x)) {
-      let s2 = "[";
-      const size2 = x.length;
-      let i2 = 0;
-      if (i2 < size2) {
-        s2 += stableStringify(x[i2]);
-        while (++i2 < size2) {
-          s2 += ",";
-          s2 += stableStringify(x[i2]);
-        }
-      }
-      s2 += "]";
-      return s2;
-    }
-    let s = "{";
-    const keys = Object.keys(x).sort();
-    let i = 0;
-    const size = keys.length;
-    if (i < size) {
-      let key = keys[i];
-      s += JSON.stringify(key);
-      s += ":";
-      s += stableStringify(x[key]);
-      while (++i < size) {
-        s += ",";
-        key = keys[i];
-        s += JSON.stringify(key);
-        s += ":";
-        s += stableStringify(x[key]);
-      }
-    }
-    s += "}";
-    return s;
-  }
-  if (typeof x === "bigint") {
-    return x.toString();
-  }
-  return JSON.stringify(x);
-}
-var SINGLE_QUOTE_STRING_PATTERN = /('(?:[^'\\]|(?:\\.))*')/;
-var DOUBLE_QUOTE_STRING_PATTERN = /("(?:[^"\\]|(?:\\.))*")/;
-var SINGLE_OR_DOUBLE_QUOTE_STRING_PATTERN = new RegExp(
-  `${SINGLE_QUOTE_STRING_PATTERN.source}|${DOUBLE_QUOTE_STRING_PATTERN.source}`
-);
-var DOUBLE_OR_SINGLE_QUOTE_STRING_PATTERN = new RegExp(
-  `${DOUBLE_QUOTE_STRING_PATTERN.source}|${SINGLE_QUOTE_STRING_PATTERN.source}`
-);
-var DOUBLE_QUOTE_PATTERN = /^((?:[^"'\\]|(?:\\[^']))*)("|\\')/;
-function convertStringLiteral(x, quoteInitial, quoteReplace, quoteSearch) {
-  if (x.length >= 2 && x.charAt(0) === quoteInitial && x.charAt(x.length - 1) === quoteInitial) {
-    let inner = x.substr(1, x.length - 2);
-    let s = quoteReplace;
-    while (inner.length > 0) {
-      const m = inner.match(quoteSearch);
-      if (m === null) {
-        s += inner;
-        break;
-      }
-      s += m[1];
-      if (m[2] === quoteReplace) {
-        s += "\\";
-        s += quoteReplace;
-      } else {
-        s += quoteInitial;
-      }
-      inner = inner.substr(m.index + m[0].length);
-    }
-    s += quoteReplace;
-    return s;
-  }
-  return x;
-}
-function normalizeStringLiteral(x) {
-  return convertStringLiteral(x, "'", '"', DOUBLE_QUOTE_PATTERN);
-}
-function pythonLiteralToJSON(x) {
-  let s = "";
-  while (x.length > 0) {
-    const m = x.match(SINGLE_OR_DOUBLE_QUOTE_STRING_PATTERN);
-    let before;
-    let replacement;
-    if (m === null) {
-      before = x;
-      x = "";
-      replacement = "";
-    } else {
-      before = x.substr(0, m.index);
-      x = x.substr(m.index + m[0].length);
-      const singleQuoteString = m[1];
-      if (singleQuoteString !== void 0) {
-        replacement = normalizeStringLiteral(singleQuoteString);
-      } else {
-        replacement = m[2];
-      }
-    }
-    s += before.replace(/\(/g, "[").replace(/\)/g, "]").replace("True", "true").replace("False", "false").replace(/,\s*([}\]])/g, "$1");
-    s += replacement;
-  }
-  return s;
-}
-function pythonLiteralParse(x) {
-  return JSON.parse(pythonLiteralToJSON(x));
-}
-function parseArray(x, parseElement) {
-  if (!Array.isArray(x)) {
-    throw new Error(`Expected array, but received: ${JSON.stringify(x)}.`);
-  }
-  return x.map(parseElement);
-}
-function parseFixedLengthArray(out, obj, parseElement) {
-  const length6 = out.length;
-  if (!Array.isArray(obj) || obj.length !== length6) {
-    throw new Error(
-      `Expected length ${length6} array, but received: ${JSON.stringify(obj)}.`
-    );
-  }
-  for (let i = 0; i < length6; ++i) {
-    out[i] = parseElement(obj[i], i);
-  }
-  return out;
-}
-function verifyObject(obj) {
-  if (typeof obj !== "object" || obj == null || Array.isArray(obj)) {
-    throw new Error(
-      `Expected JSON object, but received: ${JSON.stringify(obj)}.`
-    );
-  }
-  return obj;
-}
-function verifyInt(obj) {
-  const result = parseInt(obj, 10);
-  if (!Number.isInteger(result)) {
-    throw new Error(`Expected integer, but received: ${JSON.stringify(obj)}.`);
-  }
-  return result;
-}
-function verifyString(obj) {
-  if (typeof obj !== "string") {
-    throw new Error(`Expected string, but received: ${JSON.stringify(obj)}.`);
-  }
-  return obj;
-}
-function verifyOptionalString(obj) {
-  if (obj === void 0) {
-    return void 0;
-  }
-  return verifyString(obj);
-}
-function verifyObjectProperty(obj, propertyName, validator) {
-  const value = Object.prototype.hasOwnProperty.call(obj, propertyName) ? obj[propertyName] : void 0;
-  try {
-    return validator(value);
-  } catch (parseError) {
-    throw new Error(
-      `Error parsing ${JSON.stringify(propertyName)} property: ${parseError.message}`
-    );
-  }
-}
-function verifyOptionalObjectProperty(obj, propertyName, validator, defaultValue) {
-  return verifyObjectProperty(
-    obj,
-    propertyName,
-    (x) => x === void 0 ? defaultValue : validator(x)
-  );
-}
-function verifyEnumString(obj, enumType, pattern = /^[a-zA-Z]/) {
-  if (typeof obj === "string" && obj.match(pattern) !== null) {
-    const objUpperCase = obj.toUpperCase();
-    if (Object.prototype.hasOwnProperty.call(enumType, objUpperCase)) {
-      return enumType[objUpperCase];
-    }
-  }
-  throw new Error(`Invalid enum value: ${JSON.stringify(obj)}.`);
-}
-function verifyStringArray(a) {
-  if (!Array.isArray(a)) {
-    throw new Error(`Expected array, received: ${JSON.stringify(a)}.`);
-  }
-  for (const x of a) {
-    if (typeof x !== "string") {
-      throw new Error(`Expected string, received: ${JSON.stringify(x)}.`);
-    }
-  }
-  return a;
-}
-function parseUint64(obj) {
-  let n;
-  switch (typeof obj) {
-    case "string":
-      if (obj.match(/^(?:0|[1-9][0-9]*)$/) === null) {
-        throw new Error(
-          `Expected base-10 number, but received: ${JSON.stringify(obj)}`
-        );
-      }
-      n = BigInt(obj);
-      break;
-    case "number":
-      n = BigInt(obj);
-      break;
-    case "bigint":
-      n = obj;
-      break;
-    default:
-      throw new Error(
-        `Expected uint64 value, but received: ${JSON.stringify(obj)}`
-      );
-  }
-  if (n < 0n || n > UINT64_MAX) {
-    throw new Error(`Expected uint64 value, but received: ${n}`);
-  }
-  return n;
-}
-
-// node_modules/neuroglancer/lib/util/memoize.js
-var Memoize = class {
-  map = /* @__PURE__ */ new Map();
-  /**
-   * If getter throws an exception, no value is added.
-   */
-  get(key, getter) {
-    const { map: map2 } = this;
-    let obj = map2.get(key);
-    if (obj === void 0) {
-      obj = getter();
-      obj.registerDisposer(() => {
-        map2.delete(key);
-      });
-      map2.set(key, obj);
-    } else {
-      obj.addRef();
-    }
-    return obj;
-  }
-};
-var StringMemoize = class extends Memoize {
-  get(x, getter) {
-    if (typeof x !== "string") {
-      x = stableStringify(x);
-    }
-    return super.get(x, getter);
-  }
-  getUncounted(x, getter) {
-    return this.get(x, () => new RefCountedValue(getter())).value;
-  }
-  getAsync(x, options, getter) {
-    return this.getUncounted(x, () => asyncMemoizeWithProgress(getter))(
-      options
-    );
-  }
-};
-function asyncMemoizeWithProgress(getter) {
-  let progressListener;
-  let abortController;
-  let promise;
-  let completed = false;
-  return async (options) => {
-    if (completed) {
-      return promise;
-    }
-    const { signal } = options;
-    signal == null ? void 0 : signal.throwIfAborted();
-    if (promise === void 0 || abortController.signal.aborted) {
-      progressListener = new MultiConsumerProgressListener();
-      abortController = new SharedAbortController();
-      const curAbortController = abortController;
-      promise = (async () => {
-        try {
-          return await getter({
-            signal: curAbortController.signal,
-            progressListener
-          });
-        } catch (e) {
-          if (curAbortController.signal.aborted) {
-            promise = void 0;
-          }
-          throw e;
-        } finally {
-          if (promise !== void 0) {
-            completed = true;
-          }
-          progressListener = void 0;
-          curAbortController[Symbol.dispose]();
-          if (abortController === curAbortController) {
-            abortController = void 0;
-          }
-        }
-      })();
-    }
-    abortController.addConsumer(signal);
-    const curProgressListener = progressListener;
-    curProgressListener.addListener(options.progressListener);
-    try {
-      return await raceWithAbort(promise, signal);
-    } finally {
-      curProgressListener.removeListener(options.progressListener);
-    }
-  };
-}
-
-// node_modules/neuroglancer/lib/util/pairing_heap.js
-init_legacy_browser();
-function makePairingHeapOperations(options) {
-  const { child: CHILD, next: NEXT, prev: PREV, compare } = options;
-  function combineChildren(node) {
-    let cur = node[CHILD];
-    if (cur === null) {
-      return null;
-    }
-    let head = null;
-    while (true) {
-      const curNext = cur[NEXT];
-      let next, m;
-      if (curNext === null) {
-        next = null;
-        m = cur;
-      } else {
-        next = curNext[NEXT];
-        m = meld(cur, curNext);
-      }
-      m[NEXT] = head;
-      head = m;
-      if (next === null) {
-        break;
-      }
-      cur = next;
-    }
-    let root2 = head;
-    head = head[NEXT];
-    while (true) {
-      if (head === null) {
-        break;
-      }
-      const next = head[NEXT];
-      root2 = meld(root2, head);
-      head = next;
-    }
-    root2[PREV] = null;
-    root2[NEXT] = null;
-    return root2;
-  }
-  function meld(a, b) {
-    if (b === null) {
-      return a;
-    }
-    if (a === null) {
-      return b;
-    }
-    if (compare(b, a)) {
-      const temp = a;
-      a = b;
-      b = temp;
-    }
-    const aChild = a[CHILD];
-    b[NEXT] = aChild;
-    b[PREV] = a;
-    if (aChild !== null) {
-      aChild[PREV] = b;
-    }
-    a[CHILD] = b;
-    return a;
-  }
-  function removeMin(root2) {
-    const newRoot = combineChildren(root2);
-    root2[NEXT] = null;
-    root2[PREV] = null;
-    root2[CHILD] = null;
-    return newRoot;
-  }
-  function remove(root2, node) {
-    if (root2 === node) {
-      return removeMin(root2);
-    }
-    const prev = node[PREV];
-    const next = node[NEXT];
-    if (prev[CHILD] === node) {
-      prev[CHILD] = next;
-    } else {
-      prev[NEXT] = next;
-    }
-    if (next !== null) {
-      next[PREV] = prev;
-    }
-    const newRoot = meld(root2, combineChildren(node));
-    node[NEXT] = null;
-    node[PREV] = null;
-    node[CHILD] = null;
-    return newRoot;
-  }
-  function* entries(root2) {
-    if (root2 !== null) {
-      let child = root2[CHILD];
-      yield root2;
-      while (child !== null) {
-        const next = child[NEXT];
-        yield* entries(child);
-        child = next;
-      }
-    }
-  }
-  function* removedEntries(root2) {
-    if (root2 !== null) {
-      let child = root2[CHILD];
-      root2[CHILD] = null;
-      root2[NEXT] = null;
-      root2[PREV] = null;
-      yield root2;
-      while (child !== null) {
-        const next = child[NEXT];
-        child[CHILD] = null;
-        child[NEXT] = null;
-        child[PREV] = null;
-        yield* entries(child);
-        child = next;
-      }
-    }
-  }
-  return {
-    compare,
-    meld,
-    removeMin,
-    remove,
-    entries,
-    removedEntries
-  };
-}
-
-// node_modules/neuroglancer/lib/chunk_manager/backend.js
-var __defProp3 = Object.defineProperty;
-var __getOwnPropDesc3 = Object.getOwnPropertyDescriptor;
-var __decorateClass2 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc3(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp3(target2, key, result);
-  return result;
-};
-var DEBUG_CHUNK_UPDATES = false;
-var nextMarkGeneration = 0;
-function getNextMarkGeneration() {
-  return ++nextMarkGeneration;
-}
-var Chunk = class {
-  // Node properties used for eviction/promotion heaps and LRU linked lists.
-  child0 = null;
-  next0 = null;
-  prev0 = null;
-  child1 = null;
-  next1 = null;
-  prev1 = null;
-  source = null;
-  key = null;
-  state_ = ChunkState.NEW;
-  error = null;
-  // Used by layers for marking chunks for various purposes.
-  markGeneration = -1;
-  /**
-   * Specifies existing priority within priority tier.  Only meaningful if priorityTier in
-   * CHUNK_ORDERED_PRIORITY_TIERS.  Higher numbers mean higher priority.
-   */
-  priority = 0;
-  /**
-   * Specifies updated priority within priority tier, not yet reflected in priority queue state.
-   * Only meaningful if newPriorityTier in CHUNK_ORDERED_PRIORITY_TIERS.
-   */
-  newPriority = 0;
-  priorityTier = ChunkPriorityTier.RECENT;
-  /**
-   * Specifies updated priority tier, not yet reflected in priority queue state.
-   */
-  newPriorityTier = ChunkPriorityTier.RECENT;
-  systemMemoryBytes_ = 0;
-  gpuMemoryBytes_ = 0;
-  downloadSlots_ = 1;
-  isComputational = false;
-  /**
-   * Specifies lowest numeric state required by any request, if `prioritTier !==
-   * ChunkPriorityTier.RECENT`, then this must be one of `GPU_MEMORY`, `SYSTEM_MEMORY`, or
-   * `SYSTEM_MEMORY_WORKER`.
-   */
-  requestedState = ChunkState.NEW;
-  newRequestedState = ChunkState.NEW;
-  /**
-   * Abort controller used to cancel the pending download.  Set to undefined except when state !==
-   * DOWNLOADING.  This should not be accessed by code outside this module.
-   */
-  downloadAbortController = void 0;
-  initialize(key) {
-    this.key = key;
-    this.priority = Number.NEGATIVE_INFINITY;
-    this.priorityTier = ChunkPriorityTier.RECENT;
-    this.newPriority = Number.NEGATIVE_INFINITY;
-    this.newPriorityTier = ChunkPriorityTier.RECENT;
-    this.error = null;
-    this.state = ChunkState.NEW;
-    this.requestedState = ChunkState.NEW;
-    this.newRequestedState = ChunkState.NEW;
-  }
-  /**
-   * Sets this.priority{Tier,} to this.newPriority{Tier,}, and resets this.newPriorityTier to
-   * ChunkPriorityTier.RECENT.
-   *
-   * This does not actually update any queues to reflect this change.
-   */
-  updatePriorityProperties() {
-    this.priorityTier = this.newPriorityTier;
-    this.priority = this.newPriority;
-    this.newPriorityTier = ChunkPriorityTier.RECENT;
-    this.newPriority = Number.NEGATIVE_INFINITY;
-    this.requestedState = this.newRequestedState;
-    this.newRequestedState = ChunkState.NEW;
-  }
-  dispose() {
-    this.source = null;
-    this.error = null;
-  }
-  get chunkManager() {
-    return this.source.chunkManager;
-  }
-  get queueManager() {
-    return this.source.chunkManager.queueManager;
-  }
-  downloadFailed(error) {
-    this.error = error;
-    this.queueManager.updateChunkState(this, ChunkState.FAILED);
-  }
-  downloadSucceeded() {
-    if (this.requestedState === ChunkState.SYSTEM_MEMORY) {
-      this.queueManager.moveChunkToFrontend(this);
-      this.queueManager.updateChunkState(this, ChunkState.SYSTEM_MEMORY);
-    } else {
-      this.queueManager.updateChunkState(this, ChunkState.SYSTEM_MEMORY_WORKER);
-    }
-  }
-  freeSystemMemory() {
-  }
-  serialize(msg, _transfers) {
-    msg.id = this.key;
-    msg.source = this.source.rpcId;
-    msg.new = true;
-  }
-  toString() {
-    return this.key;
-  }
-  set state(newState) {
-    if (newState === this.state_) {
-      return;
-    }
-    const oldState = this.state_;
-    this.state_ = newState;
-    this.source.chunkStateChanged(this, oldState);
-  }
-  get state() {
-    return this.state_;
-  }
-  set systemMemoryBytes(bytes) {
-    updateChunkStatistics(this, -1);
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
-    this.systemMemoryBytes_ = bytes;
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
-    updateChunkStatistics(this, 1);
-    this.chunkManager.queueManager.scheduleUpdate();
-  }
-  get systemMemoryBytes() {
-    return this.systemMemoryBytes_;
-  }
-  set gpuMemoryBytes(bytes) {
-    updateChunkStatistics(this, -1);
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
-    this.gpuMemoryBytes_ = bytes;
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
-    updateChunkStatistics(this, 1);
-    this.chunkManager.queueManager.scheduleUpdate();
-  }
-  get gpuMemoryBytes() {
-    return this.gpuMemoryBytes_;
-  }
-  get downloadSlots() {
-    return this.downloadSlots_;
-  }
-  set downloadSlots(count) {
-    if (count === this.downloadSlots_) return;
-    updateChunkStatistics(this, -1);
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, false);
-    this.downloadSlots_ = count;
-    this.chunkManager.queueManager.adjustCapacitiesForChunk(this, true);
-    updateChunkStatistics(this, 1);
-    this.chunkManager.queueManager.scheduleUpdate();
-  }
-  registerListener(listener) {
-    if (!this.source) {
-      return false;
-    }
-    return this.source.registerChunkListener(this.key, listener);
-  }
-  unregisterListener(listener) {
-    if (!this.source) {
-      return false;
-    }
-    return this.source.unregisterChunkListener(this.key, listener);
-  }
-  static priorityLess(a, b) {
-    return a.priority < b.priority;
-  }
-  static priorityGreater(a, b) {
-    return a.priority > b.priority;
-  }
-};
-var numSourceQueueLevels = 2;
-var ChunkSourceBase = class extends SharedObject {
-  constructor(chunkManager) {
-    super();
-    this.chunkManager = chunkManager;
-    chunkManager.queueManager.sources.add(this);
-  }
-  listeners_ = /* @__PURE__ */ new Map();
-  chunks = /* @__PURE__ */ new Map();
-  freeChunks = new Array();
-  statistics = new Float64Array(numChunkStatistics);
-  /**
-   * sourceQueueLevel must be greater than the sourceQueueLevel of any ChunkSource whose download
-   * method depends on chunks from this source.  A normal ChunkSource with no other dependencies
-   * should have a level of 0.
-   */
-  sourceQueueLevel = 0;
-  disposed() {
-    this.chunkManager.queueManager.sources.delete(this);
-    super.disposed();
-  }
-  getNewChunk_(chunkType) {
-    const freeChunks = this.freeChunks;
-    const freeChunksLength = freeChunks.length;
-    if (freeChunksLength > 0) {
-      const chunk2 = freeChunks[freeChunksLength - 1];
-      freeChunks.length = freeChunksLength - 1;
-      chunk2.source = this;
-      return chunk2;
-    }
-    const chunk = new chunkType();
-    chunk.source = this;
-    return chunk;
-  }
-  /**
-   * Adds the specified chunk to the chunk cache.
-   *
-   * If the chunk cache was previously empty, also call this.addRef() to increment the reference
-   * count.
-   */
-  addChunk(chunk) {
-    const { chunks } = this;
-    if (chunks.size === 0) {
-      this.addRef();
-    }
-    chunks.set(chunk.key, chunk);
-    updateChunkStatistics(chunk, 1);
-  }
-  /**
-   * Remove the specified chunk from the chunk cache.
-   *
-   * If the chunk cache becomes empty, also call this.dispose() to decrement the reference count.
-   */
-  removeChunk(chunk) {
-    const { chunks, freeChunks } = this;
-    chunks.delete(chunk.key);
-    chunk.dispose();
-    freeChunks[freeChunks.length] = chunk;
-    if (chunks.size === 0) {
-      this.dispose();
-    }
-  }
-  registerChunkListener(key, listener) {
-    if (!this.listeners_.has(key)) {
-      this.listeners_.set(key, [listener]);
-    } else {
-      this.listeners_.get(key).push(listener);
-    }
-    return true;
-  }
-  unregisterChunkListener(key, listener) {
-    if (!this.listeners_.has(key)) {
-      return false;
-    }
-    const keyListeners = this.listeners_.get(key);
-    const idx = keyListeners.indexOf(listener);
-    if (idx < 0) {
-      return false;
-    }
-    keyListeners.splice(idx, 1);
-    if (keyListeners.length === 0) {
-      this.listeners_.delete(key);
-    }
-    return true;
-  }
-  chunkStateChanged(chunk, oldState) {
-    const { key } = chunk;
-    if (key === null) return;
-    const listeners = this.listeners_.get(key);
-    if (listeners === void 0) return;
-    for (const listener of listeners.slice()) {
-      listener(chunk, oldState);
-    }
-  }
-};
-function updateChunkStatistics(chunk, sign) {
-  const { statistics } = chunk.source;
-  const { systemMemoryBytes, gpuMemoryBytes } = chunk;
-  const index = getChunkStateStatisticIndex(chunk.state, chunk.priorityTier);
-  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.numChunks] += sign;
-  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.systemMemoryBytes] += sign * systemMemoryBytes;
-  statistics[index * numChunkMemoryStatistics + ChunkMemoryStatistics.gpuMemoryBytes] += sign * gpuMemoryBytes;
-}
-var ChunkSource = class extends ChunkSourceBase {
-  constructor(rpc2, options) {
-    const chunkManager = rpc2.get(options.chunkManager);
-    super(chunkManager);
-    initializeSharedObjectCounterpart(this, rpc2, options);
-  }
-};
-function startChunkDownload(chunk) {
-  const downloadAbortController = chunk.downloadAbortController = new AbortController();
-  const startTime = Date.now();
-  chunk.source.download(chunk, downloadAbortController.signal).then(
-    () => {
-      if (chunk.downloadAbortController === downloadAbortController) {
-        chunk.downloadAbortController = void 0;
-        const endTime = Date.now();
-        const { statistics } = chunk.source;
-        statistics[getChunkDownloadStatisticIndex(ChunkDownloadStatistics.totalTime)] += endTime - startTime;
-        ++statistics[getChunkDownloadStatisticIndex(ChunkDownloadStatistics.totalChunks)];
-        chunk.downloadSucceeded();
-      }
-    },
-    (error) => {
-      if (chunk.downloadAbortController === downloadAbortController) {
-        chunk.downloadAbortController = void 0;
-        chunk.downloadFailed(error);
-        console.log(`Error retrieving chunk ${chunk}: ${error}`);
-      }
-    }
-  );
-}
-function cancelChunkDownload(chunk) {
-  const controller = chunk.downloadAbortController;
-  chunk.downloadAbortController = void 0;
-  controller.abort(new DOMException("chunk download cancelled", "AbortError"));
-}
-var ChunkPriorityQueue = class {
-  constructor(heapOperations, linkedListOperations2) {
-    this.heapOperations = heapOperations;
-    this.linkedListOperations = linkedListOperations2;
-    linkedListOperations2.initializeHead(this.recentHead);
-  }
-  /**
-   * Heap roots for VISIBLE and PREFETCH priority tiers.
-   */
-  heapRoots = [null, null];
-  /**
-   * Head node for RECENT linked list.
-   */
-  recentHead = new Chunk();
-  add(chunk) {
-    const priorityTier = chunk.priorityTier;
-    if (priorityTier === ChunkPriorityTier.RECENT) {
-      this.linkedListOperations.insertAfter(this.recentHead, chunk);
-    } else {
-      const { heapRoots } = this;
-      heapRoots[priorityTier] = this.heapOperations.meld(
-        heapRoots[priorityTier],
-        chunk
-      );
-    }
-  }
-  *candidates() {
-    if (this.heapOperations.compare === Chunk.priorityLess) {
-      const { linkedListOperations: linkedListOperations2, recentHead } = this;
-      while (true) {
-        const chunk = linkedListOperations2.back(recentHead);
-        if (chunk == null) {
-          break;
-        }
-        yield chunk;
-      }
-      const { heapRoots } = this;
-      for (let tier = ChunkPriorityTier.LAST_ORDERED_TIER; tier >= ChunkPriorityTier.FIRST_ORDERED_TIER; --tier) {
-        while (true) {
-          const root2 = heapRoots[tier];
-          if (root2 == null) {
-            break;
-          }
-          yield root2;
-        }
-      }
-    } else {
-      const heapRoots = this.heapRoots;
-      for (let tier = ChunkPriorityTier.FIRST_ORDERED_TIER; tier <= ChunkPriorityTier.LAST_ORDERED_TIER; ++tier) {
-        while (true) {
-          const root2 = heapRoots[tier];
-          if (root2 == null) {
-            break;
-          }
-          yield root2;
-        }
-      }
-      const { linkedListOperations: linkedListOperations2, recentHead } = this;
-      while (true) {
-        const chunk = linkedListOperations2.front(recentHead);
-        if (chunk == null) {
-          break;
-        }
-        yield chunk;
-      }
-    }
-  }
-  /**
-   * Deletes a chunk from this priority queue.
-   * @param chunk The chunk to delete from the priority queue.
-   */
-  delete(chunk) {
-    const priorityTier = chunk.priorityTier;
-    if (priorityTier === ChunkPriorityTier.RECENT) {
-      this.linkedListOperations.pop(chunk);
-    } else {
-      const heapRoots = this.heapRoots;
-      heapRoots[priorityTier] = this.heapOperations.remove(
-        heapRoots[priorityTier],
-        chunk
-      );
-    }
-  }
-};
-var linkedList0 = linkedListOperations({ next: "next0", prev: "prev0" });
-var linkedList1 = linkedListOperations({ next: "next1", prev: "prev1" });
-function makeChunkPriorityQueue0(compare) {
-  return new ChunkPriorityQueue(
-    makePairingHeapOperations({
-      compare,
-      child: "child0",
-      next: "next0",
-      prev: "prev0"
-    }),
-    linkedList0
-  );
-}
-function makeChunkPriorityQueue1(compare) {
-  return new ChunkPriorityQueue(
-    makePairingHeapOperations({
-      compare,
-      child: "child1",
-      next: "next1",
-      prev: "prev1"
-    }),
-    linkedList1
-  );
-}
-function tryToFreeCapacity(size, capacity, priorityTier, priority, evictionCandidates, evict) {
-  while (capacity.availableItems < 1 || capacity.availableSize < size) {
-    const evictionCandidate = evictionCandidates.next().value;
-    if (evictionCandidate === void 0) {
-      return false;
-    }
-    const evictionTier = evictionCandidate.priorityTier;
-    if (evictionTier < priorityTier || evictionTier === priorityTier && evictionCandidate.priority >= priority) {
-      return false;
-    }
-    evict(evictionCandidate);
-  }
-  return true;
-}
-var AvailableCapacity = class extends RefCounted {
-  constructor(itemLimit, sizeLimit) {
-    super();
-    this.itemLimit = itemLimit;
-    this.sizeLimit = sizeLimit;
-    this.registerDisposer(itemLimit.changed.add(this.capacityChanged.dispatch));
-    this.registerDisposer(sizeLimit.changed.add(this.capacityChanged.dispatch));
-  }
-  currentSize = 0;
-  currentItems = 0;
-  capacityChanged = new NullarySignal();
-  /**
-   * Adjust available capacity by the specified amounts.
-   */
-  adjust(items, size) {
-    this.currentItems -= items;
-    this.currentSize -= size;
-  }
-  get availableSize() {
-    return this.sizeLimit.value - this.currentSize;
-  }
-  get availableItems() {
-    return this.itemLimit.value - this.currentItems;
-  }
-  toString() {
-    return `bytes=${this.currentSize}/${this.sizeLimit.value},items=${this.currentItems}/${this.itemLimit.value}`;
-  }
-};
-var ChunkQueueManager = class extends SharedObjectCounterpart {
-  gpuMemoryCapacity;
-  systemMemoryCapacity;
-  /**
-   * Download capacity for each sourceQueueLevel.
-   */
-  downloadCapacity;
-  computeCapacity;
-  enablePrefetch;
-  /**
-   * Set of chunk sources associated with this queue manager.
-   */
-  sources = /* @__PURE__ */ new Set();
-  /**
-   * Contains all chunks in QUEUED state pending download, for each sourceQueueLevel.
-   */
-  queuedDownloadPromotionQueue = [
-    makeChunkPriorityQueue1(Chunk.priorityGreater),
-    makeChunkPriorityQueue1(Chunk.priorityGreater)
-  ];
-  /**
-   * Contains all chunks in QUEUED state pending compute.
-   */
-  queuedComputePromotionQueue = makeChunkPriorityQueue1(
-    Chunk.priorityGreater
-  );
-  /**
-   * Contains all chunks in DOWNLOADING state, for each sourceQueueLevel.
-   */
-  downloadEvictionQueue = [
-    makeChunkPriorityQueue1(Chunk.priorityLess),
-    makeChunkPriorityQueue1(Chunk.priorityLess)
-  ];
-  /**
-   * Contains all chunks in COMPUTING state.
-   */
-  computeEvictionQueue = makeChunkPriorityQueue1(Chunk.priorityLess);
-  /**
-   * Contains all chunks that take up memory (DOWNLOADING, SYSTEM_MEMORY,
-   * GPU_MEMORY).
-   */
-  systemMemoryEvictionQueue = makeChunkPriorityQueue0(
-    Chunk.priorityLess
-  );
-  /**
-   * Contains all chunks in SYSTEM_MEMORY state not in RECENT priority tier.
-   */
-  gpuMemoryPromotionQueue = makeChunkPriorityQueue1(
-    Chunk.priorityGreater
-  );
-  /**
-   * Contains all chunks in GPU_MEMORY state.
-   */
-  gpuMemoryEvictionQueue = makeChunkPriorityQueue1(Chunk.priorityLess);
-  // Should be `number|null`, but marked `any` to work around @types/node being pulled in.
-  updatePending = null;
-  gpuMemoryChanged = new NullarySignal();
-  numQueued = 0;
-  numFailed = 0;
-  gpuMemoryGeneration = 0;
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    const getCapacity = (capacity) => {
-      const result = this.registerDisposer(
-        new AvailableCapacity(
-          rpc2.get(capacity.itemLimit),
-          rpc2.get(capacity.sizeLimit)
-        )
-      );
-      result.capacityChanged.add(() => this.scheduleUpdate());
-      return result;
-    };
-    this.gpuMemoryCapacity = getCapacity(options.gpuMemoryCapacity);
-    this.systemMemoryCapacity = getCapacity(options.systemMemoryCapacity);
-    this.enablePrefetch = rpc2.get(options.enablePrefetch);
-    this.downloadCapacity = [
-      getCapacity(options.downloadCapacity),
-      getCapacity(options.downloadCapacity)
-    ];
-    this.computeCapacity = getCapacity(options.computeCapacity);
-  }
-  scheduleUpdate() {
-    if (this.updatePending === null) {
-      this.updatePending = setTimeout(this.process.bind(this), 0);
-    }
-  }
-  *chunkQueuesForChunk(chunk) {
-    switch (chunk.state) {
-      case ChunkState.QUEUED:
-        if (chunk.isComputational) {
-          yield this.queuedComputePromotionQueue;
-        } else {
-          yield this.queuedDownloadPromotionQueue[chunk.source.sourceQueueLevel];
-        }
-        break;
-      case ChunkState.DOWNLOADING:
-        if (chunk.isComputational) {
-          yield this.computeEvictionQueue;
-        } else {
-          yield this.downloadEvictionQueue[chunk.source.sourceQueueLevel];
-          yield this.systemMemoryEvictionQueue;
-        }
-        break;
-      case ChunkState.SYSTEM_MEMORY_WORKER:
-      case ChunkState.SYSTEM_MEMORY:
-        yield this.systemMemoryEvictionQueue;
-        if (chunk.requestedState === ChunkState.GPU_MEMORY) {
-          yield this.gpuMemoryPromotionQueue;
-        }
-        break;
-      case ChunkState.GPU_MEMORY:
-        yield this.systemMemoryEvictionQueue;
-        yield this.gpuMemoryEvictionQueue;
-        break;
-    }
-  }
-  adjustCapacitiesForChunk(chunk, add7) {
-    const factor = add7 ? -1 : 1;
-    switch (chunk.state) {
-      case ChunkState.FAILED:
-        this.numFailed -= factor;
-        break;
-      case ChunkState.QUEUED:
-        this.numQueued -= factor;
-        break;
-      case ChunkState.DOWNLOADING:
-        (chunk.isComputational ? this.computeCapacity : this.downloadCapacity[chunk.source.sourceQueueLevel]).adjust(
-          factor * chunk.downloadSlots,
-          factor * chunk.systemMemoryBytes
-        );
-        this.systemMemoryCapacity.adjust(
-          factor,
-          factor * chunk.systemMemoryBytes
-        );
-        break;
-      case ChunkState.SYSTEM_MEMORY:
-      case ChunkState.SYSTEM_MEMORY_WORKER:
-        this.systemMemoryCapacity.adjust(
-          factor,
-          factor * chunk.systemMemoryBytes
-        );
-        break;
-      case ChunkState.GPU_MEMORY:
-        this.systemMemoryCapacity.adjust(
-          factor,
-          factor * chunk.systemMemoryBytes
-        );
-        this.gpuMemoryCapacity.adjust(factor, factor * chunk.gpuMemoryBytes);
-        break;
-    }
-  }
-  removeChunkFromQueues_(chunk) {
-    updateChunkStatistics(chunk, -1);
-    for (const queue of this.chunkQueuesForChunk(chunk)) {
-      queue.delete(chunk);
-    }
-  }
-  // var freedChunks = 0;
-  addChunkToQueues_(chunk) {
-    if (chunk.state === ChunkState.QUEUED && chunk.priorityTier === ChunkPriorityTier.RECENT) {
-      const { source } = chunk;
-      source.removeChunk(chunk);
-      this.adjustCapacitiesForChunk(chunk, false);
-      return false;
-    }
-    updateChunkStatistics(chunk, 1);
-    for (const queue of this.chunkQueuesForChunk(chunk)) {
-      queue.add(chunk);
-    }
-    return true;
-  }
-  performChunkPriorityUpdate(chunk) {
-    if (chunk.priorityTier === chunk.newPriorityTier && chunk.priority === chunk.newPriority) {
-      chunk.newPriorityTier = ChunkPriorityTier.RECENT;
-      chunk.newPriority = Number.NEGATIVE_INFINITY;
-      return;
-    }
-    if (DEBUG_CHUNK_UPDATES) {
-      console.log(
-        `${chunk}: changed priority ${chunk.priorityTier}:${chunk.priority} -> ${chunk.newPriorityTier}:${chunk.newPriority}`
-      );
-    }
-    this.removeChunkFromQueues_(chunk);
-    chunk.updatePriorityProperties();
-    if (chunk.state === ChunkState.NEW) {
-      chunk.state = ChunkState.QUEUED;
-      this.adjustCapacitiesForChunk(chunk, true);
-    }
-    this.addChunkToQueues_(chunk);
-  }
-  updateChunkState(chunk, newState) {
-    if (newState === chunk.state) {
-      return;
-    }
-    if (DEBUG_CHUNK_UPDATES) {
-      console.log(
-        `${chunk}: changed state ${ChunkState[chunk.state]} -> ${ChunkState[newState]}`
-      );
-    }
-    this.adjustCapacitiesForChunk(chunk, false);
-    this.removeChunkFromQueues_(chunk);
-    chunk.state = newState;
-    this.adjustCapacitiesForChunk(chunk, true);
-    this.addChunkToQueues_(chunk);
-    this.scheduleUpdate();
-  }
-  markRecentlyUsed(chunk) {
-    this.removeChunkFromQueues_(chunk);
-    this.addChunkToQueues_(chunk);
-  }
-  processGPUPromotions_() {
-    const queueManager = this;
-    function evictFromGPUMemory(chunk) {
-      queueManager.freeChunkGPUMemory(chunk);
-      chunk.source.chunkManager.queueManager.updateChunkState(
-        chunk,
-        ChunkState.SYSTEM_MEMORY
-      );
-    }
-    const promotionCandidates = this.gpuMemoryPromotionQueue.candidates();
-    const evictionCandidates = this.gpuMemoryEvictionQueue.candidates();
-    const capacity = this.gpuMemoryCapacity;
-    while (true) {
-      const promotionCandidate = promotionCandidates.next().value;
-      if (promotionCandidate === void 0) {
-        break;
-      }
-      const priorityTier = promotionCandidate.priorityTier;
-      const priority = promotionCandidate.priority;
-      if (!tryToFreeCapacity(
-        promotionCandidate.gpuMemoryBytes,
-        capacity,
-        priorityTier,
-        priority,
-        evictionCandidates,
-        evictFromGPUMemory
-      )) {
-        break;
-      }
-      this.copyChunkToGPU(promotionCandidate);
-      this.updateChunkState(promotionCandidate, ChunkState.GPU_MEMORY);
-    }
-  }
-  freeChunkGPUMemory(chunk) {
-    ++this.gpuMemoryGeneration;
-    this.rpc.invoke("Chunk.update", {
-      id: chunk.key,
-      state: ChunkState.SYSTEM_MEMORY,
-      source: chunk.source.rpcId
-    });
-  }
-  freeChunkSystemMemory(chunk) {
-    if (chunk.state === ChunkState.SYSTEM_MEMORY_WORKER) {
-      chunk.freeSystemMemory();
-    } else {
-      this.rpc.invoke("Chunk.update", {
-        id: chunk.key,
-        state: ChunkState.EXPIRED,
-        source: chunk.source.rpcId
-      });
-    }
-  }
-  retrieveChunkData(chunk) {
-    return this.rpc.promiseInvoke("Chunk.retrieve", {
-      key: chunk.key,
-      source: chunk.source.rpcId
-    });
-  }
-  copyChunkToGPU(chunk) {
-    ++this.gpuMemoryGeneration;
-    const rpc2 = this.rpc;
-    if (chunk.state === ChunkState.SYSTEM_MEMORY) {
-      rpc2.invoke("Chunk.update", {
-        id: chunk.key,
-        source: chunk.source.rpcId,
-        state: ChunkState.GPU_MEMORY
-      });
-    } else {
-      const msg = {};
-      const transfers = [];
-      chunk.serialize(msg, transfers);
-      msg.state = ChunkState.GPU_MEMORY;
-      rpc2.invoke("Chunk.update", msg, transfers);
-    }
-  }
-  moveChunkToFrontend(chunk) {
-    const rpc2 = this.rpc;
-    const msg = {};
-    const transfers = [];
-    chunk.serialize(msg, transfers);
-    msg.state = ChunkState.SYSTEM_MEMORY;
-    rpc2.invoke("Chunk.update", msg, transfers);
-  }
-  processQueuePromotions_() {
-    const evict = (chunk) => {
-      switch (chunk.state) {
-        case ChunkState.DOWNLOADING:
-          cancelChunkDownload(chunk);
-          break;
-        case ChunkState.GPU_MEMORY:
-          this.freeChunkGPUMemory(chunk);
-        // fallthrough
-        case ChunkState.SYSTEM_MEMORY_WORKER:
-        case ChunkState.SYSTEM_MEMORY:
-          this.freeChunkSystemMemory(chunk);
-          break;
-      }
-      this.updateChunkState(chunk, ChunkState.QUEUED);
-    };
-    const promotionLambda = (promotionCandidates, evictionCandidates, capacity) => {
-      const systemMemoryEvictionCandidates = this.systemMemoryEvictionQueue.candidates();
-      const systemMemoryCapacity = this.systemMemoryCapacity;
-      while (true) {
-        const promotionCandidateResult = promotionCandidates.next();
-        if (promotionCandidateResult.done) {
-          return;
-        }
-        const promotionCandidate = promotionCandidateResult.value;
-        const size = 0;
-        const priorityTier = promotionCandidate.priorityTier;
-        const priority = promotionCandidate.priority;
-        if (!tryToFreeCapacity(
-          size,
-          capacity,
-          priorityTier,
-          priority,
-          evictionCandidates,
-          evict
-        )) {
-          return;
-        }
-        if (!tryToFreeCapacity(
-          size,
-          systemMemoryCapacity,
-          priorityTier,
-          priority,
-          systemMemoryEvictionCandidates,
-          evict
-        )) {
-          return;
-        }
-        this.updateChunkState(promotionCandidate, ChunkState.DOWNLOADING);
-        startChunkDownload(promotionCandidate);
-      }
-    };
-    for (let sourceQueueLevel = 0; sourceQueueLevel < numSourceQueueLevels; ++sourceQueueLevel) {
-      promotionLambda(
-        this.queuedDownloadPromotionQueue[sourceQueueLevel].candidates(),
-        this.downloadEvictionQueue[sourceQueueLevel].candidates(),
-        this.downloadCapacity[sourceQueueLevel]
-      );
-    }
-    promotionLambda(
-      this.queuedComputePromotionQueue.candidates(),
-      this.computeEvictionQueue.candidates(),
-      this.computeCapacity
-    );
-  }
-  process() {
-    if (!this.updatePending) {
-      return;
-    }
-    this.updatePending = null;
-    const gpuMemoryGeneration = this.gpuMemoryGeneration;
-    this.processGPUPromotions_();
-    this.processQueuePromotions_();
-    this.logStatistics();
-    if (this.gpuMemoryGeneration !== gpuMemoryGeneration) {
-      this.gpuMemoryChanged.dispatch();
-    }
-  }
-  logStatistics() {
-    if (DEBUG_CHUNK_UPDATES) {
-      console.log(
-        `[Chunk status] QUEUED: ${this.numQueued}, FAILED: ${this.numFailed}, DOWNLOAD: ${this.downloadCapacity}, MEM: ${this.systemMemoryCapacity}, GPU: ${this.gpuMemoryCapacity}`
-      );
-    }
-  }
-  invalidateSourceCache(source) {
-    for (const chunk of source.chunks.values()) {
-      switch (chunk.state) {
-        case ChunkState.DOWNLOADING:
-          cancelChunkDownload(chunk);
-          break;
-        case ChunkState.SYSTEM_MEMORY_WORKER:
-          chunk.freeSystemMemory();
-          break;
-      }
-      this.updateChunkState(chunk, ChunkState.QUEUED);
-    }
-    this.rpc.invoke("Chunk.update", { source: source.rpcId });
-    this.scheduleUpdate();
-  }
-};
-ChunkQueueManager = __decorateClass2([
-  registerSharedObject(CHUNK_QUEUE_MANAGER_RPC_ID)
-], ChunkQueueManager);
-var ChunkRenderLayerBackend = class extends SharedObjectCounterpart {
-  chunkManagerGeneration = -1;
-  numVisibleChunksNeeded = 0;
-  numVisibleChunksAvailable = 0;
-  numPrefetchChunksNeeded = 0;
-  numPrefetchChunksAvailable = 0;
-};
-var LAYER_CHUNK_STATISTICS_INTERVAL = 200;
-var ChunkManager = class extends SharedObjectCounterpart {
-  queueManager;
-  /**
-   * Array of chunks within each existing priority tier.
-   */
-  existingTierChunks = [];
-  /**
-   * Array of chunks whose new priorities have not yet been reflected in the
-   * queue states.
-   */
-  newTierChunks = [];
-  // Should be `number|null`, but marked `any` to workaround `@types/node` being pulled in.
-  updatePending = null;
-  recomputeChunkPriorities = new NullarySignal();
-  /**
-   * Dispatched immediately after recomputeChunkPriorities is dispatched.
-   * This signal should be used for handlers that depend on the result of another handler.
-   */
-  recomputeChunkPrioritiesLate = new NullarySignal();
-  memoize = new StringMemoize();
-  layers = [];
-  sendLayerChunkStatistics = this.registerCancellable(
-    throttle_default(() => {
-      this.rpc.invoke(CHUNK_LAYER_STATISTICS_RPC_ID, {
-        id: this.rpcId,
-        layers: this.layers.map((layer) => ({
-          id: layer.rpcId,
-          numVisibleChunksAvailable: layer.numVisibleChunksAvailable,
-          numVisibleChunksNeeded: layer.numVisibleChunksNeeded,
-          numPrefetchChunksAvailable: layer.numPrefetchChunksAvailable,
-          numPrefetchChunksNeeded: layer.numPrefetchChunksNeeded
-        }))
-      });
-    }, LAYER_CHUNK_STATISTICS_INTERVAL)
-  );
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.queueManager = rpc2.get(options.chunkQueueManager).addRef();
-    this.registerDisposer(
-      this.queueManager.gpuMemoryChanged.add(
-        this.registerCancellable(
-          throttle_default(
-            () => this.scheduleUpdateChunkPriorities(),
-            LAYER_CHUNK_STATISTICS_INTERVAL,
-            { leading: false, trailing: true }
-          )
-        )
-      )
-    );
-    for (let tier = ChunkPriorityTier.FIRST_TIER; tier <= ChunkPriorityTier.LAST_TIER; ++tier) {
-      if (tier === ChunkPriorityTier.RECENT) {
-        continue;
-      }
-      this.existingTierChunks[tier] = [];
-    }
-  }
-  scheduleUpdateChunkPriorities() {
-    if (this.updatePending === null) {
-      this.updatePending = setTimeout(
-        this.recomputeChunkPriorities_.bind(this),
-        0
-      );
-    }
-  }
-  registerLayer(layer) {
-    const generation = this.recomputeChunkPriorities.count;
-    if (layer.chunkManagerGeneration !== generation) {
-      layer.chunkManagerGeneration = generation;
-      this.layers.push(layer);
-      layer.numVisibleChunksAvailable = 0;
-      layer.numVisibleChunksNeeded = 0;
-      layer.numPrefetchChunksAvailable = 0;
-      layer.numPrefetchChunksNeeded = 0;
-    }
-  }
-  recomputeChunkPriorities_() {
-    this.updatePending = null;
-    this.layers.length = 0;
-    this.recomputeChunkPriorities.dispatch();
-    this.recomputeChunkPrioritiesLate.dispatch();
-    this.updateQueueState([
-      ChunkPriorityTier.VISIBLE,
-      ChunkPriorityTier.PREFETCH
-    ]);
-    this.sendLayerChunkStatistics();
-  }
-  /**
-   * @param chunk
-   * @param tier New priority tier.  Must not equal ChunkPriorityTier.RECENT.
-   * @param priority Priority within tier.
-   * @param requestedState Indicates requested chunk state.
-   */
-  requestChunk(chunk, tier, priority, requestedState = ChunkState.GPU_MEMORY) {
-    if (Number.isNaN(priority)) {
-      return;
-    }
-    if (tier === ChunkPriorityTier.RECENT) {
-      throw new Error("Not going to request a chunk with the RECENT tier");
-    }
-    chunk.newRequestedState = Math.min(chunk.newRequestedState, requestedState);
-    if (chunk.newPriorityTier === ChunkPriorityTier.RECENT) {
-      this.newTierChunks.push(chunk);
-    }
-    const newPriorityTier = chunk.newPriorityTier;
-    if (tier < newPriorityTier || tier === newPriorityTier && priority > chunk.newPriority) {
-      chunk.newPriorityTier = tier;
-      chunk.newPriority = priority;
-    }
-  }
-  /**
-   * Update queue state to reflect updated contents of the specified priority tiers.  Existing
-   * chunks within those tiers not present in this.newTierChunks will be moved to the RECENT tier
-   * (and removed if in the QUEUED state).
-   */
-  updateQueueState(tiers) {
-    const existingTierChunks = this.existingTierChunks;
-    const queueManager = this.queueManager;
-    for (const tier of tiers) {
-      const chunks = existingTierChunks[tier];
-      if (DEBUG_CHUNK_UPDATES) {
-        console.log(
-          `existingTierChunks[${ChunkPriorityTier[tier]}].length=${chunks.length}`
-        );
-      }
-      for (const chunk of chunks) {
-        if (chunk.newPriorityTier === ChunkPriorityTier.RECENT) {
-          queueManager.performChunkPriorityUpdate(chunk);
-        }
-      }
-      chunks.length = 0;
-    }
-    const newTierChunks = this.newTierChunks;
-    for (const chunk of newTierChunks) {
-      queueManager.performChunkPriorityUpdate(chunk);
-      existingTierChunks[chunk.priorityTier].push(chunk);
-    }
-    if (DEBUG_CHUNK_UPDATES) {
-      console.log(
-        `updateQueueState: newTierChunks.length = ${newTierChunks.length}`
-      );
-    }
-    newTierChunks.length = 0;
-    this.queueManager.scheduleUpdate();
-  }
-};
-ChunkManager = __decorateClass2([
-  registerSharedObject(CHUNK_MANAGER_RPC_ID)
-], ChunkManager);
-function WithParameters(Base, parametersConstructor) {
-  let C = class extends Base {
-    parameters;
-    constructor(...args) {
-      super(...args);
-      const options = args[1];
-      this.parameters = options.parameters;
-    }
-  };
-  C = __decorateClass2([
-    registerSharedObjectOwner(parametersConstructor.RPC_ID)
-  ], C);
-  return C;
-}
-function withChunkManager(Base) {
-  return class extends Base {
-    chunkManager;
-    constructor(...args) {
-      super(...args);
-      const rpc2 = args[0];
-      const options = args[1];
-      this.chunkManager = rpc2.get(options.chunkManager);
-    }
-  };
-}
-registerRPC(CHUNK_SOURCE_INVALIDATE_RPC_ID, function(x) {
-  const source = this.get(x.id);
-  source.chunkManager.queueManager.invalidateSourceCache(source);
-});
-registerPromiseRPC(
-  REQUEST_CHUNK_STATISTICS_RPC_ID,
-  function(x) {
-    const queue = this.get(x.queue);
-    const results = /* @__PURE__ */ new Map();
-    for (const source of queue.sources) {
-      results.set(source.rpcId, source.statistics);
-    }
-    return Promise.resolve({ value: results });
-  }
-);
-
-// node_modules/neuroglancer/lib/kvstore/backend.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/credentials_provider/shared_counterpart.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/credentials_provider/index.js
-init_legacy_browser();
-var CredentialsProvider = class extends RefCounted {
-};
-function makeCachedCredentialsGetter(getUncached) {
-  let cachedCredentials;
-  let pendingCredentials;
-  return async (invalidCredentials, options) => {
-    if (pendingCredentials === void 0 || invalidCredentials !== void 0 && (cachedCredentials == null ? void 0 : cachedCredentials.generation) === invalidCredentials.generation) {
-      cachedCredentials = void 0;
-      pendingCredentials = asyncMemoizeWithProgress(async (progressOptions) => {
-        cachedCredentials = await getUncached(
-          invalidCredentials,
-          progressOptions
-        );
-        return cachedCredentials;
-      });
-    }
-    return pendingCredentials(options ?? {});
-  };
-}
-var CachingCredentialsManager = class extends RefCounted {
-  constructor(base) {
-    super();
-    this.base = base;
-  }
-  memoize = new StringMemoize();
-  getCredentialsProvider(key, parameters) {
-    return this.memoize.get(
-      { key, parameters },
-      () => this.registerDisposer(
-        this.base.getCredentialsProvider(key, parameters).addRef()
-      )
-    );
-  }
-};
-
-// node_modules/neuroglancer/lib/credentials_provider/shared_common.js
-init_legacy_browser();
-var CREDENTIALS_PROVIDER_RPC_ID = "CredentialsProvider";
-var CREDENTIALS_PROVIDER_GET_RPC_ID = "CredentialsProvider.get";
-var CREDENTIALS_MANAGER_RPC_ID = "CredentialsManager";
-var CREDENTIALS_MANAGER_GET_RPC_ID = "CredentialsManager.get";
-
-// node_modules/neuroglancer/lib/credentials_provider/shared_counterpart.js
-var __defProp4 = Object.defineProperty;
-var __getOwnPropDesc4 = Object.getOwnPropertyDescriptor;
-var __decorateClass3 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc4(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp4(target2, key, result);
-  return result;
-};
-var SharedCredentialsProviderCounterpart = class extends SharedObjectCounterpart {
-  get = makeCachedCredentialsGetter(
-    (invalidCredentials, options) => this.rpc.promiseInvoke(
-      CREDENTIALS_PROVIDER_GET_RPC_ID,
-      { providerId: this.rpcId, invalidCredentials },
-      { signal: options.signal, progressListener: options.progressListener }
-    )
-  );
-};
-SharedCredentialsProviderCounterpart = __decorateClass3([
-  registerSharedObject(CREDENTIALS_PROVIDER_RPC_ID)
-], SharedCredentialsProviderCounterpart);
-function WithSharedCredentialsProviderCounterpart() {
-  return (Base) => class extends Base {
-    credentialsProvider;
-    constructor(...args) {
-      super(...args);
-      const options = args[1];
-      this.credentialsProvider = this.rpc.getOptionalRef(options.credentialsProvider);
-    }
-  };
-}
-var ProxyCredentialsProvider = class extends CredentialsProvider {
-  constructor(rpc2, managerId, key, parameters) {
-    super();
-    this.rpc = rpc2;
-    this.managerId = managerId;
-    this.key = key;
-    this.parameters = parameters;
-  }
-  get = makeCachedCredentialsGetter(
-    (invalidCredentials, options) => this.rpc.promiseInvoke(
-      CREDENTIALS_MANAGER_GET_RPC_ID,
-      {
-        managerId: this.managerId,
-        key: this.key,
-        parameters: this.parameters,
-        invalidCredentials
-      },
-      { signal: options.signal, progressListener: options.progressListener }
-    )
-  );
-};
-var SharedCredentialsManagerCounterpart = class extends SharedObjectCounterpart {
-  impl = new CachingCredentialsManager(this.makeBaseCredentialsManager());
-  makeBaseCredentialsManager() {
-    return {
-      getCredentialsProvider: (key, parameters) => new ProxyCredentialsProvider(
-        this.rpc,
-        this.rpcId,
-        key,
-        parameters
-      )
-    };
-  }
-  getCredentialsProvider(key, parameters) {
-    return this.impl.getCredentialsProvider(key, parameters);
-  }
-};
-SharedCredentialsManagerCounterpart = __decorateClass3([
-  registerSharedObject(CREDENTIALS_MANAGER_RPC_ID)
-], SharedCredentialsManagerCounterpart);
-
-// node_modules/neuroglancer/lib/kvstore/context.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/kvstore/auto_detect.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/kvstore/index.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/string.js
-init_legacy_browser();
-function defaultStringCompare(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-// node_modules/neuroglancer/lib/kvstore/index.js
-var NotFoundError = class extends Error {
-  constructor(handle, options) {
-    super(`${handle.getUrl()} not found`, options);
-  }
-};
-async function readKvStore(store, key, options = {}) {
-  return readFileHandle(new KvStoreFileHandle(store, key), options);
-}
-async function readFileHandle(handle, options = {}) {
-  const response = await handle.read(options);
-  if ((options == null ? void 0 : options.throwIfMissing) === true) {
-    if (response === void 0) {
-      throw new NotFoundError(handle);
-    }
-  }
-  if ((options == null ? void 0 : options.strictByteRange) === true && response !== void 0) {
-    const { byteRange } = options;
-    const { offset, length: length6 } = response;
-    if (byteRange !== void 0) {
-      if ("suffixLength" in byteRange ? length6 !== byteRange.suffixLength : offset !== byteRange.offset || length6 !== void 0 && length6 !== byteRange.length) {
-        throw new Error(
-          `Received truncated response for ${handle.getUrl()}, expected ${JSON.stringify(
-            byteRange
-          )} but received offset=${offset}, length=${length6}`
-        );
-      }
-    }
-  }
-  return response;
-}
-function transformListResponse(response, prefix, kvStore, responseKeys) {
-  switch (responseKeys) {
-    case "suffix": {
-      const offset = prefix.length;
-      return {
-        directories: response.directories.map((key) => key.substring(offset)),
-        entries: response.entries.map(({ key, ...entry }) => ({
-          ...entry,
-          key: key.substring(offset)
-        }))
-      };
-    }
-    case "url": {
-      return {
-        directories: response.directories.map((key) => kvStore.getUrl(key)),
-        entries: response.entries.map(({ key, ...entry }) => ({
-          ...entry,
-          key: kvStore.getUrl(key)
-        }))
-      };
-    }
-    default: {
-      return response;
-    }
-  }
-}
-async function listKvStore(kvStore, prefix, options = {}) {
-  if (!kvStore.list) {
-    throw new Error("Listing not supported");
-  }
-  return transformListResponse(
-    await kvStore.list(prefix, options),
-    prefix,
-    kvStore,
-    options.responseKeys
-  );
-}
-var KvStoreFileHandle = class {
-  constructor(store, key) {
-    this.store = store;
-    this.key = key;
-  }
-  stat(options) {
-    return this.store.stat(this.key, options);
-  }
-  read(options) {
-    return this.store.read(this.key, options);
-  }
-  getUrl() {
-    return this.store.getUrl(this.key);
-  }
-};
-function normalizeListResponse(response) {
-  response.entries.sort(({ key: a }, { key: b }) => defaultStringCompare(a, b));
-  response.directories.sort(defaultStringCompare);
-  return response;
-}
-
-// node_modules/neuroglancer/lib/kvstore/url.js
-init_legacy_browser();
-function kvstoreEnsureDirectoryPipelineUrl(url) {
-  const m = url.match(
-    /^((?:.*?\|)?)([a-zA-Z][a-zA-Z0-9-+.]*)(?:(:[^?#|]*)((?:[?#][^|]*)?))?$/
-  );
-  if (m === null) {
-    throw new Error(`Invalid URL: ${url}`);
-  }
-  const [, pipelinePrefix, scheme, path, queryAndFragment] = m;
-  if (path === void 0) {
-    return `${pipelinePrefix}${scheme}:`;
-  }
-  if (path === ":" || path.endsWith("/")) return url;
-  return `${pipelinePrefix}${scheme}${path}/${queryAndFragment ?? ""}`;
-}
-function finalPipelineUrlComponent(url) {
-  const m = url.match(/.*?([^|]*)$/);
-  return m[1];
-}
-var schemePattern = /^(?:([a-zA-Z][a-zA-Z0-9-+.]*):)?(.*)$/;
-function parsePipelineUrlComponent(url) {
-  const m = url.match(schemePattern);
-  const scheme = m[1];
-  const suffix = m[2];
-  if (scheme === void 0) {
-    return { url, scheme: url, suffix: void 0 };
-  } else {
-    return { url, scheme, suffix };
-  }
-}
-function splitPipelineUrl(url) {
-  return url.split("|").map(parsePipelineUrlComponent);
-}
-function pipelineUrlJoin(baseUrl, ...additionalParts) {
-  let [, base, queryAndFragment] = baseUrl.match(/^(.*?[^|?#]*)([^|]*)$/);
-  for (let part of additionalParts) {
-    if (part.startsWith("/")) {
-      part = part.substring(1);
-    }
-    if (part === "") continue;
-    base = kvstoreEnsureDirectoryPipelineUrl(base);
-    base += encodePathForUrl(part);
-  }
-  return base + queryAndFragment;
-}
-function joinPath(base, ...additionalParts) {
-  for (let part of additionalParts) {
-    if (part.startsWith("/")) {
-      part = part.substring(1);
-    }
-    if (part === "") continue;
-    base = ensurePathIsDirectory(base);
-    base += part;
-  }
-  return base;
-}
-function ensurePathIsDirectory(path) {
-  if (!pathIsDirectory(path)) {
-    path += "/";
-  }
-  return path;
-}
-function ensureNoQueryOrFragmentParameters(url) {
-  const { suffix } = url;
-  if (suffix === void 0) return;
-  if (suffix.match(/[#?]/)) {
-    throw new Error(
-      `Invalid URL ${url.url}: query parameters and/or fragment not supported`
-    );
-  }
-}
-function ensureEmptyUrlSuffix(url) {
-  if (url.suffix) {
-    throw new Error(
-      `Invalid URL syntax ${JSON.stringify(url.url)}, expected "${url.scheme}:"`
-    );
-  }
-}
-function extractQueryAndFragment(url) {
-  const [, base, queryAndFragment] = url.match(/^(.*?[^|?#]*)([^|]*)$/);
-  return { base, queryAndFragment };
-}
-function resolveRelativePath(basePath, relativePath) {
-  const origBasePath = basePath;
-  if (basePath.endsWith("/")) {
-    basePath = basePath.substring(0, basePath.length - 1);
-  }
-  for (const component of relativePath.split("/")) {
-    if (component === "" || component === ".") {
-      continue;
-    }
-    if (component === "..") {
-      const prevSlash = basePath.lastIndexOf("/");
-      if (prevSlash <= 0) {
-        throw new Error(
-          `Invalid relative path ${JSON.stringify(relativePath)} from base path ${JSON.stringify(origBasePath)}`
-        );
-      }
-      basePath = basePath.substring(0, prevSlash);
-      continue;
-    }
-    if (basePath !== "") {
-      basePath += "/";
-    }
-    basePath += component;
-  }
-  if (relativePath.endsWith("/")) {
-    basePath += "/";
-  }
-  return basePath;
-}
-function pathIsDirectory(path) {
-  return path === "" || path.endsWith("/");
-}
-function encodePathForUrl(path) {
-  return encodeURI(path).replace(
-    /[?#@]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
-  );
-}
-function joinBaseUrlAndPath(baseUrl, path) {
-  const { base, queryAndFragment } = extractQueryAndFragment(baseUrl);
-  return base + encodePathForUrl(path) + queryAndFragment;
-}
-function getBaseHttpUrlAndPath(url) {
-  const parsed = new URL(url);
-  if (parsed.hash) {
-    throw new Error("fragment not supported");
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error("basic auth credentials not supported");
-  }
-  return {
-    baseUrl: `${parsed.origin}/${parsed.search}`,
-    path: decodeURIComponent(parsed.pathname.substring(1))
-  };
-}
-
-// node_modules/neuroglancer/lib/kvstore/auto_detect.js
-function composeMatchFunctions(specs) {
-  return async (options) => {
-    const matches = [];
-    const results = await Promise.allSettled(
-      specs.map((spec) => spec.match(options))
-    );
-    for (const result of results) {
-      if (result.status !== "fulfilled") continue;
-      matches.push(...result.value);
-    }
-    return matches;
-  };
-}
-function composeAutoDetectDirectorySpecs(specs) {
-  const fileNames = /* @__PURE__ */ new Set();
-  const subDirectories = /* @__PURE__ */ new Set();
-  for (const spec of specs) {
-    const { fileNames: curFileNames, subDirectories: curSubDirectories } = spec;
-    if (curFileNames !== void 0) {
-      for (const fileName of curFileNames) {
-        fileNames.add(fileName);
-      }
-    }
-    if (curSubDirectories !== void 0) {
-      for (const subDirectory of curSubDirectories) {
-        subDirectories.add(subDirectory);
-      }
-    }
-  }
-  return { fileNames, subDirectories, match: composeMatchFunctions(specs) };
-}
-function composeAutoDetectFileSpecs(specs) {
-  let prefixLength = 0;
-  let suffixLength = 0;
-  for (const spec of specs) {
-    prefixLength = Math.max(prefixLength, spec.prefixLength);
-    suffixLength = Math.max(suffixLength, spec.suffixLength);
-  }
-  return { prefixLength, suffixLength, match: composeMatchFunctions(specs) };
-}
-var AutoDetectRegistry = class {
-  directorySpecs = [];
-  fileSpecs = [];
-  _directorySpec;
-  _fileSpec;
-  registerDirectoryFormat(spec) {
-    this.directorySpecs.push(spec);
-    this._directorySpec = void 0;
-  }
-  registerFileFormat(spec) {
-    this.fileSpecs.push(spec);
-    this._fileSpec = void 0;
-  }
-  copyTo(registry) {
-    registry.directorySpecs.push(...this.directorySpecs);
-    registry.fileSpecs.push(...this.fileSpecs);
-    registry._fileSpec = void 0;
-    registry._directorySpec = void 0;
-  }
-  get directorySpec() {
-    return this._directorySpec ?? (this._directorySpec = this.getDirectorySpec());
-  }
-  getDirectorySpec() {
-    return composeAutoDetectDirectorySpecs(this.directorySpecs);
-  }
-  get fileSpec() {
-    return this._fileSpec ?? (this._fileSpec = this.getFileSpec());
-  }
-  getFileSpec() {
-    const { fileSpecs } = this;
-    const specs = [...fileSpecs];
-    return composeAutoDetectFileSpecs(specs);
-  }
-};
-
-// node_modules/neuroglancer/lib/kvstore/context.js
-var KvStoreContext = class {
-  baseKvStoreProviders = /* @__PURE__ */ new Map();
-  kvStoreAdapterProviders = /* @__PURE__ */ new Map();
-  autoDetectRegistry = new AutoDetectRegistry();
-  getKvStore(url) {
-    const pipeline = splitPipelineUrl(url);
-    let kvStore;
-    {
-      const basePart = pipeline[0];
-      kvStore = this.getBaseKvStoreProvider(basePart).getKvStore(basePart);
-    }
-    for (let i = 1; i < pipeline.length; ++i) {
-      kvStore = this.applyKvStoreAdapterUrl(kvStore, pipeline[i]);
-    }
-    return kvStore;
-  }
-  getFileHandle(url) {
-    const { store, path } = this.getKvStore(url);
-    return new KvStoreFileHandle(store, path);
-  }
-  getBaseKvStoreProvider(url) {
-    const provider = this.baseKvStoreProviders.get(url.scheme);
-    if (provider === void 0) {
-      const usage = this.describeProtocolUsage(url.scheme);
-      let message = `Invalid base kvstore protocol "${url.scheme}:"`;
-      if (usage !== void 0) {
-        message += `; ${usage}`;
-      }
-      throw new Error(message);
-    }
-    return provider;
-  }
-  getKvStoreAdapterProvider(adapterUrl) {
-    const provider = this.kvStoreAdapterProviders.get(adapterUrl.scheme);
-    if (provider === void 0) {
-      const usage = this.describeProtocolUsage(adapterUrl.scheme);
-      let message = `Invalid kvstore adapter protocol "${adapterUrl.scheme}:"`;
-      if (usage !== void 0) {
-        message += `; ${usage}`;
-      }
-      message += `; supported schemes: ${JSON.stringify(Array.from(this.kvStoreAdapterProviders.keys()))}`;
-      throw new Error(message);
-    }
-    return provider;
-  }
-  applyKvStoreAdapterUrl(base, adapterUrl) {
-    return this.getKvStoreAdapterProvider(adapterUrl).getKvStore(
-      adapterUrl,
-      base
-    );
-  }
-  // Describes valid uses of `protocol`, for error messages indicating an
-  // invalid protocol.  If the protocol is unknown, returns `undefined`.
-  describeProtocolUsage(protocol) {
-    if (this.baseKvStoreProviders.has(protocol)) {
-      return `"${protocol}:" may only be used as a base kvstore protocol`;
-    }
-    if (this.kvStoreAdapterProviders.has(protocol)) {
-      return `"${protocol}:" may only be used as a kvstore adapter protocol`;
-    }
-    return void 0;
-  }
-  stat(url, options = {}) {
-    const kvStore = this.getKvStore(url);
-    return kvStore.store.stat(kvStore.path, options);
-  }
-  read(url, options = {}) {
-    const kvStore = this.getKvStore(url);
-    return readKvStore(kvStore.store, kvStore.path, options);
-  }
-  list(urlPrefix, options = {}) {
-    const kvStore = this.getKvStore(urlPrefix);
-    return listKvStore(kvStore.store, kvStore.path, options);
-  }
-  resolveRelativePath(baseUrl, relativePath) {
-    const kvStore = this.getKvStore(baseUrl);
-    return kvStore.store.getUrl(
-      resolveRelativePath(kvStore.path, relativePath)
-    );
-  }
-};
-
-// node_modules/neuroglancer/lib/kvstore/register.js
-init_legacy_browser();
-var KvStoreProviderRegistry = class {
-  baseKvStoreProviders = [];
-  kvStoreAdapterProviders = [];
-  autoDetectRegistry = new AutoDetectRegistry();
-  registerBaseKvStoreProvider(provider) {
-    this.baseKvStoreProviders.push(provider);
-  }
-  registerKvStoreAdapterProvider(provider) {
-    this.kvStoreAdapterProviders.push(provider);
-  }
-  applyToContext(context) {
-    const { kvStoreContext } = context;
-    for (const key of [
-      "baseKvStoreProviders",
-      "kvStoreAdapterProviders"
-    ]) {
-      const map2 = kvStoreContext[key];
-      for (const providerFactory of this[key]) {
-        const provider = providerFactory(context);
-        const { scheme } = provider;
-        if (map2.has(scheme)) {
-          throw new Error(`Duplicate kvstore scheme ${scheme}`);
-        }
-        map2.set(scheme, provider);
-      }
-    }
-    this.autoDetectRegistry.copyTo(context.kvStoreContext.autoDetectRegistry);
-  }
-};
-var frontendBackendIsomorphicKvStoreProviderRegistry = new KvStoreProviderRegistry();
-
-// node_modules/neuroglancer/lib/kvstore/shared_common.js
-init_legacy_browser();
-var SHARED_KVSTORE_CONTEXT_RPC_ID = "SharedKvStoreContext";
-var STAT_RPC_ID = "SharedKvStoreContext.stat";
-var READ_RPC_ID = "SharedKvStoreContext.read";
-var LIST_RPC_ID = "SharedKvStoreContext.list";
-var COMPLETE_URL_RPC_ID = "SharedKvStoreContext.completeUrl";
-
-// node_modules/neuroglancer/lib/kvstore/backend.js
-var __defProp5 = Object.defineProperty;
-var __getOwnPropDesc5 = Object.getOwnPropertyDescriptor;
-var __decorateClass4 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc5(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp5(target2, key, result);
-  return result;
-};
-var SharedKvStoreContextCounterpart = class extends SharedObjectCounterpart {
-  kvStoreContext;
-  chunkManager;
-  credentialsManager;
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.chunkManager = rpc2.get(options.chunkManager);
-    this.credentialsManager = rpc2.get(
-      options.credentialsManager
-    );
-    this.kvStoreContext = new KvStoreContext();
-    frontendBackendIsomorphicKvStoreProviderRegistry.applyToContext(this);
-    backendOnlyKvStoreProviderRegistry.applyToContext(this);
-  }
-};
-SharedKvStoreContextCounterpart = __decorateClass4([
-  registerSharedObject(SHARED_KVSTORE_CONTEXT_RPC_ID)
-], SharedKvStoreContextCounterpart);
-var backendOnlyKvStoreProviderRegistry = new KvStoreProviderRegistry();
-function WithSharedKvStoreContextCounterpart(Base) {
-  return class extends Base {
-    sharedKvStoreContext;
-    constructor(...args) {
-      super(...args);
-      const options = args[1];
-      this.sharedKvStoreContext = this.rpc.get(options.sharedKvStoreContext);
-    }
-  };
-}
-
-// node_modules/neuroglancer/lib/sliceview/backend.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/render_layer_backend.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/render_layer_common.js
-init_legacy_browser();
-var RENDERED_VIEW_ADD_LAYER_RPC_ID = "rendered_view.addLayer";
-var RENDERED_VIEW_REMOVE_LAYER_RPC_ID = "rendered_view.removeLayer";
-var PROJECTION_PARAMETERS_RPC_ID = "SharedProjectionParameters";
-var PROJECTION_PARAMETERS_CHANGED_RPC_METHOD_ID = "SharedProjectionParameters.changed";
-
-// node_modules/neuroglancer/lib/render_layer_backend.js
-var __defProp6 = Object.defineProperty;
-var __getOwnPropDesc6 = Object.getOwnPropertyDescriptor;
-var __decorateClass5 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc6(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp6(target2, key, result);
-  return result;
-};
-var RenderLayerBackendAttachment = class extends RefCounted {
-  constructor(view) {
-    super();
-    this.view = view;
-  }
-  state = void 0;
-};
-var RenderLayerBackend = class extends ChunkRenderLayerBackend {
-  attachments = /* @__PURE__ */ new Map();
-  attach(attachment) {
-    attachment;
-  }
-};
-registerRPC(RENDERED_VIEW_ADD_LAYER_RPC_ID, function(x) {
-  const view = this.get(x.view);
-  const layer = this.get(x.layer);
-  const attachment = new RenderLayerBackendAttachment(view);
-  layer.attachments.set(view, attachment);
-  layer.attach(attachment);
-});
-registerRPC(RENDERED_VIEW_REMOVE_LAYER_RPC_ID, function(x) {
-  const view = this.get(x.view);
-  const layer = this.get(x.layer);
-  const attachment = layer.attachments.get(view);
-  layer.attachments.delete(view);
-  attachment.dispose();
-});
-var SharedProjectionParametersBackend = class extends SharedObjectCounterpart {
-  value;
-  oldValue;
-  changed = new Signal();
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.value = options.value;
-    this.oldValue = Object.assign({}, this.value);
-  }
-};
-SharedProjectionParametersBackend = __decorateClass5([
-  registerSharedObject(PROJECTION_PARAMETERS_RPC_ID)
-], SharedProjectionParametersBackend);
-registerRPC(PROJECTION_PARAMETERS_CHANGED_RPC_METHOD_ID, function(x) {
-  const obj = this.get(x.id);
-  const { value, oldValue } = obj;
-  Object.assign(oldValue, value);
-  Object.assign(value, x.value);
-  obj.changed.dispatch(oldValue, value);
-});
-
-// node_modules/neuroglancer/lib/sliceview/base.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/navigation_state.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/coordinate_transform.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/matrix.js
-init_legacy_browser();
-function identity4(a, lda, n) {
-  for (let i = 0; i < n; ++i) {
-    const start = lda * i;
-    a.fill(0, start, start + n);
-    a[start + i] = 1;
-  }
-  return a;
-}
-function createIdentity(c, rows, cols = rows) {
-  return identity4(new c(rows * cols), rows, Math.min(rows, cols));
-}
-function copy6(b, ldb, a, lda, m, n) {
-  for (let col = 0; col < n; ++col) {
-    const aOff = col * lda;
-    const bOff = col * ldb;
-    for (let row = 0; row < m; ++row) {
-      b[bOff + row] = a[aOff + row];
-    }
-  }
-  return b;
-}
-var pivots;
-function inverseInplace(a, lda, n) {
-  let determinant3 = 1;
-  if (pivots === void 0 || pivots.length < n) {
-    pivots = new Uint32Array(n);
-  }
-  for (let i = 0; i < n; ++i) {
-    pivots[i] = i;
-  }
-  for (let k = 0; k < n; ++k) {
-    const kColOff = lda * k;
-    let pivotRow = k;
-    {
-      let bestPivot = Math.abs(a[kColOff + k]);
-      for (let row = k + 1; row < n; ++row) {
-        const mag = Math.abs(a[kColOff + row]);
-        if (mag > bestPivot) {
-          bestPivot = mag;
-          pivotRow = row;
-        }
-      }
-    }
-    if (k !== pivotRow) {
-      determinant3 *= -1;
-      for (let col = 0; col < n; ++col) {
-        const off = lda * col;
-        const temp = a[off + k];
-        a[off + k] = a[off + pivotRow];
-        a[off + pivotRow] = temp;
-      }
-      {
-        const tempPivot = pivots[k];
-        pivots[k] = pivots[pivotRow];
-        pivots[pivotRow] = tempPivot;
-      }
-    }
-    const pivotValue = a[kColOff + k];
-    const pivotInv = 1 / pivotValue;
-    determinant3 *= pivotValue;
-    for (let j = 0; j < n; ++j) {
-      a[lda * j + k] *= pivotInv;
-    }
-    a[kColOff + k] = pivotInv;
-    for (let row = 0; row < n; ++row) {
-      if (row === k) continue;
-      const factor = -a[lda * k + row];
-      for (let j = 0; j < n; ++j) {
-        const jColOff = lda * j;
-        a[jColOff + row] += factor * a[jColOff + k];
-      }
-      a[lda * k + row] = factor * pivotInv;
-    }
-  }
-  for (let col = 0; col < n; ++col) {
-    let targetCol = pivots[col];
-    while (targetCol !== col) {
-      const colOff = lda * col;
-      const targetColOff = lda * targetCol;
-      for (let i = 0; i < n; ++i) {
-        const off1 = colOff + i;
-        const off2 = targetColOff + i;
-        const temp2 = a[off1];
-        a[off1] = a[off2];
-        a[off2] = temp2;
-      }
-      const temp = pivots[col] = pivots[targetCol];
-      pivots[targetCol] = targetCol;
-      targetCol = temp;
-    }
-  }
-  return determinant3;
-}
-function inverse3(b, ldb, a, lda, n) {
-  copy6(b, ldb, a, lda, n, n);
-  return inverseInplace(b, ldb, n);
-}
-
-// node_modules/neuroglancer/lib/util/si_units.js
-init_legacy_browser();
-var preferredSiPrefixes = [
-  { prefix: "Y", exponent: 24, longPrefix: "yotta" },
-  { prefix: "Z", exponent: 21, longPrefix: "zetta" },
-  { prefix: "E", exponent: 18, longPrefix: "exa" },
-  { prefix: "P", exponent: 15, longPrefix: "peta" },
-  { prefix: "T", exponent: 12, longPrefix: "tera" },
-  { prefix: "G", exponent: 9, longPrefix: "giga" },
-  { prefix: "M", exponent: 6, longPrefix: "mega" },
-  { prefix: "k", exponent: 3, longPrefix: "kilo" },
-  { prefix: "", exponent: 0, longPrefix: "" },
-  { prefix: "m", exponent: -3, longPrefix: "milli" },
-  { prefix: "\xB5", exponent: -6, longPrefix: "micro" },
-  { prefix: "n", exponent: -9, longPrefix: "nano" },
-  { prefix: "p", exponent: -12, longPrefix: "pico" },
-  { prefix: "f", exponent: -15, longPrefix: "femto" },
-  { prefix: "a", exponent: -18, longPrefix: "atto" },
-  { prefix: "z", exponent: -21, longPrefix: "zepto" },
-  { prefix: "y", exponent: -24, longPrefix: "yocto" }
-];
-var allSiPrefixes = [
-  ...preferredSiPrefixes,
-  { prefix: "h", exponent: 2, longPrefix: "hecto" },
-  { prefix: "da", exponent: 1, longPrefix: "deca" },
-  { prefix: "d", exponent: -1, longPrefix: "deci" },
-  { prefix: "c", exponent: -2, longPrefix: "centi" }
-];
-var siPrefixesWithAlternatives = [
-  { prefix: "u", exponent: -6 },
-  // Also allow "u" for micro
-  ...allSiPrefixes
-];
-var supportedUnits = /* @__PURE__ */ new Map();
-supportedUnits.set("", { unit: "", exponent: 0 });
-var exponentToPrefix = /* @__PURE__ */ new Map();
-for (const { prefix, exponent } of siPrefixesWithAlternatives) {
-  exponentToPrefix.set(exponent, prefix);
-  for (const unit of ["m", "s", "Hz", "rad/s"]) {
-    supportedUnits.set(`${prefix}${unit}`, { unit, exponent });
-  }
-}
-
-// node_modules/neuroglancer/lib/util/vector.js
-init_legacy_browser();
-function add6(out, a, b) {
-  const rank = out.length;
-  for (let i = 0; i < rank; ++i) {
-    out[i] = a[i] + b[i];
-  }
-  return out;
-}
-function multiply6(out, a, b) {
-  const rank = out.length;
-  for (let i = 0; i < rank; ++i) {
-    out[i] = a[i] * b[i];
-  }
-  return out;
-}
-function prod(array2) {
-  let result = 1;
-  for (let i = 0, length6 = array2.length; i < length6; ++i) {
-    result *= array2[i];
-  }
-  return result;
-}
-function min3(out, a, b) {
-  const rank = out.length;
-  for (let i = 0; i < rank; ++i) {
-    out[i] = Math.min(a[i], b[i]);
-  }
-  return out;
-}
-function max3(out, a, b) {
-  const rank = out.length;
-  for (let i = 0; i < rank; ++i) {
-    out[i] = Math.max(a[i], b[i]);
-  }
-  return out;
-}
-var kEmptyFloat32Vec = new Float32Array(0);
-var kEmptyFloat64Vec = new Float64Array(0);
-var kFloat64Vec3Of1 = Float64Array.of(1, 1, 1);
-
-// node_modules/neuroglancer/lib/coordinate_transform.js
-function makeCoordinateSpace(space) {
-  const { names, units, scales } = space;
-  const {
-    valid = true,
-    rank = names.length,
-    timestamps = names.map(() => Number.NEGATIVE_INFINITY),
-    ids = names.map((_, i) => -i),
-    boundingBoxes = []
-  } = space;
-  const { coordinateArrays = new Array(rank) } = space;
-  const { bounds = computeCombinedBounds(boundingBoxes, rank) } = space;
-  return {
-    valid,
-    rank,
-    names,
-    timestamps,
-    ids,
-    units,
-    scales,
-    boundingBoxes,
-    bounds,
-    coordinateArrays
-  };
-}
-var emptyInvalidCoordinateSpace = makeCoordinateSpace({
-  valid: false,
-  names: [],
-  units: [],
-  scales: kEmptyFloat64Vec,
-  boundingBoxes: []
-});
-var emptyValidCoordinateSpace = makeCoordinateSpace({
-  valid: true,
-  names: [],
-  units: [],
-  scales: kEmptyFloat64Vec,
-  boundingBoxes: []
-});
-function computeCombinedLowerUpperBound(boundingBox, outputDimension, outputRank) {
-  const {
-    box: { lowerBounds: baseLowerBounds, upperBounds: baseUpperBounds },
-    transform: transform2
-  } = boundingBox;
-  const inputRank = baseLowerBounds.length;
-  const stride = outputRank;
-  const offset = transform2[stride * inputRank + outputDimension];
-  let targetLower = offset;
-  let targetUpper = offset;
-  let hasCoefficient = false;
-  for (let inputDim = 0; inputDim < inputRank; ++inputDim) {
-    const c = transform2[stride * inputDim + outputDimension];
-    if (c === 0) continue;
-    const lower = c * baseLowerBounds[inputDim];
-    const upper = c * baseUpperBounds[inputDim];
-    targetLower += Math.min(lower, upper);
-    targetUpper += Math.max(lower, upper);
-    hasCoefficient = true;
-  }
-  if (!hasCoefficient) return void 0;
-  return { lower: targetLower, upper: targetUpper };
-}
-var INTEGER_BOUNDS_EPSILON = 1e-3;
-function computeCombinedBounds(boundingBoxes, outputRank) {
-  const lowerBounds = new Float64Array(outputRank);
-  const upperBounds = new Float64Array(outputRank);
-  lowerBounds.fill(Number.NEGATIVE_INFINITY);
-  upperBounds.fill(Number.POSITIVE_INFINITY);
-  const halfIntegerBounds = new Array(outputRank);
-  halfIntegerBounds.fill(0);
-  const integerBounds = new Array(outputRank);
-  integerBounds.fill(0);
-  for (const boundingBox of boundingBoxes) {
-    for (let outputDim = 0; outputDim < outputRank; ++outputDim) {
-      const result = computeCombinedLowerUpperBound(
-        boundingBox,
-        outputDim,
-        outputRank
-      );
-      if (result === void 0) continue;
-      let { lower: targetLower, upper: targetUpper } = result;
-      if (Number.isFinite(targetLower) && Number.isFinite(targetUpper)) {
-        let lowerRound;
-        let upperRound;
-        let lowerFloor;
-        let upperFloor;
-        if (Math.abs(targetLower - (lowerRound = Math.round(targetLower))) < INTEGER_BOUNDS_EPSILON && Math.abs(targetUpper - (upperRound = Math.round(targetUpper))) < INTEGER_BOUNDS_EPSILON) {
-          ++integerBounds[outputDim];
-          targetLower = lowerRound;
-          targetUpper = upperRound;
-        } else if (Math.abs(targetLower - (lowerFloor = Math.floor(targetLower)) - 0.5) < INTEGER_BOUNDS_EPSILON && Math.abs(targetUpper - (upperFloor = Math.floor(targetUpper)) - 0.5) < INTEGER_BOUNDS_EPSILON) {
-          ++halfIntegerBounds[outputDim];
-          targetLower = lowerFloor + 0.5;
-          targetUpper = upperFloor + 0.5;
-        }
-      }
-      lowerBounds[outputDim] = lowerBounds[outputDim] === Number.NEGATIVE_INFINITY ? targetLower : Math.min(lowerBounds[outputDim], targetLower);
-      upperBounds[outputDim] = upperBounds[outputDim] === Number.POSITIVE_INFINITY ? targetUpper : Math.max(upperBounds[outputDim], targetUpper);
-    }
-  }
-  const voxelCenterAtIntegerCoordinates = integerBounds.map(
-    (integerCount, i) => {
-      const halfIntegerCount = halfIntegerBounds[i];
-      return halfIntegerCount > 0 && integerCount === 0;
-    }
-  );
-  return { lowerBounds, upperBounds, voxelCenterAtIntegerCoordinates };
-}
-
-// node_modules/neuroglancer/lib/util/trackable.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/trackable_enum.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/navigation_state.js
-var tempVec32 = vec3_exports.create();
-var tempQuat = quat_exports.create();
-function displayDimensionRenderInfosEqual(a, b) {
-  return arraysEqual(a.globalDimensionNames, b.globalDimensionNames) && arraysEqual(a.displayDimensionIndices, b.displayDimensionIndices) && arraysEqual(a.canonicalVoxelFactors, b.canonicalVoxelFactors) && arraysEqual(a.voxelPhysicalScales, b.voxelPhysicalScales) && a.canonicalVoxelPhysicalSize === b.canonicalVoxelPhysicalSize && arraysEqual(a.displayDimensionUnits, b.displayDimensionUnits) && arraysEqual(a.displayDimensionScales, b.displayDimensionScales);
-}
-function validateDisplayDimensionRenderInfoProperty(obj, expected) {
-  const actual = obj.displayDimensionRenderInfo;
-  if (actual === expected) return true;
-  if (displayDimensionRenderInfosEqual(actual, expected)) {
-    obj.displayDimensionRenderInfo = expected;
-    return true;
-  }
-  return false;
-}
-
-// node_modules/neuroglancer/lib/projection_parameters.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/display_context.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/animation_frame_debounce.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/framerate.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/trackable_screenshot_mode.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/webgl/context.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/render_coordinate_transform.js
-init_legacy_browser();
-var zeroRankChannelSpace = {
-  channelCoordinateSpace: emptyValidCoordinateSpace,
-  shape: new Uint32Array(0),
-  numChannels: 1,
-  coordinates: new Uint32Array(0)
-};
-function getChunkPositionFromCombinedGlobalLocalPositions(chunkPosition, globalPosition, localPosition, layerRank, combinedGlobalLocalToChunkTransform) {
-  const globalRank = globalPosition.length;
-  const localRank = localPosition.length;
-  const rank = chunkPosition.length;
-  let valid = true;
-  for (let chunkDim = 0; chunkDim < layerRank; ++chunkDim) {
-    let off = chunkDim;
-    let sum = 0;
-    for (let globalDim = 0; globalDim < globalRank; ++globalDim) {
-      sum += combinedGlobalLocalToChunkTransform[off + globalDim * layerRank] * globalPosition[globalDim];
-    }
-    off += globalRank * layerRank;
-    for (let localDim = 0; localDim < localRank; ++localDim) {
-      sum += combinedGlobalLocalToChunkTransform[off + localDim * layerRank] * localPosition[localDim];
-    }
-    sum += combinedGlobalLocalToChunkTransform[off + localRank * layerRank];
-    if (chunkDim < rank) {
-      chunkPosition[chunkDim] = sum;
-    } else {
-      if (sum < 0 || sum >= 1) {
-        valid = false;
-      }
-    }
-  }
-  return valid;
-}
-function get3dModelToDisplaySpaceMatrix(out, displayDimensionRenderInfo, transform2) {
-  out.fill(0);
-  out[15] = 1;
-  let fullRank = true;
-  const { displayDimensionIndices } = displayDimensionRenderInfo;
-  const { globalToRenderLayerDimensions, modelToRenderLayerTransform } = transform2;
-  const layerRank = transform2.rank;
-  for (let displayDim = 0; displayDim < 3; ++displayDim) {
-    const globalDim = displayDimensionIndices[displayDim];
-    if (globalDim === -1) {
-      fullRank = false;
-      continue;
-    }
-    const layerDim = globalToRenderLayerDimensions[globalDim];
-    if (layerDim === -1) {
-      fullRank = false;
-      continue;
-    }
-    out[displayDim + 12] = modelToRenderLayerTransform[layerDim + layerRank * (layerRank + 1)];
-    for (let modelDim = 0; modelDim < 3; ++modelDim) {
-      out[displayDim + 4 * modelDim] = modelToRenderLayerTransform[layerDim + (layerRank + 1) * modelDim];
-    }
-  }
-  if (!fullRank) {
-    const { globalDimensionNames } = displayDimensionRenderInfo;
-    const displayDimDesc = Array.from(
-      displayDimensionIndices.filter((i) => i !== -1),
-      (i) => globalDimensionNames[i]
-    ).join(",\xA0");
-    throw new Error(
-      `Transform from model dimensions (${transform2.modelDimensionNames.join(
-        ",\xA0"
-      )}) to display dimensions (${displayDimDesc}) does not have full rank`
-    );
-  }
-}
-
-// node_modules/neuroglancer/lib/sliceview/chunk_layout.js
-init_legacy_browser();
-var ChunkLayout = class _ChunkLayout {
-  /**
-   * Size of each chunk in "chunk" coordinates.
-   */
-  size;
-  /**
-   * Transform from local "chunk" coordinates to global voxel coordinates.
-   */
-  transform;
-  /**
-   * Inverse of transform.  Transform from global voxel coordinates to "chunk" coordinates.
-   */
-  invTransform;
-  /**
-   * Determinant of `transform`.
-   */
-  detTransform;
-  finiteRank;
-  constructor(size, transform2, finiteRank) {
-    this.size = vec3_exports.clone(size);
-    this.transform = mat4_exports.clone(transform2);
-    this.finiteRank = finiteRank;
-    const invTransform = mat4_exports.create();
-    const det = inverse3(invTransform, 4, transform2, 4, 4);
-    if (det === 0) {
-      throw new Error("Transform is singular");
-    }
-    this.invTransform = invTransform;
-    this.detTransform = det;
-  }
-  toObject() {
-    return {
-      size: this.size,
-      transform: this.transform,
-      finiteRank: this.finiteRank
-    };
-  }
-  static fromObject(msg) {
-    return new _ChunkLayout(msg.size, msg.transform, msg.finiteRank);
-  }
-  /**
-   * Transform global spatial coordinates to local spatial coordinates.
-   */
-  globalToLocalSpatial(out, globalSpatial) {
-    return vec3_exports.transformMat4(out, globalSpatial, this.invTransform);
-  }
-  localSpatialVectorToGlobal(out, localVector) {
-    return transformVectorByMat4(out, localVector, this.transform);
-  }
-  /**
-   * Returns the unnormalized normal vector.
-   */
-  globalToLocalNormal(globalNormal, localNormal) {
-    return transformVectorByMat4Transpose(
-      globalNormal,
-      localNormal,
-      this.transform
-    );
-  }
-};
-
-// node_modules/neuroglancer/lib/util/data_type.js
-init_legacy_browser();
-var DataType = /* @__PURE__ */ ((DataType2) => {
-  DataType2[DataType2["UINT8"] = 0] = "UINT8";
-  DataType2[DataType2["INT8"] = 1] = "INT8";
-  DataType2[DataType2["UINT16"] = 2] = "UINT16";
-  DataType2[DataType2["INT16"] = 3] = "INT16";
-  DataType2[DataType2["UINT32"] = 4] = "UINT32";
-  DataType2[DataType2["INT32"] = 5] = "INT32";
-  DataType2[DataType2["UINT64"] = 6] = "UINT64";
-  DataType2[DataType2["FLOAT32"] = 7] = "FLOAT32";
-  return DataType2;
-})(DataType || {});
-var DATA_TYPE_BYTES = {
-  [
-    0
-    /* UINT8 */
-  ]: 1,
-  [
-    1
-    /* INT8 */
-  ]: 1,
-  [
-    2
-    /* UINT16 */
-  ]: 2,
-  [
-    3
-    /* INT16 */
-  ]: 2,
-  [
-    4
-    /* UINT32 */
-  ]: 4,
-  [
-    5
-    /* INT32 */
-  ]: 4,
-  [
-    6
-    /* UINT64 */
-  ]: 8,
-  [
-    7
-    /* FLOAT32 */
-  ]: 4
-};
-var DATA_TYPE_ARRAY_CONSTRUCTOR = {
-  [
-    0
-    /* UINT8 */
-  ]: Uint8Array,
-  [
-    1
-    /* INT8 */
-  ]: Int8Array,
-  [
-    2
-    /* UINT16 */
-  ]: Uint16Array,
-  [
-    3
-    /* INT16 */
-  ]: Int16Array,
-  [
-    4
-    /* UINT32 */
-  ]: Uint32Array,
-  [
-    5
-    /* INT32 */
-  ]: Int32Array,
-  [
-    6
-    /* UINT64 */
-  ]: BigUint64Array,
-  [
-    7
-    /* FLOAT32 */
-  ]: Float32Array
-};
-function makeDataTypeArrayView(dataType, buffer, byteOffset = 0, byteLength = buffer.byteLength) {
-  const bytesPerElement = DATA_TYPE_BYTES[dataType];
-  return new DATA_TYPE_ARRAY_CONSTRUCTOR[dataType](
-    buffer,
-    byteOffset,
-    byteLength / bytesPerElement
-  );
-}
-
-// node_modules/neuroglancer/lib/sliceview/base.js
-var DEBUG_VISIBLE_SOURCES = false;
-var DEBUG_CHUNK_VISIBILITY = false;
-var tempMat4 = mat4_exports.create();
-function estimateSliceAreaPerChunk(chunkLayout, viewMatrix) {
-  let viewZProjection = 0;
-  let chunkVolume = Math.abs(chunkLayout.detTransform);
-  const { transform: transform2, size } = chunkLayout;
-  for (let i = 0; i < 3; ++i) {
-    let sum = 0;
-    for (let j = 0; j < 3; ++j) {
-      sum += viewMatrix[j * 4 + 2] * transform2[4 * i + j];
-    }
-    const s = size[i];
-    viewZProjection += Math.abs(sum) * s;
-    chunkVolume *= s;
-  }
-  return chunkVolume / viewZProjection;
-}
-function updateFixedCurPositionInChunks(tsource, globalPosition, localPosition) {
-  const { curPositionInChunks, fixedPositionWithinChunk } = tsource;
-  const { nonDisplayLowerClipBound, nonDisplayUpperClipBound } = tsource;
-  const { rank, chunkDataSize, lowerChunkBound, upperChunkBound } = tsource.source.spec;
-  if (!getChunkPositionFromCombinedGlobalLocalPositions(
-    curPositionInChunks,
-    globalPosition,
-    localPosition,
-    tsource.layerRank,
-    tsource.fixedLayerToChunkTransform
-  )) {
-    return false;
-  }
-  const EPSILON2 = 1e-3;
-  for (let chunkDim = 0; chunkDim < rank; ++chunkDim) {
-    const x = curPositionInChunks[chunkDim];
-    if (x < nonDisplayLowerClipBound[chunkDim] - EPSILON2 || x > nonDisplayUpperClipBound[chunkDim] + EPSILON2) {
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log(
-          "excluding source",
-          tsource,
-          `because of chunkDim=${chunkDim}, sum=${x}`,
-          nonDisplayLowerClipBound,
-          nonDisplayUpperClipBound,
-          tsource.fixedLayerToChunkTransform
-        );
-      }
-      return false;
-    }
-    const chunkSize = chunkDataSize[chunkDim];
-    const chunk = curPositionInChunks[chunkDim] = Math.min(
-      upperChunkBound[chunkDim] - 1,
-      Math.max(lowerChunkBound[chunkDim], Math.floor(x / chunkSize))
-    );
-    fixedPositionWithinChunk[chunkDim] = x - chunk * chunkSize;
-  }
-  return true;
-}
-function pickBestAlternativeSource(viewMatrix, alternatives) {
-  const numAlternatives = alternatives.length;
-  let bestAlternativeIndex = 0;
-  if (DEBUG_VISIBLE_SOURCES) {
-    console.log(alternatives);
-  }
-  if (numAlternatives > 1) {
-    let bestSliceArea = 0;
-    for (let alternativeIndex = 0; alternativeIndex < numAlternatives; ++alternativeIndex) {
-      const alternative = alternatives[alternativeIndex];
-      const { chunkLayout } = alternative;
-      const sliceArea = estimateSliceAreaPerChunk(chunkLayout, viewMatrix);
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log(
-          `chunksize = ${chunkLayout.size}, sliceArea = ${sliceArea}`
-        );
-      }
-      if (sliceArea > bestSliceArea) {
-        bestSliceArea = sliceArea;
-        bestAlternativeIndex = alternativeIndex;
-      }
-    }
-  }
-  return bestAlternativeIndex;
-}
-var tempChunkLayout = new ChunkLayout(vec3_exports.create(), mat4_exports.create(), 0);
-function visibleSourcesInvalidated(oldValue, newValue) {
-  if (oldValue.displayDimensionRenderInfo !== newValue.displayDimensionRenderInfo) {
-    return true;
-  }
-  if (oldValue.pixelSize !== newValue.pixelSize) return true;
-  const { viewMatrix: oldViewMatrix } = oldValue;
-  const { viewMatrix: newViewMatrix } = newValue;
-  for (let i = 0; i < 12; ++i) {
-    if (oldViewMatrix[i] !== newViewMatrix[i]) return true;
-  }
-  return false;
-}
-var SliceViewBase = class extends SharedObject {
-  constructor(projectionParameters) {
-    super();
-    this.projectionParameters = projectionParameters;
-    this.registerDisposer(
-      projectionParameters.changed.add((oldValue, newValue) => {
-        if (visibleSourcesInvalidated(oldValue, newValue)) {
-          this.invalidateVisibleSources();
-        }
-        this.invalidateVisibleChunks();
-      })
-    );
-  }
-  visibleLayers = /* @__PURE__ */ new Map();
-  visibleSourcesStale = true;
-  invalidateVisibleSources() {
-    this.visibleSourcesStale = true;
-  }
-  invalidateVisibleChunks() {
-  }
-  /**
-   * Computes the list of sources to use for each visible layer, based on the
-   * current pixelSize.
-   */
-  updateVisibleSources() {
-    if (!this.visibleSourcesStale) {
-      return;
-    }
-    this.visibleSourcesStale = false;
-    const curDisplayDimensionRenderInfo = this.projectionParameters.value.displayDimensionRenderInfo;
-    const { visibleLayers } = this;
-    for (const [renderLayer, visibleLayerSources] of visibleLayers) {
-      const { allSources, visibleSources } = visibleLayerSources;
-      visibleSources.length = 0;
-      if (allSources.length === 0 || !validateDisplayDimensionRenderInfoProperty(
-        visibleLayerSources,
-        curDisplayDimensionRenderInfo
-      )) {
-        continue;
-      }
-      const preferredOrientationIndex = pickBestAlternativeSource(
-        this.projectionParameters.value.viewMatrix,
-        allSources.map((x) => x[0])
-      );
-      const sources = allSources[preferredOrientationIndex];
-      for (const source of renderLayer.filterVisibleSources(this, sources)) {
-        visibleSources.push(source);
-      }
-      visibleSources.reverse();
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log("visible sources chosen", visibleSources);
-      }
-    }
-  }
-};
-function* filterVisibleSources(sliceView, renderLayer, sources) {
-  const pixelSize = sliceView.projectionParameters.value.pixelSize * 1.1;
-  const smallestVoxelSize = sources[0].effectiveVoxelSize;
-  const renderScaleTarget = renderLayer.renderScaleTarget.value;
-  const canImproveOnVoxelSize = (voxelSize) => {
-    const targetSize = pixelSize * renderScaleTarget;
-    for (let i = 0; i < 3; ++i) {
-      const size = voxelSize[i];
-      if (size > targetSize && size > 1.01 * smallestVoxelSize[i]) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const improvesOnPrevVoxelSize = (voxelSize, prevVoxelSize2) => {
-    const targetSize = pixelSize * renderScaleTarget;
-    for (let i = 0; i < 3; ++i) {
-      const size = voxelSize[i];
-      const prevSize = prevVoxelSize2[i];
-      if (Math.abs(targetSize - size) < Math.abs(targetSize - prevSize) && size < 1.01 * prevSize) {
-        return true;
-      }
-    }
-    return false;
-  };
-  let scaleIndex = sources.length - 1;
-  let prevVoxelSize;
-  if (DEBUG_VISIBLE_SOURCES) {
-    console.log(`Filtering ${sources.length} visible sources`);
-  }
-  while (true) {
-    const transformedSource = sources[scaleIndex];
-    if (prevVoxelSize !== void 0 && !improvesOnPrevVoxelSize(
-      transformedSource.effectiveVoxelSize,
-      prevVoxelSize
-    )) {
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log(
-          `  Stopping at ${scaleIndex} because can't improve on prev voxel size: effectiveVoxelSize=${transformedSource.effectiveVoxelSize} prevVoxelSize=${prevVoxelSize}`
-        );
-      }
-      break;
-    }
-    yield transformedSource;
-    if (scaleIndex === 0) {
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log(`  Stopping because scaleIndex=0`);
-      }
-      break;
-    }
-    if (!canImproveOnVoxelSize(transformedSource.effectiveVoxelSize)) {
-      if (DEBUG_VISIBLE_SOURCES) {
-        console.log(
-          `Stopping at at ${scaleIndex} because can't improve on voxel size ${transformedSource.effectiveVoxelSize}`
-        );
-      }
-      break;
-    }
-    prevVoxelSize = transformedSource.effectiveVoxelSize;
-    --scaleIndex;
-  }
-}
-var SLICEVIEW_RPC_ID = "SliceView";
-var SLICEVIEW_RENDERLAYER_RPC_ID = "sliceview/RenderLayer";
-var SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID = "SliceView.addVisibleLayer";
-var SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID = "SliceView.removeVisibleLayer";
-var SLICEVIEW_REQUEST_CHUNK_RPC_ID = "ChunkManager.requestChunk";
-var tempVisibleVolumetricChunkLower = new Float32Array(3);
-var tempVisibleVolumetricChunkUpper = new Float32Array(3);
-var tempVisibleVolumetricModelViewProjection = mat4_exports.create();
-var tempVisibleVolumetricClippingPlanes = new Float32Array(24);
-function forEachVolumetricChunkWithinFrustrum(clippingPlanes, transformedSource, callback, predicate) {
-  const lower = tempVisibleVolumetricChunkLower;
-  const upper = tempVisibleVolumetricChunkUpper;
-  const { lowerChunkDisplayBound, upperChunkDisplayBound } = transformedSource;
-  for (let i = 0; i < 3; ++i) {
-    lower[i] = Math.max(lower[i], lowerChunkDisplayBound[i]);
-    upper[i] = Math.min(upper[i], upperChunkDisplayBound[i]);
-  }
-  const { curPositionInChunks, chunkDisplayDimensionIndices } = transformedSource;
-  function recurse() {
-    if (!predicate(
-      lower[0],
-      lower[1],
-      lower[2],
-      upper[0],
-      upper[1],
-      upper[2],
-      clippingPlanes
-    )) {
-      return;
-    }
-    let splitDim = 0;
-    let splitSize = Math.max(0, upper[0] - lower[0]);
-    let volume = splitSize;
-    for (let i = 1; i < 3; ++i) {
-      const size = Math.max(0, upper[i] - lower[i]);
-      volume *= size;
-      if (size > splitSize) {
-        splitSize = size;
-        splitDim = i;
-      }
-    }
-    if (volume === 0) return;
-    if (volume === 1) {
-      curPositionInChunks[chunkDisplayDimensionIndices[0]] = lower[0];
-      curPositionInChunks[chunkDisplayDimensionIndices[1]] = lower[1];
-      curPositionInChunks[chunkDisplayDimensionIndices[2]] = lower[2];
-      callback(lower, clippingPlanes);
-      return;
-    }
-    const prevLower = lower[splitDim];
-    const prevUpper = upper[splitDim];
-    const splitPoint = Math.floor(0.5 * (prevLower + prevUpper));
-    upper[splitDim] = splitPoint;
-    recurse();
-    upper[splitDim] = prevUpper;
-    lower[splitDim] = splitPoint;
-    recurse();
-    lower[splitDim] = prevLower;
-  }
-  recurse();
-}
-function forEachVisibleVolumetricChunk(projectionParameters, localPosition, transformedSource, callback) {
-  if (!updateFixedCurPositionInChunks(
-    transformedSource,
-    projectionParameters.globalPosition,
-    localPosition
-  )) {
-    return;
-  }
-  const { size: chunkSize } = transformedSource.chunkLayout;
-  const modelViewProjection = mat4_exports.multiply(
-    tempVisibleVolumetricModelViewProjection,
-    projectionParameters.viewProjectionMat,
-    transformedSource.chunkLayout.transform
-  );
-  for (let i = 0; i < 3; ++i) {
-    const s = chunkSize[i];
-    for (let j = 0; j < 4; ++j) {
-      modelViewProjection[4 * i + j] *= s;
-    }
-  }
-  const clippingPlanes = tempVisibleVolumetricClippingPlanes;
-  getFrustrumPlanes(clippingPlanes, modelViewProjection);
-  const lower = tempVisibleVolumetricChunkLower;
-  const upper = tempVisibleVolumetricChunkUpper;
-  lower.fill(Number.NEGATIVE_INFINITY);
-  upper.fill(Number.POSITIVE_INFINITY);
-  forEachVolumetricChunkWithinFrustrum(
-    clippingPlanes,
-    transformedSource,
-    callback,
-    isAABBVisible
-  );
-}
-function forEachPlaneIntersectingVolumetricChunk(projectionParameters, localPosition, transformedSource, chunkLayout, callback) {
-  if (!updateFixedCurPositionInChunks(
-    transformedSource,
-    projectionParameters.globalPosition,
-    localPosition
-  )) {
-    return;
-  }
-  const { size: chunkSize } = chunkLayout;
-  const modelViewProjection = mat4_exports.multiply(
-    tempVisibleVolumetricModelViewProjection,
-    projectionParameters.viewProjectionMat,
-    chunkLayout.transform
-  );
-  for (let i = 0; i < 3; ++i) {
-    const s = chunkSize[i];
-    for (let j = 0; j < 4; ++j) {
-      modelViewProjection[4 * i + j] *= s;
-    }
-  }
-  const { upperChunkDisplayBound } = transformedSource;
-  const invModelViewProjection = tempMat4;
-  mat4_exports.invert(invModelViewProjection, modelViewProjection);
-  const lower = tempVisibleVolumetricChunkLower;
-  const upper = tempVisibleVolumetricChunkUpper;
-  const BIAS_EPSILON = 1e-4;
-  const BOUND_EPSILON = 1e-3;
-  for (let i = 0; i < 3; ++i) {
-    const c = invModelViewProjection[12 + i] + BIAS_EPSILON / chunkSize[i];
-    const xCoeff = Math.abs(invModelViewProjection[i]);
-    const yCoeff = Math.abs(invModelViewProjection[4 + i]);
-    const upperBound = upperChunkDisplayBound[i];
-    let lowerValue = c - xCoeff - yCoeff;
-    if (lowerValue >= upperBound && lowerValue < upperBound + BOUND_EPSILON) {
-      lowerValue = upperBound - 1;
-    } else {
-      lowerValue = Math.floor(lowerValue);
-    }
-    lower[i] = lowerValue;
-    upper[i] = Math.floor(c + xCoeff + yCoeff + 1);
-  }
-  const clippingPlanes = tempVisibleVolumetricClippingPlanes;
-  for (let i = 0; i < 3; ++i) {
-    const xCoeff = modelViewProjection[4 * i];
-    const yCoeff = modelViewProjection[4 * i + 1];
-    const zCoeff = modelViewProjection[4 * i + 2];
-    clippingPlanes[i] = xCoeff;
-    clippingPlanes[4 + i] = -xCoeff;
-    clippingPlanes[8 + i] = +yCoeff;
-    clippingPlanes[12 + i] = -yCoeff;
-    clippingPlanes[16 + i] = +zCoeff;
-    clippingPlanes[20 + i] = -zCoeff;
-  }
-  {
-    const i = 3;
-    const xCoeff = modelViewProjection[4 * i];
-    const yCoeff = modelViewProjection[4 * i + 1];
-    const zCoeff = modelViewProjection[4 * i + 2];
-    clippingPlanes[i] = 1 + xCoeff;
-    clippingPlanes[4 + i] = 1 - xCoeff;
-    clippingPlanes[8 + i] = 1 + yCoeff;
-    clippingPlanes[12 + i] = 1 - yCoeff;
-    clippingPlanes[16 + i] = zCoeff;
-    clippingPlanes[20 + i] = -zCoeff;
-  }
-  if (DEBUG_CHUNK_VISIBILITY) {
-    console.log("clippingPlanes", clippingPlanes);
-    console.log("modelViewProjection", modelViewProjection.join(","));
-    console.log(`lower=${lower.join(",")}, upper=${upper.join(",")}`);
-  }
-  forEachVolumetricChunkWithinFrustrum(
-    clippingPlanes,
-    transformedSource,
-    callback,
-    isAABBIntersectingPlane
-  );
-}
-function getNormalizedChunkLayout(projectionParameters, chunkLayout) {
-  const { finiteRank } = chunkLayout;
-  if (finiteRank === 3) return chunkLayout;
-  tempChunkLayout.finiteRank = finiteRank;
-  vec3_exports.copy(tempChunkLayout.size, chunkLayout.size);
-  const transform2 = mat4_exports.copy(tempChunkLayout.transform, chunkLayout.transform);
-  const invTransform = mat4_exports.copy(
-    tempChunkLayout.invTransform,
-    chunkLayout.invTransform
-  );
-  tempChunkLayout.detTransform = chunkLayout.detTransform;
-  const { invViewMatrix, width, height } = projectionParameters;
-  const depth = getViewFrustrumDepthRange(projectionParameters.projectionMat);
-  for (let chunkRenderDim = finiteRank; chunkRenderDim < 3; ++chunkRenderDim) {
-    const offset = invViewMatrix[12 + chunkRenderDim];
-    let lower = offset;
-    let upper = offset;
-    const xc = Math.abs(invViewMatrix[chunkRenderDim] * width);
-    lower -= xc;
-    upper += xc;
-    const yc = Math.abs(invViewMatrix[chunkRenderDim + 4] * height);
-    lower -= yc;
-    upper += yc;
-    const zc = Math.abs(invViewMatrix[chunkRenderDim + 8] * depth);
-    lower -= zc;
-    upper += zc;
-    const scaleFactor = Math.max(1, upper - lower);
-    transform2[12 + chunkRenderDim] = lower;
-    transform2[5 * chunkRenderDim] = scaleFactor;
-  }
-  mat4_exports.invert(invTransform, transform2);
-  return tempChunkLayout;
-}
-
-// node_modules/neuroglancer/lib/util/erf.js
-init_legacy_browser();
-function erf(x) {
-  const a1 = 0.254829592;
-  const a2 = -0.284496736;
-  const a3 = 1.421413741;
-  const a4 = -1.453152027;
-  const a5 = 1.061405429;
-  const p = 0.3275911;
-  const t = 1 / (1 + p * Math.abs(x));
-  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-  return Math.sign(x) * y;
-}
-
-// node_modules/neuroglancer/lib/util/velocity_estimation.js
-init_legacy_browser();
-var VELOCITY_HALF_LIFE_MS = 50;
-var MODEL_HALF_LIFE_MS = 1e3;
-var VelocityEstimator = class {
-  constructor(velocityHalfLifeMilliseconds = VELOCITY_HALF_LIFE_MS, modelHalfLifeMilliseconds = MODEL_HALF_LIFE_MS) {
-    this.velocityHalfLifeMilliseconds = velocityHalfLifeMilliseconds;
-    this.modelHalfLifeMilliseconds = modelHalfLifeMilliseconds;
-  }
-  lastTime = Number.NEGATIVE_INFINITY;
-  rank = 0;
-  numSamples = 0;
-  // Previous position sampled.
-  prevPosition = new Float32Array();
-  // Moving average of raw velocity over `velocityHalfLifeMilliseconds`.
-  velocity = new Float32Array();
-  // Moving average of `velocity` estimate using `modelHalfLifeMilliseconds`.
-  mean = new Float32Array();
-  // Moving variance of `velocity` estimate using `modelHalfLifeMilliseconds`.
-  variance = new Float32Array();
-  reset(rank) {
-    this.lastTime = Number.NEGATIVE_INFINITY;
-    this.rank = rank;
-    this.numSamples = 0;
-    this.velocity = new Float32Array(rank);
-    this.prevPosition = new Float32Array(rank);
-    this.mean = new Float32Array(rank);
-    this.variance = new Float32Array(rank);
-  }
-  addSample(position3, time = Date.now()) {
-    const rank = position3.length;
-    if (rank !== this.rank) {
-      this.reset(rank);
-    }
-    const numSamples = this.numSamples;
-    ++this.numSamples;
-    if (this.numSamples === 0) {
-      this.prevPosition.set(position3);
-      this.lastTime = time;
-      return;
-    }
-    const deltaT = time - this.lastTime;
-    this.lastTime = time;
-    const velocityAlpha = 1 - 2 ** -(deltaT / this.velocityHalfLifeMilliseconds);
-    const modelAlpha = 1 - 2 ** -(deltaT / this.modelHalfLifeMilliseconds);
-    const { velocity, prevPosition, mean, variance } = this;
-    for (let i = 0; i < rank; ++i) {
-      const curVelocitySample = (position3[i] - prevPosition[i]) / Math.max(deltaT, 1);
-      prevPosition[i] = position3[i];
-      const prevVelocity = velocity[i];
-      const newVelocity = velocity[i] = prevVelocity + velocityAlpha * (curVelocitySample - prevVelocity);
-      if (numSamples === 1) {
-        mean[i] = newVelocity;
-      } else {
-        const meanPrev = mean[i];
-        const varPrev = variance[i];
-        const delta = newVelocity - meanPrev;
-        mean[i] = meanPrev + modelAlpha * delta;
-        variance[i] = (1 - modelAlpha) * (varPrev + modelAlpha * delta * delta);
-      }
-    }
-  }
-};
-
-// node_modules/neuroglancer/lib/visibility_priority/backend.js
-init_legacy_browser();
-function withSharedVisibility(Base) {
-  return class extends Base {
-    visibility;
-    constructor(...args) {
-      super(...args);
-      const rpc2 = args[0];
-      const options = args[1];
-      this.visibility = rpc2.get(options.visibility);
-      this.registerDisposer(
-        this.visibility.changed.add(
-          () => this.chunkManager.scheduleUpdateChunkPriorities()
-        )
-      );
-    }
-  };
-}
-function getPriorityTier(visibility) {
-  return visibility === Number.POSITIVE_INFINITY ? ChunkPriorityTier.VISIBLE : ChunkPriorityTier.PREFETCH;
-}
-function getBasePriority(visibility) {
-  return visibility === Number.POSITIVE_INFINITY ? 0 : visibility * PREFETCH_PRIORITY_MULTIPLIER;
-}
-
-// node_modules/neuroglancer/lib/sliceview/backend.js
-var __defProp7 = Object.defineProperty;
-var __getOwnPropDesc7 = Object.getOwnPropertyDescriptor;
-var __decorateClass6 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc7(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp7(target2, key, result);
-  return result;
-};
-var BASE_PRIORITY = -1e12;
-var SCALE_PRIORITY_MULTIPLIER = 1e9;
-var tempChunkPosition = vec3_exports.create();
-var tempCenter = vec3_exports.create();
-var tempChunkSize = vec3_exports.create();
-var SliceViewCounterpartBase = class extends SliceViewBase {
-  constructor(rpc2, options) {
-    super(rpc2.get(options.projectionParameters));
-    this.initializeSharedObject(rpc2, options.id);
-  }
-};
-function disposeTransformedSources(allSources) {
-  for (const scales of allSources) {
-    for (const tsource of scales) {
-      tsource.source.dispose();
-    }
-  }
-}
-var SliceViewIntermediateBase = withSharedVisibility(
-  withChunkManager(SliceViewCounterpartBase)
-);
-var SliceViewBackend = class extends SliceViewIntermediateBase {
-  velocityEstimator = new VelocityEstimator();
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.registerDisposer(
-      this.chunkManager.recomputeChunkPriorities.add(() => {
-        this.updateVisibleChunks();
-      })
-    );
-    this.registerDisposer(
-      this.projectionParameters.changed.add(() => {
-        this.velocityEstimator.addSample(
-          this.projectionParameters.value.globalPosition
-        );
-      })
-    );
-  }
-  invalidateVisibleChunks() {
-    super.invalidateVisibleChunks();
-    this.chunkManager.scheduleUpdateChunkPriorities();
-  }
-  handleLayerChanged = () => {
-    this.chunkManager.scheduleUpdateChunkPriorities();
-  };
-  updateVisibleChunks() {
-    const projectionParameters = this.projectionParameters.value;
-    const chunkManager = this.chunkManager;
-    const visibility = this.visibility.value;
-    if (visibility === Number.NEGATIVE_INFINITY) {
-      return;
-    }
-    this.updateVisibleSources();
-    const { centerDataPosition } = projectionParameters;
-    const priorityTier = getPriorityTier(visibility);
-    let basePriority = getBasePriority(visibility);
-    basePriority += BASE_PRIORITY;
-    const localCenter = tempCenter;
-    const chunkSize = tempChunkSize;
-    const curVisibleChunks = [];
-    this.velocityEstimator.addSample(
-      this.projectionParameters.value.globalPosition
-    );
-    for (const [layer, visibleLayerSources] of this.visibleLayers) {
-      chunkManager.registerLayer(layer);
-      const { visibleSources } = visibleLayerSources;
-      for (let i = 0, numVisibleSources = visibleSources.length; i < numVisibleSources; ++i) {
-        const tsource = visibleSources[i];
-        const prefetchOffsets = chunkManager.queueManager.enablePrefetch.value ? getPrefetchChunkOffsets(this.velocityEstimator, tsource) : [];
-        const { chunkLayout } = tsource;
-        chunkLayout.globalToLocalSpatial(localCenter, centerDataPosition);
-        const { size, finiteRank } = chunkLayout;
-        vec3_exports.copy(chunkSize, size);
-        for (let i2 = finiteRank; i2 < 3; ++i2) {
-          chunkSize[i2] = 0;
-          localCenter[i2] = 0;
-        }
-        const priorityIndex = i;
-        const sourceBasePriority = basePriority + SCALE_PRIORITY_MULTIPLIER * priorityIndex;
-        curVisibleChunks.length = 0;
-        const curMarkGeneration = getNextMarkGeneration();
-        forEachPlaneIntersectingVolumetricChunk(
-          projectionParameters,
-          tsource.renderLayer.localPosition.value,
-          tsource,
-          getNormalizedChunkLayout(projectionParameters, tsource.chunkLayout),
-          (positionInChunks) => {
-            vec3_exports.multiply(tempChunkPosition, positionInChunks, chunkSize);
-            const priority = -vec3_exports.distance(localCenter, tempChunkPosition);
-            const { curPositionInChunks } = tsource;
-            const chunk = tsource.source.getChunk(curPositionInChunks);
-            chunkManager.requestChunk(
-              chunk,
-              priorityTier,
-              sourceBasePriority + priority
-            );
-            ++layer.numVisibleChunksNeeded;
-            if (chunk.state === ChunkState.GPU_MEMORY) {
-              ++layer.numVisibleChunksAvailable;
-            }
-            curVisibleChunks.push(chunk);
-            chunk.markGeneration = curMarkGeneration;
-          }
-        );
-        if (prefetchOffsets.length !== 0) {
-          const { curPositionInChunks } = tsource;
-          for (const visibleChunk of curVisibleChunks) {
-            curPositionInChunks.set(visibleChunk.chunkGridPosition);
-            for (let j = 0, length6 = prefetchOffsets.length; j < length6; ) {
-              const chunkDim = prefetchOffsets[j];
-              const minChunk = prefetchOffsets[j + 2];
-              const maxChunk = prefetchOffsets[j + 3];
-              const newPriority = prefetchOffsets[j + 4];
-              const jumpOffset = prefetchOffsets[j + 5];
-              const oldIndex = curPositionInChunks[chunkDim];
-              const newIndex = oldIndex + prefetchOffsets[j + 1];
-              if (newIndex < minChunk || newIndex > maxChunk) {
-                j = jumpOffset;
-                continue;
-              }
-              curPositionInChunks[chunkDim] = newIndex;
-              const chunk = tsource.source.getChunk(curPositionInChunks);
-              curPositionInChunks[chunkDim] = oldIndex;
-              if (chunk.markGeneration === curMarkGeneration) {
-                j = jumpOffset;
-                continue;
-              }
-              chunkManager.requestChunk(
-                chunk,
-                ChunkPriorityTier.PREFETCH,
-                sourceBasePriority + newPriority
-              );
-              ++layer.numPrefetchChunksNeeded;
-              if (chunk.state === ChunkState.GPU_MEMORY) {
-                ++layer.numPrefetchChunksAvailable;
-              }
-              j += PREFETCH_ENTRY_SIZE;
-            }
-          }
-        }
-      }
-    }
-  }
-  removeVisibleLayer(layer) {
-    const { visibleLayers } = this;
-    const layerInfo = visibleLayers.get(layer);
-    visibleLayers.delete(layer);
-    disposeTransformedSources(layerInfo.allSources);
-    layer.renderScaleTarget.changed.remove(this.invalidateVisibleSources);
-    layer.localPosition.changed.remove(this.handleLayerChanged);
-    this.invalidateVisibleSources();
-  }
-  addVisibleLayer(layer, allSources, displayDimensionRenderInfo) {
-    let layerInfo = this.visibleLayers.get(layer);
-    if (layerInfo === void 0) {
-      layerInfo = {
-        allSources,
-        visibleSources: [],
-        displayDimensionRenderInfo
-      };
-      this.visibleLayers.set(layer, layerInfo);
-      layer.renderScaleTarget.changed.add(
-        () => this.invalidateVisibleSources()
-      );
-      layer.localPosition.changed.add(this.handleLayerChanged);
-    } else {
-      disposeTransformedSources(layerInfo.allSources);
-      layerInfo.allSources = allSources;
-      layerInfo.visibleSources.length = 0;
-      layerInfo.displayDimensionRenderInfo = displayDimensionRenderInfo;
-    }
-    this.invalidateVisibleSources();
-  }
-  disposed() {
-    for (const layer of this.visibleLayers.keys()) {
-      this.removeVisibleLayer(layer);
-    }
-    super.disposed();
-  }
-  invalidateVisibleSources() {
-    super.invalidateVisibleSources();
-    this.chunkManager.scheduleUpdateChunkPriorities();
-  }
-};
-SliceViewBackend = __decorateClass6([
-  registerSharedObject(SLICEVIEW_RPC_ID)
-], SliceViewBackend);
-function deserializeTransformedSources(rpc2, serializedSources, layer) {
-  const sources = serializedSources.map(
-    (scales) => scales.map((serializedSource) => {
-      const source = rpc2.getRef(serializedSource.source);
-      const chunkLayout = serializedSource.chunkLayout;
-      const { rank } = source.spec;
-      const tsource = {
-        renderLayer: layer,
-        source,
-        chunkLayout: ChunkLayout.fromObject(chunkLayout),
-        layerRank: serializedSource.layerRank,
-        nonDisplayLowerClipBound: serializedSource.nonDisplayLowerClipBound,
-        nonDisplayUpperClipBound: serializedSource.nonDisplayUpperClipBound,
-        lowerClipBound: serializedSource.lowerClipBound,
-        upperClipBound: serializedSource.upperClipBound,
-        lowerClipDisplayBound: serializedSource.lowerClipDisplayBound,
-        upperClipDisplayBound: serializedSource.upperClipDisplayBound,
-        lowerChunkDisplayBound: serializedSource.lowerChunkDisplayBound,
-        upperChunkDisplayBound: serializedSource.upperChunkDisplayBound,
-        effectiveVoxelSize: serializedSource.effectiveVoxelSize,
-        chunkDisplayDimensionIndices: serializedSource.chunkDisplayDimensionIndices,
-        fixedLayerToChunkTransform: serializedSource.fixedLayerToChunkTransform,
-        combinedGlobalLocalToChunkTransform: serializedSource.combinedGlobalLocalToChunkTransform,
-        curPositionInChunks: new Float32Array(rank),
-        fixedPositionWithinChunk: new Uint32Array(rank)
-      };
-      return tsource;
-    })
-  );
-  return sources;
-}
-registerRPC(SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID, function(x) {
-  const obj = this.get(x.id);
-  const layer = this.get(x.layerId);
-  const sources = deserializeTransformedSources(this, x.sources, layer);
-  obj.addVisibleLayer(layer, sources, x.displayDimensionRenderInfo);
-});
-registerRPC(SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID, function(x) {
-  const obj = this.get(x.id);
-  const layer = this.get(x.layerId);
-  obj.removeVisibleLayer(layer);
-});
-var SliceViewChunk = class extends Chunk {
-  chunkGridPosition;
-  source = null;
-  initializeVolumeChunk(key, chunkGridPosition) {
-    super.initialize(key);
-    this.chunkGridPosition = Float32Array.from(chunkGridPosition);
-  }
-  serialize(msg, transfers) {
-    super.serialize(msg, transfers);
-    msg.chunkGridPosition = this.chunkGridPosition;
-  }
-  downloadSucceeded() {
-    super.downloadSucceeded();
-  }
-  freeSystemMemory() {
-  }
-  toString() {
-    return this.source.toString() + ":" + vec3Key(this.chunkGridPosition);
-  }
-};
-var SliceViewChunkSourceBackend = class extends ChunkSource {
-  spec;
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.spec = options.spec;
-  }
-  getChunk(chunkGridPosition) {
-    const key = chunkGridPosition.join();
-    let chunk = this.chunks.get(key);
-    if (chunk === void 0) {
-      chunk = this.getNewChunk_(this.chunkConstructor);
-      chunk.initializeVolumeChunk(key, chunkGridPosition);
-      this.addChunk(chunk);
-    }
-    return chunk;
-  }
-};
-var SliceViewRenderLayerBackend = class extends SharedObjectCounterpart {
-  renderScaleTarget;
-  localPosition;
-  numVisibleChunksNeeded;
-  numVisibleChunksAvailable;
-  numPrefetchChunksNeeded;
-  numPrefetchChunksAvailable;
-  chunkManagerGeneration;
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    this.renderScaleTarget = rpc2.get(options.renderScaleTarget);
-    this.localPosition = rpc2.get(options.localPosition);
-    this.numVisibleChunksNeeded = 0;
-    this.numVisibleChunksAvailable = 0;
-    this.numPrefetchChunksAvailable = 0;
-    this.numPrefetchChunksNeeded = 0;
-    this.chunkManagerGeneration = -1;
-  }
-  filterVisibleSources(sliceView, sources) {
-    return filterVisibleSources(sliceView, this, sources);
-  }
-};
-SliceViewRenderLayerBackend = __decorateClass6([
-  registerSharedObject(SLICEVIEW_RENDERLAYER_RPC_ID)
-], SliceViewRenderLayerBackend);
-var PREFETCH_MS = 2e3;
-var MAX_PREFETCH_VELOCITY = 0.1;
-var MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS = 32;
-var PREFETCH_PROBABILITY_CUTOFF = 0.05;
-var PREFETCH_ENTRY_SIZE = 6;
-function getPrefetchChunkOffsets(velocityEstimator, tsource) {
-  const offsets = [];
-  const globalRank = velocityEstimator.rank;
-  const { combinedGlobalLocalToChunkTransform, layerRank } = tsource;
-  const { rank: chunkRank, chunkDataSize } = tsource.source.spec;
-  const { mean: meanVec, variance: varianceVec } = velocityEstimator;
-  for (let chunkDim = 0; chunkDim < chunkRank; ++chunkDim) {
-    const isDisplayDimension = tsource.chunkDisplayDimensionIndices.includes(chunkDim);
-    let mean = 0;
-    let variance = 0;
-    for (let globalDim = 0; globalDim < globalRank; ++globalDim) {
-      const meanValue = meanVec[globalDim];
-      const varianceValue = varianceVec[globalDim];
-      const coeff = combinedGlobalLocalToChunkTransform[globalDim * layerRank + chunkDim];
-      mean += coeff * meanValue;
-      variance += coeff * coeff * varianceValue;
-    }
-    if (mean > MAX_PREFETCH_VELOCITY) {
-      continue;
-    }
-    const chunkSize = chunkDataSize[chunkDim];
-    const initialFraction = isDisplayDimension ? 0 : tsource.fixedPositionWithinChunk[chunkDim] / chunkSize;
-    const adjustedMean = mean / chunkSize * PREFETCH_MS;
-    let adjustedStddevTimesSqrt2 = Math.sqrt(2 * variance) / chunkSize * PREFETCH_MS;
-    if (Math.abs(adjustedMean) < 1e-3 && adjustedStddevTimesSqrt2 < 1e-3) {
-      continue;
-    }
-    adjustedStddevTimesSqrt2 = Math.max(1e-6, adjustedStddevTimesSqrt2);
-    const cdf = (x) => 0.5 * (1 + erf((x - adjustedMean) / adjustedStddevTimesSqrt2));
-    const curChunk = tsource.curPositionInChunks[chunkDim];
-    const minChunk = Math.floor(tsource.lowerClipBound[chunkDim] / chunkSize);
-    const maxChunk = Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1;
-    let groupStart = offsets.length;
-    for (let i = 1; i <= MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS; ++i) {
-      if (!isDisplayDimension && curChunk + i > maxChunk) break;
-      const probability = 1 - cdf(i - initialFraction);
-      if (probability < PREFETCH_PROBABILITY_CUTOFF) break;
-      offsets.push(chunkDim, i, minChunk, maxChunk, probability, 0);
-    }
-    let newGroupStart = offsets.length;
-    for (let i = groupStart, end = offsets.length; i < end; i += PREFETCH_ENTRY_SIZE) {
-      offsets[i + PREFETCH_ENTRY_SIZE - 1] = newGroupStart;
-    }
-    groupStart = newGroupStart;
-    for (let i = 1; i <= MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS; ++i) {
-      if (!isDisplayDimension && curChunk - i < minChunk) break;
-      const probability = cdf(-i + 1 - initialFraction);
-      if (probability < PREFETCH_PROBABILITY_CUTOFF) break;
-      offsets.push(chunkDim, -i, minChunk, maxChunk, probability, 0);
-    }
-    newGroupStart = offsets.length;
-    for (let i = groupStart, end = offsets.length; i < end; i += PREFETCH_ENTRY_SIZE) {
-      offsets[i + PREFETCH_ENTRY_SIZE - 1] = newGroupStart;
-    }
-  }
-  return offsets;
-}
-registerPromiseRPC(
-  SLICEVIEW_REQUEST_CHUNK_RPC_ID,
-  async function(x, progressOptions) {
-    const source = this.get(x.source);
-    const { chunkManager } = source;
-    const chunk = source.getChunk(x.chunkGridPosition);
-    const key = chunk.key;
-    if (chunk.state <= ChunkState.SYSTEM_MEMORY) {
-      return { value: void 0 };
-    }
-    if (chunk.state === ChunkState.FAILED) {
-      throw chunk.error;
-    }
-    const disposeRecompute = chunkManager.recomputeChunkPriorities.add(() => {
-      chunkManager.requestChunk(
-        chunk,
-        ChunkPriorityTier.VISIBLE,
-        Number.POSITIVE_INFINITY,
-        ChunkState.SYSTEM_MEMORY
-      );
-    });
-    chunkManager.scheduleUpdateChunkPriorities();
-    let listener;
-    const promise = new Promise((resolve, reject) => {
-      listener = (chunk2) => {
-        if (chunk2.state === ChunkState.FAILED) {
-          reject(chunk2.error);
-          return;
-        }
-        if (chunk2.state <= ChunkState.SYSTEM_MEMORY) {
-          resolve();
-        }
-      };
-    });
-    source.registerChunkListener(key, listener);
-    try {
-      await raceWithAbort(promise, progressOptions.signal);
-      return { value: void 0 };
-    } finally {
-      source.unregisterChunkListener(key, listener);
-      disposeRecompute();
-      chunkManager.scheduleUpdateChunkPriorities();
-    }
-  }
-);
+// node_modules/neuroglancer/lib/chunk_worker.bundle.js
+init_backend();
+init_backend2();
+init_backend4();
 
 // node_modules/neuroglancer/lib/perspective_view/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/perspective_view/base.js
 init_legacy_browser();
+init_worker_landed();
 var PERSPECTIVE_VIEW_RPC_ID = "perspective_view/PerspectiveView";
 
 // node_modules/neuroglancer/lib/perspective_view/backend.js
-var __defProp8 = Object.defineProperty;
-var __getOwnPropDesc8 = Object.getOwnPropertyDescriptor;
-var __decorateClass7 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc8(target2, key) : target2;
+init_render_layer_backend();
+init_worker_rpc();
+var __defProp9 = Object.defineProperty;
+var __getOwnPropDesc9 = Object.getOwnPropertyDescriptor;
+var __decorateClass8 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc9(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp8(target2, key, result);
+  if (kind && result) __defProp9(target2, key, result);
   return result;
 };
 var PerspectiveViewBackend = class extends SharedObjectCounterpart {
@@ -12959,7 +15206,7 @@ var PerspectiveViewBackend = class extends SharedObjectCounterpart {
     this.projectionParameters = rpc2.get(options.projectionParameters);
   }
 };
-PerspectiveViewBackend = __decorateClass7([
+PerspectiveViewBackend = __decorateClass8([
   registerSharedObject(PERSPECTIVE_VIEW_RPC_ID)
 ], PerspectiveViewBackend);
 var PerspectiveViewRenderLayerBackend = class extends RenderLayerBackend {
@@ -12967,9 +15214,20 @@ var PerspectiveViewRenderLayerBackend = class extends RenderLayerBackend {
 
 // node_modules/neuroglancer/lib/volume_rendering/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_base();
+init_navigation_state();
+init_render_layer_backend();
+init_backend4();
+init_geom();
+init_backend3();
 
 // node_modules/neuroglancer/lib/volume_rendering/base.js
 init_legacy_browser();
+init_worker_landed();
+init_base3();
+init_geom();
 var VOLUME_RENDERING_RENDER_LAYER_RPC_ID = "volume_rendering/VolumeRenderingRenderLayer";
 var VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID = "volume_rendering/VolumeRenderingRenderLayer/update";
 var DEBUG_CHUNK_LEVEL = false;
@@ -13044,14 +15302,15 @@ function forEachVisibleVolumeRenderingChunk(projectionParameters, localPosition,
 }
 
 // node_modules/neuroglancer/lib/volume_rendering/backend.js
-var __defProp9 = Object.defineProperty;
-var __getOwnPropDesc9 = Object.getOwnPropertyDescriptor;
-var __decorateClass8 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc9(target2, key) : target2;
+init_worker_rpc();
+var __defProp10 = Object.defineProperty;
+var __getOwnPropDesc10 = Object.getOwnPropertyDescriptor;
+var __decorateClass9 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc10(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp9(target2, key, result);
+  if (kind && result) __defProp10(target2, key, result);
   return result;
 };
 var tempChunkPosition2 = vec3_exports.create();
@@ -13164,7 +15423,7 @@ var VolumeRenderingRenderLayerBackend = class extends withChunkManager(
     }
   }
 };
-VolumeRenderingRenderLayerBackend = __decorateClass8([
+VolumeRenderingRenderLayerBackend = __decorateClass9([
   registerSharedObject(VOLUME_RENDERING_RENDER_LAYER_RPC_ID)
 ], VolumeRenderingRenderLayerBackend);
 registerRPC(VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, function(x) {
@@ -13180,9 +15439,13 @@ registerRPC(VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, function(x) {
 
 // node_modules/neuroglancer/lib/annotation/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/annotation/base.js
 init_legacy_browser();
+init_worker_landed();
+init_base3();
+init_geom();
 var ANNOTATION_METADATA_CHUNK_SOURCE_RPC_ID = "annotation.MetadataChunkSource";
 var ANNOTATION_SUBSET_GEOMETRY_CHUNK_SOURCE_RPC_ID = "annotation.SubsetGeometryChunkSource";
 var ANNOTATION_REFERENCE_ADD_RPC_ID = "annotation.reference.add";
@@ -13263,17 +15526,27 @@ function forEachVisibleAnnotationChunk(projectionParameters, localPosition, rend
   }
 }
 
+// node_modules/neuroglancer/lib/annotation/backend.js
+init_backend();
+init_base();
+init_navigation_state();
+init_render_layer_backend();
+
 // node_modules/neuroglancer/lib/segmentation_display_state/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/shared_disjoint_sets.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/util/disjoint_sets.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/segmentation_graph/segment_id.js
 init_legacy_browser();
+init_worker_landed();
 var VisibleSegmentEquivalencePolicy = /* @__PURE__ */ ((VisibleSegmentEquivalencePolicy2) => {
   VisibleSegmentEquivalencePolicy2[VisibleSegmentEquivalencePolicy2["MIN_REPRESENTATIVE"] = 0] = "MIN_REPRESENTATIVE";
   VisibleSegmentEquivalencePolicy2[VisibleSegmentEquivalencePolicy2["MAX_REPRESENTATIVE"] = 1] = "MAX_REPRESENTATIVE";
@@ -13283,6 +15556,8 @@ var VisibleSegmentEquivalencePolicy = /* @__PURE__ */ ((VisibleSegmentEquivalenc
 })(VisibleSegmentEquivalencePolicy || {});
 
 // node_modules/neuroglancer/lib/util/disjoint_sets.js
+init_trackable_value();
+init_bigint();
 var Entry = class {
   constructor(value) {
     this.value = value;
@@ -13467,14 +15742,17 @@ var DisjointUint64Sets = class {
 };
 
 // node_modules/neuroglancer/lib/shared_disjoint_sets.js
-var __defProp10 = Object.defineProperty;
-var __getOwnPropDesc10 = Object.getOwnPropertyDescriptor;
-var __decorateClass9 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc10(target2, key) : target2;
+init_json();
+init_signal();
+init_worker_rpc();
+var __defProp11 = Object.defineProperty;
+var __getOwnPropDesc11 = Object.getOwnPropertyDescriptor;
+var __decorateClass10 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc11(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp10(target2, key, result);
+  if (kind && result) __defProp11(target2, key, result);
   return result;
 };
 var RPC_TYPE_ID = "DisjointUint64Sets";
@@ -13588,7 +15866,7 @@ var SharedDisjointUint64Sets = class extends SharedObjectCounterpart {
     }
   }
 };
-SharedDisjointUint64Sets = __decorateClass9([
+SharedDisjointUint64Sets = __decorateClass10([
   registerSharedObject(RPC_TYPE_ID)
 ], SharedDisjointUint64Sets);
 registerRPC(ADD_METHOD_ID, function(x) {
@@ -13622,12 +15900,15 @@ registerRPC(DELETE_SET_METHOD_ID, function(x) {
 
 // node_modules/neuroglancer/lib/uint64_map.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/gpu_hash/hash_table.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/gpu_hash/hash_function.js
 init_legacy_browser();
+init_worker_landed();
 var k1 = 3432918353;
 var k2 = 461845907;
 function hashCombine(state, value) {
@@ -13642,8 +15923,12 @@ function hashCombine(state, value) {
   return state;
 }
 
+// node_modules/neuroglancer/lib/gpu_hash/hash_table.js
+init_bigint();
+
 // node_modules/neuroglancer/lib/util/random.js
 init_legacy_browser();
+init_worker_landed();
 function getRandomHexString(numBits = 128) {
   const numValues = Math.ceil(numBits / 32);
   const data = new Uint32Array(numValues);
@@ -14042,14 +16327,16 @@ var HashMapUint64 = class extends HashTableBase {
 HashMapUint64.prototype.entryStride = 2;
 
 // node_modules/neuroglancer/lib/uint64_map.js
-var __defProp11 = Object.defineProperty;
-var __getOwnPropDesc11 = Object.getOwnPropertyDescriptor;
-var __decorateClass10 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc11(target2, key) : target2;
+init_signal();
+init_worker_rpc();
+var __defProp12 = Object.defineProperty;
+var __getOwnPropDesc12 = Object.getOwnPropertyDescriptor;
+var __decorateClass11 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc12(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp11(target2, key, result);
+  if (kind && result) __defProp12(target2, key, result);
   return result;
 };
 var Uint64Map = class extends SharedObjectCounterpart {
@@ -14122,7 +16409,7 @@ var Uint64Map = class extends SharedObjectCounterpart {
     return result;
   }
 };
-Uint64Map = __decorateClass10([
+Uint64Map = __decorateClass11([
   registerSharedObject("Uint64Map")
 ], Uint64Map);
 registerRPC("Uint64Map.set", function(x) {
@@ -14146,14 +16433,17 @@ registerRPC("Uint64Map.clear", function(x) {
 
 // node_modules/neuroglancer/lib/uint64_set.js
 init_legacy_browser();
-var __defProp12 = Object.defineProperty;
-var __getOwnPropDesc12 = Object.getOwnPropertyDescriptor;
-var __decorateClass11 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc12(target2, key) : target2;
+init_worker_landed();
+init_signal();
+init_worker_rpc();
+var __defProp13 = Object.defineProperty;
+var __getOwnPropDesc13 = Object.getOwnPropertyDescriptor;
+var __decorateClass12 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc13(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp12(target2, key, result);
+  if (kind && result) __defProp13(target2, key, result);
   return result;
 };
 var Uint64Set = class extends SharedObjectCounterpart {
@@ -14255,7 +16545,7 @@ var Uint64Set = class extends SharedObjectCounterpart {
     }
   }
 };
-Uint64Set = __decorateClass11([
+Uint64Set = __decorateClass12([
   registerSharedObject("Uint64Set")
 ], Uint64Set);
 registerRPC("Uint64Set.reserve", function(x) {
@@ -14283,8 +16573,12 @@ registerRPC("Uint64Set.clear", function(x) {
   }
 });
 
+// node_modules/neuroglancer/lib/segmentation_display_state/backend.js
+init_backend();
+
 // node_modules/neuroglancer/lib/segmentation_display_state/base.js
 init_legacy_browser();
+init_worker_landed();
 var VISIBLE_SEGMENTS_STATE_PROPERTIES = [
   "visibleSegments",
   "segmentEquivalences",
@@ -14387,14 +16681,18 @@ var withSegmentationLayerBackendState = (Base) => class SegmentationLayerState e
 };
 
 // node_modules/neuroglancer/lib/annotation/backend.js
-var __defProp13 = Object.defineProperty;
-var __getOwnPropDesc13 = Object.getOwnPropertyDescriptor;
-var __decorateClass12 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc13(target2, key) : target2;
+init_backend4();
+init_trackable_value();
+init_backend3();
+init_worker_rpc();
+var __defProp14 = Object.defineProperty;
+var __getOwnPropDesc14 = Object.getOwnPropertyDescriptor;
+var __decorateClass13 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc14(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp13(target2, key, result);
+  if (kind && result) __defProp14(target2, key, result);
   return result;
 };
 var ANNOTATION_METADATA_CHUNK_PRIORITY = 200;
@@ -14478,7 +16776,7 @@ var AnnotationMetadataChunkSource = class extends ChunkSource {
     return this.parent.downloadMetadata(chunk, signal);
   }
 };
-AnnotationMetadataChunkSource = __decorateClass12([
+AnnotationMetadataChunkSource = __decorateClass13([
   registerSharedObject(ANNOTATION_METADATA_CHUNK_SOURCE_RPC_ID)
 ], AnnotationMetadataChunkSource);
 var AnnotationGeometryChunkSourceBackend = class extends SliceViewChunkSourceBackend {
@@ -14512,7 +16810,7 @@ var AnnotationSubsetGeometryChunkSource = class extends ChunkSource {
     );
   }
 };
-AnnotationSubsetGeometryChunkSource = __decorateClass12([
+AnnotationSubsetGeometryChunkSource = __decorateClass13([
   registerSharedObject(ANNOTATION_SUBSET_GEOMETRY_CHUNK_SOURCE_RPC_ID)
 ], AnnotationSubsetGeometryChunkSource);
 var AnnotationSource = class extends SharedObjectCounterpart {
@@ -14691,7 +16989,7 @@ var AnnotationSpatiallyIndexedRenderLayerBackend = class extends withChunkManage
     }
   }
 };
-AnnotationSpatiallyIndexedRenderLayerBackend = __decorateClass12([
+AnnotationSpatiallyIndexedRenderLayerBackend = __decorateClass13([
   registerSharedObject(ANNOTATION_SPATIALLY_INDEXED_RENDER_LAYER_RPC_ID)
 ], AnnotationSpatiallyIndexedRenderLayerBackend);
 registerRPC(
@@ -14791,7 +17089,7 @@ var AnnotationLayerSharedObjectCounterpart = class extends withSharedVisibility(
     });
   }
 };
-AnnotationLayerSharedObjectCounterpart = __decorateClass12([
+AnnotationLayerSharedObjectCounterpart = __decorateClass13([
   registerSharedObject(ANNOTATION_RENDER_LAYER_RPC_ID)
 ], AnnotationLayerSharedObjectCounterpart);
 registerRPC(ANNOTATION_RENDER_LAYER_UPDATE_SEGMENTATION_RPC_ID, function(x) {
@@ -14801,18 +17099,25 @@ registerRPC(ANNOTATION_RENDER_LAYER_UPDATE_SEGMENTATION_RPC_ID, function(x) {
 
 // node_modules/neuroglancer/lib/datasource/enabled_backend_modules.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/datasource/boss/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_shared_counterpart();
 
 // node_modules/neuroglancer/lib/datasource/boss/api.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/credentials_provider/http_request.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/util/http_request.js
 init_legacy_browser();
+init_worker_landed();
 var HttpError = class _HttpError extends Error {
   url;
   status;
@@ -14968,6 +17273,7 @@ async function fetchWithBossCredentials(credentialsProvider, input, init) {
 
 // node_modules/neuroglancer/lib/datasource/boss/base.js
 init_legacy_browser();
+init_worker_landed();
 var BossSourceParameters = class {
   baseUrl;
   collection;
@@ -14975,7 +17281,7 @@ var BossSourceParameters = class {
   channel;
   resolution;
 };
-var VolumeChunkSourceParameters = class extends BossSourceParameters {
+var VolumeChunkSourceParameters2 = class extends BossSourceParameters {
   encoding;
   window;
   static RPC_ID = "boss/VolumeChunkSource";
@@ -14993,9 +17299,13 @@ var MeshSourceParameters = class {
 
 // node_modules/neuroglancer/lib/mesh/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_base();
 
 // node_modules/neuroglancer/lib/mesh/base.js
 init_legacy_browser();
+init_worker_landed();
 var MESH_LAYER_RPC_ID = "mesh/MeshLayer";
 var MULTISCALE_MESH_LAYER_RPC_ID = "mesh/MultiscaleMeshLayer";
 var FRAGMENT_SOURCE_RPC_ID = "mesh/FragmentSource";
@@ -15009,9 +17319,12 @@ var VertexPositionFormat = /* @__PURE__ */ ((VertexPositionFormat2) => {
 
 // node_modules/neuroglancer/lib/mesh/multiscale.js
 init_legacy_browser();
+init_worker_landed();
+init_geom();
 
 // node_modules/neuroglancer/lib/util/zorder.js
 init_legacy_browser();
+init_worker_landed();
 function getOctreeChildIndex(x, y, z) {
   return x & 1 | y << 1 & 2 | z << 2 & 4;
 }
@@ -15192,6 +17505,7 @@ function getDesiredMultiscaleMeshChunks(manifest, modelViewProjection, clippingP
 
 // node_modules/neuroglancer/lib/mesh/triangle_strips.js
 init_legacy_browser();
+init_worker_landed();
 var DEBUG_TIMING = false;
 function normalizeTriangleVertexOrder(indices) {
   let maxVertex = 0;
@@ -15402,94 +17716,21 @@ function computeTriangleStrips(indices, subChunkOffsets) {
   return shrunkOutput;
 }
 
-// node_modules/neuroglancer/lib/util/endian.js
-init_legacy_browser();
-var Endianness = /* @__PURE__ */ ((Endianness2) => {
-  Endianness2[Endianness2["LITTLE"] = 0] = "LITTLE";
-  Endianness2[Endianness2["BIG"] = 1] = "BIG";
-  return Endianness2;
-})(Endianness || {});
-function determineEndianness() {
-  const a = Uint16Array.of(4386);
-  const b = new Uint8Array(a.buffer);
-  return b[0] === 17 ? 1 : 0;
-}
-var ENDIANNESS = determineEndianness();
-function swapEndian16(array2) {
-  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
-  for (let i = 0, length6 = view.length; i < length6; i += 2) {
-    const temp = view[i];
-    view[i] = view[i + 1];
-    view[i + 1] = temp;
-  }
-}
-function swapEndian32(array2) {
-  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
-  for (let i = 0, length6 = view.length; i < length6; i += 4) {
-    let temp = view[i];
-    view[i] = view[i + 3];
-    view[i + 3] = temp;
-    temp = view[i + 1];
-    view[i + 1] = view[i + 2];
-    view[i + 2] = temp;
-  }
-}
-function swapEndian64(array2) {
-  const view = new Uint8Array(array2.buffer, array2.byteOffset, array2.byteLength);
-  for (let i = 0, length6 = view.length; i < length6; i += 8) {
-    let temp = view[i];
-    view[i] = view[i + 7];
-    view[i + 7] = temp;
-    temp = view[i + 1];
-    view[i + 1] = view[i + 6];
-    view[i + 6] = temp;
-    temp = view[i + 2];
-    view[i + 2] = view[i + 5];
-    view[i + 5] = temp;
-    temp = view[i + 3];
-    view[i + 3] = view[i + 4];
-    view[i + 4] = temp;
-  }
-}
-function convertEndian16(array2, source, target2 = ENDIANNESS) {
-  if (source !== target2) {
-    swapEndian16(array2);
-  }
-}
-function convertEndian32(array2, source, target2 = ENDIANNESS) {
-  if (source !== target2) {
-    swapEndian32(array2);
-  }
-}
-function convertEndian64(array2, source, target2 = ENDIANNESS) {
-  if (source !== target2) {
-    swapEndian64(array2);
-  }
-}
-function convertEndian(array2, source, elementBytes, target2 = ENDIANNESS) {
-  if (source === target2 || elementBytes === 1) return;
-  switch (elementBytes) {
-    case 2:
-      swapEndian16(array2);
-      break;
-    case 4:
-      swapEndian32(array2);
-      break;
-    case 8:
-      swapEndian64(array2);
-      break;
-  }
-}
-
 // node_modules/neuroglancer/lib/mesh/backend.js
-var __defProp14 = Object.defineProperty;
-var __getOwnPropDesc14 = Object.getOwnPropertyDescriptor;
-var __decorateClass13 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc14(target2, key) : target2;
+init_render_coordinate_transform();
+init_endian();
+init_geom();
+init_json();
+init_backend3();
+init_worker_rpc();
+var __defProp15 = Object.defineProperty;
+var __getOwnPropDesc15 = Object.getOwnPropertyDescriptor;
+var __decorateClass14 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc15(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp14(target2, key, result);
+  if (kind && result) __defProp15(target2, key, result);
   return result;
 };
 var MESH_OBJECT_MANIFEST_CHUNK_PRIORITY = 100;
@@ -15711,7 +17952,7 @@ var FragmentSource = class extends ChunkSource {
     return this.meshSource.downloadFragment(chunk, signal);
   }
 };
-FragmentSource = __decorateClass13([
+FragmentSource = __decorateClass14([
   registerSharedObject(FRAGMENT_SOURCE_RPC_ID)
 ], FragmentSource);
 var MeshLayer = class extends withSegmentationLayerBackendState(
@@ -15777,7 +18018,7 @@ var MeshLayer = class extends withSegmentationLayerBackendState(
     });
   }
 };
-MeshLayer = __decorateClass13([
+MeshLayer = __decorateClass14([
   registerSharedObject(MESH_LAYER_RPC_ID)
 ], MeshLayer);
 var MultiscaleManifestChunk = class extends Chunk {
@@ -15876,7 +18117,7 @@ var MultiscaleFragmentSource = class extends ChunkSource {
     return this.meshSource.downloadFragment(chunk, signal);
   }
 };
-MultiscaleFragmentSource = __decorateClass13([
+MultiscaleFragmentSource = __decorateClass14([
   registerSharedObject(MULTISCALE_FRAGMENT_SOURCE_RPC_ID)
 ], MultiscaleFragmentSource);
 var tempModelMatrix = mat4_exports.create();
@@ -15998,7 +18239,7 @@ var MultiscaleMeshLayer = class extends withSegmentationLayerBackendState(
     }
   }
 };
-MultiscaleMeshLayer = __decorateClass13([
+MultiscaleMeshLayer = __decorateClass14([
   registerSharedObject(MULTISCALE_MESH_LAYER_RPC_ID)
 ], MultiscaleMeshLayer);
 function convertMeshData(data, vertexPositionFormat) {
@@ -16106,221 +18347,19 @@ function computeOctreeChildOffsets(octree, childStart, childEnd, parentEnd) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/bossNpz.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/postprocess.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/async_computation/encode_compressed_segmentation_request.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/async_computation/index.js
-init_legacy_browser();
-function asyncComputation(id) {
-  return { id };
-}
-
-// node_modules/neuroglancer/lib/async_computation/encode_compressed_segmentation_request.js
-var encodeCompressedSegmentationUint32 = asyncComputation("encodeCompressedSegmentationUint32");
-var encodeCompressedSegmentationUint64 = asyncComputation("encodeCompressedSegmentationUint64");
-
-// node_modules/neuroglancer/lib/async_computation/request.js
-init_legacy_browser();
-var numWorkers = 0;
-var freeWorkers = [];
-var pendingTasks = /* @__PURE__ */ new Map();
-var tasks = /* @__PURE__ */ new Map();
-var maxWorkers = typeof navigator.hardwareConcurrency === "undefined" ? 4 : Math.min(12, navigator.hardwareConcurrency);
-var nextTaskId = 0;
-function returnWorker(worker) {
-  var _a;
-  for (const [id, task] of pendingTasks) {
-    pendingTasks.delete(id);
-    (_a = task.cleanup) == null ? void 0 : _a.call(task);
-    worker.postMessage(task.msg, task.transfer);
-    return;
-  }
-  freeWorkers.push(worker);
-}
-function launchWorker() {
-  ++numWorkers;
-  const worker = new Worker(
-    /* webpackChunkName: "neuroglancer_async_computation" */
-    new URL("../async_computation.bundle.js", import.meta.url),
-    { type: "module" }
-  );
-  let ready = false;
-  worker.onmessage = (msg) => {
-    if (!ready) {
-      ready = true;
-      returnWorker(worker);
-      return;
-    }
-    const { id, value, error } = msg.data;
-    returnWorker(worker);
-    const callbacks = tasks.get(id);
-    tasks.delete(id);
-    if (callbacks === void 0) return;
-    if (error !== void 0) {
-      callbacks.reject(error);
-    } else {
-      callbacks.resolve(value);
-    }
-  };
-}
-function requestAsyncComputation(request, signal, transfer, ...args) {
-  const id = nextTaskId++;
-  const msg = { t: request.id, id, args };
-  signal == null ? void 0 : signal.throwIfAborted();
-  const promise = new Promise((resolve, reject) => {
-    tasks.set(id, { resolve, reject });
-  });
-  if (freeWorkers.length !== 0) {
-    freeWorkers.pop().postMessage(msg, transfer);
-  } else {
-    let cleanup;
-    if (signal !== void 0) {
-      let abortHandler2 = function() {
-        pendingTasks.delete(id);
-        const task = tasks.get(id);
-        tasks.delete(id);
-        task.reject(signal.reason);
-      };
-      var abortHandler = abortHandler2;
-      signal.addEventListener("abort", abortHandler2, { once: true });
-      cleanup = () => {
-        signal.removeEventListener("abort", abortHandler2);
-      };
-    }
-    pendingTasks.set(id, { msg, transfer, cleanup });
-    if (tasks.size > numWorkers && numWorkers < maxWorkers) {
-      launchWorker();
-    }
-  }
-  return promise;
-}
-
-// node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/postprocess.js
-async function postProcessRawData(chunk, signal, data) {
-  const { spec } = chunk.source;
-  if (spec.compressedSegmentationBlockSize !== void 0) {
-    const { dataType } = spec;
-    const chunkDataSize = chunk.chunkDataSize;
-    const shape = [
-      chunkDataSize[0],
-      chunkDataSize[1],
-      chunkDataSize[2],
-      chunkDataSize[3] || 1
-    ];
-    switch (dataType) {
-      case DataType.UINT32:
-        chunk.data = await requestAsyncComputation(
-          encodeCompressedSegmentationUint32,
-          signal,
-          [data.buffer],
-          data,
-          shape,
-          spec.compressedSegmentationBlockSize
-        );
-        break;
-      case DataType.UINT64:
-        chunk.data = await requestAsyncComputation(
-          encodeCompressedSegmentationUint64,
-          signal,
-          [data.buffer],
-          data,
-          shape,
-          spec.compressedSegmentationBlockSize
-        );
-        break;
-      default:
-        throw new Error(
-          `Unsupported data type for compressed segmentation: ${DataType[dataType]}`
-        );
-    }
-  } else {
-    chunk.data = data;
-  }
-}
-
-// node_modules/neuroglancer/lib/util/gzip.js
-init_legacy_browser();
-function isGzipFormat(data) {
-  const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  return view.length >= 3 && view[0] === 31 && view[1] === 139 && view[2] === 8;
-}
-async function decodeGzip(data, format, signal) {
-  try {
-    const decompressedStream = decodeGzipStream(
-      data instanceof Response ? data : new Response(data),
-      format,
-      signal
-    );
-    return await new Response(decompressedStream).arrayBuffer();
-  } catch {
-    signal == null ? void 0 : signal.throwIfAborted();
-    throw new Error(`Failed to decode ${format}`);
-  }
-}
-function decodeGzipStream(response, format, signal) {
-  return response.body.pipeThrough(new DecompressionStream(format), {
-    signal
-  });
-}
+init_worker_landed();
+init_postprocess();
+init_base3();
+init_geom();
+init_gzip();
 
 // node_modules/neuroglancer/lib/util/npy.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/numpy_dtype.js
-init_legacy_browser();
-var supportedDataTypes = /* @__PURE__ */ new Map();
-supportedDataTypes.set("|u1", {
-  endianness: Endianness.LITTLE,
-  dataType: DataType.UINT8
-});
-supportedDataTypes.set("|i1", {
-  endianness: Endianness.LITTLE,
-  dataType: DataType.INT8
-});
-for (const [endiannessChar, endianness] of [
-  ["<", Endianness.LITTLE],
-  [">", Endianness.BIG]
-]) {
-  for (const typeChar of ["u", "i"]) {
-    supportedDataTypes.set(`${endiannessChar}${typeChar}8`, {
-      endianness,
-      dataType: DataType.UINT64
-    });
-  }
-  supportedDataTypes.set(`${endiannessChar}u2`, {
-    endianness,
-    dataType: DataType.UINT16
-  });
-  supportedDataTypes.set(`${endiannessChar}i2`, {
-    endianness,
-    dataType: DataType.INT16
-  });
-  supportedDataTypes.set(`${endiannessChar}u4`, {
-    endianness,
-    dataType: DataType.UINT32
-  });
-  supportedDataTypes.set(`${endiannessChar}i4`, {
-    endianness,
-    dataType: DataType.INT32
-  });
-  supportedDataTypes.set(`${endiannessChar}f4`, {
-    endianness,
-    dataType: DataType.FLOAT32
-  });
-}
-function parseNumpyDtype(typestr) {
-  const dtype = supportedDataTypes.get(typestr);
-  if (dtype === void 0) {
-    throw new Error(`Unsupported numpy data type: ${JSON.stringify(typestr)}`);
-  }
-  return dtype;
-}
-
-// node_modules/neuroglancer/lib/util/npy.js
+init_worker_landed();
+init_data_type();
+init_endian();
+init_json();
+init_numpy_dtype();
 var NumpyArray = class {
   constructor(data, shape, dataType, fortranOrder) {
     this.data = data;
@@ -16413,12 +18452,17 @@ async function decodeBossNpzChunk(chunk, signal, response) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/jpeg.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/async_computation/decode_jpeg_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var decodeJpeg = asyncComputation("decodeJpeg");
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/jpeg.js
+init_request();
+init_postprocess();
 async function decodeJpegChunk(chunk, signal, response) {
   const chunkDataSize = chunk.chunkDataSize;
   const { uint8Array: decoded } = await requestAsyncComputation(
@@ -16435,91 +18479,18 @@ async function decodeJpegChunk(chunk, signal, response) {
   await postProcessRawData(chunk, signal, decoded);
 }
 
-// node_modules/neuroglancer/lib/sliceview/volume/backend.js
-init_legacy_browser();
-var VolumeChunk = class extends SliceViewChunk {
-  source = null;
-  data;
-  chunkDataSize;
-  initializeVolumeChunk(key, chunkGridPosition) {
-    super.initializeVolumeChunk(key, chunkGridPosition);
-    this.chunkDataSize = null;
-    this.data = null;
-  }
-  serialize(msg, transfers) {
-    super.serialize(msg, transfers);
-    const chunkDataSize = this.chunkDataSize;
-    if (chunkDataSize !== this.source.spec.chunkDataSize) {
-      msg.chunkDataSize = chunkDataSize;
-    }
-    const data = msg.data = this.data;
-    if (data !== null) {
-      transfers.push(data.buffer);
-    }
-    this.data = null;
-  }
-  downloadSucceeded() {
-    var _a;
-    this.systemMemoryBytes = this.gpuMemoryBytes = ((_a = this.data) == null ? void 0 : _a.byteLength) ?? 0;
-    super.downloadSucceeded();
-  }
-  freeSystemMemory() {
-    this.data = null;
-  }
-};
-function computeChunkBounds(source, chunk) {
-  const { spec, tempChunkDataSize, tempChunkPosition: tempChunkPosition4 } = source;
-  const { upperVoxelBound, rank, baseVoxelOffset } = spec;
-  const origChunkDataSize = spec.chunkDataSize;
-  const newChunkDataSize = tempChunkDataSize;
-  const chunkPosition = multiply6(
-    tempChunkPosition4,
-    chunk.chunkGridPosition,
-    origChunkDataSize
-  );
-  let partial = false;
-  for (let i = 0; i < rank; ++i) {
-    const upper = Math.min(
-      upperVoxelBound[i],
-      chunkPosition[i] + origChunkDataSize[i]
-    );
-    const size = newChunkDataSize[i] = upper - chunkPosition[i];
-    if (size !== origChunkDataSize[i]) {
-      partial = true;
-    }
-  }
-  add6(chunkPosition, chunkPosition, baseVoxelOffset);
-  if (partial) {
-    chunk.chunkDataSize = Uint32Array.from(newChunkDataSize);
-  } else {
-    chunk.chunkDataSize = origChunkDataSize;
-  }
-  return chunkPosition;
-}
-var VolumeChunkSource = class extends SliceViewChunkSourceBackend {
-  tempChunkDataSize;
-  tempChunkPosition;
-  constructor(rpc2, options) {
-    super(rpc2, options);
-    const rank = this.spec.rank;
-    this.tempChunkDataSize = new Uint32Array(rank);
-    this.tempChunkPosition = new Float32Array(rank);
-  }
-  computeChunkBounds(chunk) {
-    return computeChunkBounds(this, chunk);
-  }
-};
-VolumeChunkSource.prototype.chunkConstructor = VolumeChunk;
-
 // node_modules/neuroglancer/lib/datasource/boss/backend.js
-var __defProp15 = Object.defineProperty;
-var __getOwnPropDesc15 = Object.getOwnPropertyDescriptor;
-var __decorateClass14 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc15(target2, key) : target2;
+init_backend5();
+init_endian();
+init_worker_rpc();
+var __defProp16 = Object.defineProperty;
+var __getOwnPropDesc16 = Object.getOwnPropertyDescriptor;
+var __decorateClass15 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc16(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp15(target2, key, result);
+  if (kind && result) __defProp16(target2, key, result);
   return result;
 };
 var chunkDecoders = /* @__PURE__ */ new Map();
@@ -16536,7 +18507,7 @@ function BossSource(Base, parametersConstructor) {
 }
 var BossVolumeChunkSource = class extends BossSource(
   VolumeChunkSource,
-  VolumeChunkSourceParameters
+  VolumeChunkSourceParameters2
 ) {
   chunkDecoder = chunkDecoders.get(this.parameters.encoding);
   async download(chunk, signal) {
@@ -16564,7 +18535,7 @@ var BossVolumeChunkSource = class extends BossSource(
     await this.chunkDecoder(chunk, signal, await response.arrayBuffer());
   }
 };
-BossVolumeChunkSource = __decorateClass14([
+BossVolumeChunkSource = __decorateClass15([
   registerSharedObject()
 ], BossVolumeChunkSource);
 function decodeManifestChunk(chunk, response) {
@@ -16605,21 +18576,27 @@ var BossMeshSource = class extends BossSource(
     ).then((response) => response.arrayBuffer()).then((response) => decodeFragmentChunk(chunk, response));
   }
 };
-BossMeshSource = __decorateClass14([
+BossMeshSource = __decorateClass15([
   registerSharedObject()
 ], BossMeshSource);
 
 // node_modules/neuroglancer/lib/datasource/brainmaps/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/annotation/index.js
 init_legacy_browser();
+init_worker_landed();
+init_array();
 
 // node_modules/neuroglancer/lib/util/color.js
 init_legacy_browser();
+init_worker_landed();
+init_trackable_value();
 
 // node_modules/neuroglancer/lib/util/float32_to_string.js
 init_legacy_browser();
+init_worker_landed();
 var tempArray = new Float32Array(1);
 function float32ToString(x) {
   tempArray[0] = x;
@@ -16634,8 +18611,12 @@ function float32ToString(x) {
   return x.toString();
 }
 
+// node_modules/neuroglancer/lib/util/color.js
+init_geom();
+
 // node_modules/neuroglancer/lib/util/hex.js
 init_legacy_browser();
+init_worker_landed();
 function hexEncodeByte(x) {
   return ("0" + x.toString(16)).slice(-2);
 }
@@ -16731,16 +18712,28 @@ function serializeColor(x) {
   return result;
 }
 
+// node_modules/neuroglancer/lib/annotation/index.js
+init_data_type();
+init_disposable();
+init_endian();
+init_json();
+
 // node_modules/neuroglancer/lib/util/lerp.js
 init_legacy_browser();
+init_worker_landed();
+init_bigint();
+init_data_type();
 
 // node_modules/neuroglancer/lib/util/float.js
 init_legacy_browser();
+init_worker_landed();
+init_endian();
 var denormMin = 2 ** -1074;
 var float64Buf = new Float64Array(1);
 var uint32Buf = new Uint32Array(float64Buf.buffer);
 
 // node_modules/neuroglancer/lib/util/lerp.js
+init_json();
 var defaultDataTypeRange = {
   [DataType.UINT8]: [0, 255],
   [DataType.INT8]: [-128, 127],
@@ -16753,6 +18746,7 @@ var defaultDataTypeRange = {
 };
 
 // node_modules/neuroglancer/lib/annotation/index.js
+init_signal();
 var AnnotationType = /* @__PURE__ */ ((AnnotationType2) => {
   AnnotationType2[AnnotationType2["POINT"] = 0] = "POINT";
   AnnotationType2[AnnotationType2["LINE"] = 1] = "LINE";
@@ -17580,11 +19574,17 @@ var AnnotationSerializer = class {
   }
 };
 
+// node_modules/neuroglancer/lib/datasource/brainmaps/backend.js
+init_backend();
+init_shared_counterpart();
+
 // node_modules/neuroglancer/lib/datasource/brainmaps/api.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/credentials_provider/oauth2.js
 init_legacy_browser();
+init_worker_landed();
 function applyCredentials(credentials, init) {
   if (!credentials.accessToken) return init;
   const headers = new Headers(init.headers);
@@ -17641,6 +19641,7 @@ function makeRequest(instance2, credentialsProvider, path, init = {}) {
 
 // node_modules/neuroglancer/lib/datasource/brainmaps/base.js
 init_legacy_browser();
+init_worker_landed();
 var VolumeChunkEncoding = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["RAW"] = 0] = "RAW";
   VolumeChunkEncoding22[VolumeChunkEncoding22["JPEG"] = 1] = "JPEG";
@@ -17693,20 +19694,26 @@ var AnnotationSpatialIndexSourceParameters = class {
 
 // node_modules/neuroglancer/lib/skeleton/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_base();
 
 // node_modules/neuroglancer/lib/skeleton/base.js
 init_legacy_browser();
+init_worker_landed();
 var SKELETON_LAYER_RPC_ID = "skeleton/SkeletonLayer";
 
 // node_modules/neuroglancer/lib/skeleton/backend.js
-var __defProp16 = Object.defineProperty;
-var __getOwnPropDesc16 = Object.getOwnPropertyDescriptor;
-var __decorateClass15 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc16(target2, key) : target2;
+init_backend3();
+init_worker_rpc();
+var __defProp17 = Object.defineProperty;
+var __getOwnPropDesc17 = Object.getOwnPropertyDescriptor;
+var __decorateClass16 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc17(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp16(target2, key, result);
+  if (kind && result) __defProp17(target2, key, result);
   return result;
 };
 var SKELETON_CHUNK_PRIORITY = 60;
@@ -17830,7 +19837,7 @@ var SkeletonLayer = class extends withSegmentationLayerBackendState(
     });
   }
 };
-SkeletonLayer = __decorateClass15([
+SkeletonLayer = __decorateClass16([
   registerSharedObject(SKELETON_LAYER_RPC_ID)
 ], SkeletonLayer);
 function decodeSkeletonVertexPositionsAndIndices(chunk, data, endianness, vertexByteOffset, numVertices, indexByteOffset, numEdges) {
@@ -17850,6 +19857,7 @@ function decodeSkeletonVertexPositionsAndIndices(chunk, data, endianness, vertex
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/compressed_segmentation.js
 init_legacy_browser();
+init_worker_landed();
 async function decodeCompressedSegmentationChunk(chunk, signal, response) {
   signal;
   chunk.data = new Uint32Array(response);
@@ -17857,6 +19865,11 @@ async function decodeCompressedSegmentationChunk(chunk, signal, response) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/raw.js
 init_legacy_browser();
+init_worker_landed();
+init_postprocess();
+init_data_type();
+init_endian();
+init_vector();
 async function decodeRawChunk(chunk, signal, response, endianness = ENDIANNESS, byteOffset = 0, byteLength = response.byteLength) {
   signal;
   const { spec } = chunk.source;
@@ -17880,14 +19893,21 @@ async function decodeRawChunk(chunk, signal, response, endianness = ENDIANNESS, 
 }
 
 // node_modules/neuroglancer/lib/datasource/brainmaps/backend.js
-var __defProp17 = Object.defineProperty;
-var __getOwnPropDesc17 = Object.getOwnPropertyDescriptor;
-var __decorateClass16 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc17(target2, key) : target2;
+init_backend5();
+init_endian();
+init_geom();
+init_json();
+init_string();
+init_vector();
+init_worker_rpc();
+var __defProp18 = Object.defineProperty;
+var __getOwnPropDesc18 = Object.getOwnPropertyDescriptor;
+var __decorateClass17 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc18(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp17(target2, key, result);
+  if (kind && result) __defProp18(target2, key, result);
   return result;
 };
 var CHUNK_DECODERS = /* @__PURE__ */ new Map([
@@ -17975,7 +19995,7 @@ var BrainmapsVolumeChunkSource = class extends BrainmapsSource(
     await this.chunkDecoder(chunk, signal, await response.arrayBuffer());
   }
 };
-BrainmapsVolumeChunkSource = __decorateClass16([
+BrainmapsVolumeChunkSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsVolumeChunkSource);
 function getFragmentCorner(fragmentId, xBits, yBits, zBits) {
@@ -18401,7 +20421,7 @@ var BrainmapsMultiscaleMeshSource = class extends BrainmapsSource(
     );
   }
 };
-BrainmapsMultiscaleMeshSource = __decorateClass16([
+BrainmapsMultiscaleMeshSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsMultiscaleMeshSource);
 function groupFragmentsIntoBatches(ids) {
@@ -18487,7 +20507,7 @@ var BrainmapsMeshSource = class extends BrainmapsSource(
     assignMeshFragmentData(chunk, combineBatchMeshFragments(fragments));
   }
 };
-BrainmapsMeshSource = __decorateClass16([
+BrainmapsMeshSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsMeshSource);
 function decodeSkeletonChunk(chunk, response) {
@@ -18533,7 +20553,7 @@ var BrainmapsSkeletonSource = class extends BrainmapsSource(
     }).then((response) => response.arrayBuffer()).then((response) => decodeSkeletonChunk(chunk, response));
   }
 };
-BrainmapsSkeletonSource = __decorateClass16([
+BrainmapsSkeletonSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsSkeletonSource);
 var spatialAnnotationTypes = ["LOCATION", "LINE", "VOLUME"];
@@ -18797,7 +20817,7 @@ var BrainmapsAnnotationGeometryChunkSource = class extends BrainmapsSource(
     });
   }
 };
-BrainmapsAnnotationGeometryChunkSource = __decorateClass16([
+BrainmapsAnnotationGeometryChunkSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsAnnotationGeometryChunkSource);
 var BrainmapsAnnotationSource = class extends BrainmapsSource(
@@ -18908,19 +20928,27 @@ var BrainmapsAnnotationSource = class extends BrainmapsSource(
     ).then((response) => response.json());
   }
 };
-BrainmapsAnnotationSource = __decorateClass16([
+BrainmapsAnnotationSource = __decorateClass17([
   registerSharedObject()
 ], BrainmapsAnnotationSource);
 
 // node_modules/neuroglancer/lib/datasource/deepzoom/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/async_computation/decode_png_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var decodePng = asyncComputation("decodePng");
+
+// node_modules/neuroglancer/lib/datasource/deepzoom/backend.js
+init_request();
+init_backend();
 
 // node_modules/neuroglancer/lib/datasource/deepzoom/base.js
 init_legacy_browser();
+init_worker_landed();
 var ImageTileEncoding = /* @__PURE__ */ ((ImageTileEncoding2) => {
   ImageTileEncoding2[ImageTileEncoding2["JPG"] = 0] = "JPG";
   ImageTileEncoding2[ImageTileEncoding2["JPEG"] = 1] = "JPEG";
@@ -18937,14 +20965,18 @@ var ImageTileSourceParameters = class {
 };
 
 // node_modules/neuroglancer/lib/datasource/deepzoom/backend.js
-var __defProp18 = Object.defineProperty;
-var __getOwnPropDesc18 = Object.getOwnPropertyDescriptor;
-var __decorateClass17 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc18(target2, key) : target2;
+init_backend2();
+init_backend5();
+init_array();
+init_worker_rpc();
+var __defProp19 = Object.defineProperty;
+var __getOwnPropDesc19 = Object.getOwnPropertyDescriptor;
+var __decorateClass18 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc19(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp18(target2, key, result);
+  if (kind && result) __defProp19(target2, key, result);
   return result;
 };
 var DeepzoomImageTileSource = class extends WithParameters(
@@ -19033,15 +21065,19 @@ var DeepzoomImageTileSource = class extends WithParameters(
     }
   }
 };
-DeepzoomImageTileSource = __decorateClass17([
+DeepzoomImageTileSource = __decorateClass18([
   registerSharedObject()
 ], DeepzoomImageTileSource);
 
 // node_modules/neuroglancer/lib/datasource/dvid/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_shared_counterpart();
 
 // node_modules/neuroglancer/lib/datasource/dvid/api.js
 init_legacy_browser();
+init_worker_landed();
 var DVIDInstance = class {
   constructor(baseUrl, nodeKey) {
     this.baseUrl = baseUrl;
@@ -19102,6 +21138,7 @@ function fetchWithDVIDCredentials(credentialsProvider, input, init) {
 
 // node_modules/neuroglancer/lib/datasource/dvid/base.js
 init_legacy_browser();
+init_worker_landed();
 var VolumeChunkEncoding2 = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["JPEG"] = 0] = "JPEG";
   VolumeChunkEncoding22[VolumeChunkEncoding22["RAW"] = 1] = "RAW";
@@ -19116,7 +21153,7 @@ var DVIDSourceParameters = class {
   authServer;
   user;
 };
-var VolumeChunkSourceParameters2 = class extends DVIDSourceParameters {
+var VolumeChunkSourceParameters3 = class extends DVIDSourceParameters {
   dataScale;
   encoding;
   static RPC_ID = "dvid/VolumeChunkSource";
@@ -19130,6 +21167,7 @@ var MeshSourceParameters3 = class extends DVIDSourceParameters {
 
 // node_modules/neuroglancer/lib/skeleton/decode_swc_skeleton.js
 init_legacy_browser();
+init_worker_landed();
 function decodeSwcSkeletonChunk(chunk, swcStr) {
   const swcObjects = parseSwc(swcStr);
   if (swcObjects.length < 1) {
@@ -19212,14 +21250,17 @@ var PointObj = class {
 };
 
 // node_modules/neuroglancer/lib/datasource/dvid/backend.js
-var __defProp19 = Object.defineProperty;
-var __getOwnPropDesc19 = Object.getOwnPropertyDescriptor;
-var __decorateClass18 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc19(target2, key) : target2;
+init_backend5();
+init_endian();
+init_worker_rpc();
+var __defProp20 = Object.defineProperty;
+var __getOwnPropDesc20 = Object.getOwnPropertyDescriptor;
+var __decorateClass19 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc20(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp19(target2, key, result);
+  if (kind && result) __defProp20(target2, key, result);
   return result;
 };
 function DVIDSource(Base, parametersConstructor) {
@@ -19248,7 +21289,7 @@ var DVIDSkeletonSource = class extends DVIDSource(
     });
   }
 };
-DVIDSkeletonSource = __decorateClass18([
+DVIDSkeletonSource = __decorateClass19([
   registerSharedObject()
 ], DVIDSkeletonSource);
 function decodeFragmentChunk2(chunk, response) {
@@ -19292,12 +21333,12 @@ var DVIDMeshSource = class extends DVIDSource(
     ).then((response) => response.arrayBuffer()).then((response) => decodeFragmentChunk2(chunk, response));
   }
 };
-DVIDMeshSource = __decorateClass18([
+DVIDMeshSource = __decorateClass19([
   registerSharedObject()
 ], DVIDMeshSource);
 var DVIDVolumeChunkSource = class extends DVIDSource(
   VolumeChunkSource,
-  VolumeChunkSourceParameters2
+  VolumeChunkSourceParameters3
 ) {
   async download(chunk, signal) {
     const params = this.parameters;
@@ -19339,96 +21380,30 @@ var DVIDVolumeChunkSource = class extends DVIDSource(
     return decodeCompressedSegmentationChunk;
   }
 };
-DVIDVolumeChunkSource = __decorateClass18([
+DVIDVolumeChunkSource = __decorateClass19([
   registerSharedObject()
 ], DVIDVolumeChunkSource);
 
 // node_modules/neuroglancer/lib/datasource/graphene/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_lodash();
+init_backend();
+init_base();
 
 // node_modules/neuroglancer/lib/datasource/graphene/base.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/http/common.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/http/read.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/kvstore/byte_range/file_handle.js
-init_legacy_browser();
-function composeByteRangeRequest(outer, inner) {
-  if (inner === void 0) {
-    return { outer, inner: { offset: 0, length: outer.length } };
-  }
-  if ("suffixLength" in inner) {
-    const length6 = Math.min(outer.length, inner.suffixLength);
-    return {
-      outer: { offset: outer.offset + (outer.length - length6), length: length6 },
-      inner: { offset: outer.length - length6, length: length6 }
-    };
-  }
-  if (inner.offset + inner.length > outer.length) {
-    throw new Error(
-      `Requested byte range ${JSON.stringify(
-        inner
-      )} not valid for value of length ${outer.length}`
-    );
-  }
-  return {
-    outer: { offset: outer.offset + inner.offset, length: inner.length },
-    inner
-  };
-}
-function handleByteRangeRequestFromUint8Array(value, byteRange) {
-  const {
-    outer: { offset, length: length6 }
-  } = composeByteRangeRequest({ offset: 0, length: value.length }, byteRange);
-  return {
-    offset,
-    length: length6,
-    totalSize: value.length,
-    response: new Response(value.subarray(offset, offset + length6))
-  };
-}
-var FileByteRangeHandle = class {
-  constructor(base, byteRange) {
-    this.base = base;
-    this.byteRange = byteRange;
-  }
-  async stat(options) {
-    options;
-    return { totalSize: this.byteRange.length };
-  }
-  async read(options) {
-    const { byteRange } = this;
-    const { outer: outerByteRange, inner: innerByteRange } = composeByteRangeRequest(byteRange, options.byteRange);
-    if (outerByteRange.length === 0) {
-      return {
-        response: new Response(new Uint8Array(0)),
-        totalSize: byteRange.length,
-        ...innerByteRange
-      };
-    }
-    const response = await readFileHandle(this.base, {
-      signal: options.signal,
-      byteRange: outerByteRange,
-      strictByteRange: true,
-      throwIfMissing: true
-    });
-    return {
-      response: response.response,
-      totalSize: byteRange.length,
-      ...innerByteRange
-    };
-  }
-  getUrl() {
-    const { offset, length: length6 } = this.byteRange;
-    return `${this.base.getUrl()}|range:${offset}-${offset + length6}`;
-  }
-};
-
-// node_modules/neuroglancer/lib/kvstore/http/read.js
+init_worker_landed();
+init_file_handle();
+init_kvstore();
 function getRangeHeader(request) {
   if (request === void 0) return void 0;
   return `bytes=${request.offset}-${request.offset + request.length - 1}`;
@@ -19617,6 +21592,7 @@ async function stat(store, key, url, options, fetchOkImpl = fetchOk) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/http/common.js
+init_url();
 var ReadableHttpKvStore = class {
   constructor(sharedKvStoreContext, baseUrl, baseUrlForDisplay = baseUrl, fetchOkImpl = fetchOk) {
     this.sharedKvStoreContext = sharedKvStoreContext;
@@ -19680,6 +21656,8 @@ function registerProviders(registry, httpKvStoreClass) {
 }
 
 // node_modules/neuroglancer/lib/datasource/graphene/base.js
+init_url();
+init_base3();
 var GRAPHENE_MESH_NEW_SEGMENT_RPC_ID = "GrapheneMeshSource:NewSegment";
 var ChunkedGraphSourceParameters = class {
   url;
@@ -19734,9 +21712,12 @@ function getHttpSource(kvStoreContext, url) {
 
 // node_modules/neuroglancer/lib/datasource/precomputed/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
 
 // node_modules/neuroglancer/lib/datasource/precomputed/base.js
 init_legacy_browser();
+init_worker_landed();
 var VolumeChunkEncoding3 = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["RAW"] = 0] = "RAW";
   VolumeChunkEncoding22[VolumeChunkEncoding22["JPEG"] = 1] = "JPEG";
@@ -19746,7 +21727,7 @@ var VolumeChunkEncoding3 = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["JXL"] = 5] = "JXL";
   return VolumeChunkEncoding22;
 })(VolumeChunkEncoding3 || {});
-var VolumeChunkSourceParameters3 = class {
+var VolumeChunkSourceParameters4 = class {
   url;
   encoding;
   sharding;
@@ -19793,112 +21774,14 @@ var AnnotationSourceParameters2 = class {
 
 // node_modules/neuroglancer/lib/datasource/precomputed/sharded.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/chunk_manager/generic_file_source.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/util/object_id.js
-init_legacy_browser();
-var OBJECT_ID_SYMBOL = Symbol("objectId");
-var nextObjectId = 0;
-function getObjectId(x) {
-  if (x instanceof Object) {
-    let id = x[OBJECT_ID_SYMBOL];
-    if (id === void 0) {
-      id = x[OBJECT_ID_SYMBOL] = nextObjectId++;
-    }
-    return `o${id}`;
-  }
-  return "" + JSON.stringify(x);
-}
-
-// node_modules/neuroglancer/lib/chunk_manager/generic_file_source.js
-var AsyncCacheChunk = class extends Chunk {
-  asyncMemoize;
-  initialize(key) {
-    super.initialize(key);
-  }
-  freeSystemMemory() {
-    this.asyncMemoize = void 0;
-  }
-};
-var SimpleAsyncCache = class extends ChunkSourceBase {
-  constructor(chunkManager, options) {
-    super(chunkManager);
-    this.registerDisposer(chunkManager);
-    this.downloadFunction = options.get;
-    this.encodeKeyFunction = options.encodeKey ?? stableStringify;
-  }
-  encodeKeyFunction;
-  downloadFunction;
-  get(key, options) {
-    const encodedKey = this.encodeKeyFunction(key);
-    let chunk = this.chunks.get(encodedKey);
-    if (chunk === void 0) {
-      chunk = this.getNewChunk_(AsyncCacheChunk);
-      chunk.initialize(encodedKey);
-      this.addChunk(chunk);
-    }
-    if (chunk.asyncMemoize === void 0) {
-      chunk.asyncMemoize = asyncMemoizeWithProgress(async (progressOptions) => {
-        try {
-          const { data, size } = await this.downloadFunction(
-            key,
-            progressOptions
-          );
-          chunk.systemMemoryBytes = size;
-          chunk.queueManager.updateChunkState(
-            chunk,
-            ChunkState.SYSTEM_MEMORY_WORKER
-          );
-          return data;
-        } catch (e) {
-          chunk.queueManager.updateChunkState(chunk, ChunkState.FAILED);
-          throw e;
-        }
-      });
-    }
-    if (chunk.state === ChunkState.SYSTEM_MEMORY_WORKER) {
-      chunk.chunkManager.queueManager.markRecentlyUsed(chunk);
-    }
-    return chunk.asyncMemoize(options);
-  }
-};
-function makeSimpleAsyncCache(chunkManager, memoizeKey, options) {
-  return chunkManager.memoize.get(
-    `simpleAsyncCache:${memoizeKey}`,
-    () => new SimpleAsyncCache(chunkManager.addRef(), options)
-  );
-}
-function getCachedDecodedUrl(sharedKvStoreContext, url, decodeFunction, options) {
-  const cache = sharedKvStoreContext.chunkManager.memoize.get(
-    `getCachedDecodedUrl:${getObjectId(decodeFunction)}`,
-    () => {
-      const cache2 = new SimpleAsyncCache(
-        sharedKvStoreContext.chunkManager.addRef(),
-        {
-          get: async (url2, progressOptions) => {
-            const readResponse = await sharedKvStoreContext.kvStoreContext.read(
-              url2,
-              { ...progressOptions, throwIfMissing: true }
-            );
-            try {
-              return decodeFunction(readResponse, progressOptions);
-            } catch (e) {
-              throw new Error("Error reading ${url}", { cause: e });
-            }
-          }
-        }
-      );
-      cache2.registerDisposer(sharedKvStoreContext.addRef());
-      return cache2;
-    }
-  );
-  return cache.get(url, options);
-}
+init_worker_landed();
+init_generic_file_source();
+init_file_handle();
 
 // node_modules/neuroglancer/lib/kvstore/gzip/file_handle.js
 init_legacy_browser();
+init_worker_landed();
+init_gzip();
 var EXPECTED_HEADER_OVERHEAD = 100;
 var GzipFileHandle = class {
   constructor(base, format) {
@@ -19994,8 +21877,14 @@ var GzipFileHandle = class {
   }
 };
 
+// node_modules/neuroglancer/lib/datasource/precomputed/sharded.js
+init_kvstore();
+init_disposable();
+init_endian();
+
 // node_modules/neuroglancer/lib/util/hash.js
 init_legacy_browser();
+init_worker_landed();
 function murmurHash3_x86_128Mix(h) {
   h ^= h >>> 16;
   h = Math.imul(h, 2246822507);
@@ -20155,7 +22044,7 @@ function findMinishardEntry(minishardIndex, key) {
   }
   return void 0;
 }
-var ShardedKvStore = class extends RefCounted {
+var ShardedKvStore2 = class extends RefCounted {
   constructor(chunkManager, base, sharding) {
     super();
     this.base = base;
@@ -20229,12 +22118,17 @@ var ShardedKvStore = class extends RefCounted {
 function getShardedKvStoreIfApplicable(chunkSource, base, sharding) {
   if (sharding === void 0) return void 0;
   return chunkSource.registerDisposer(
-    new ShardedKvStore(chunkSource.chunkManager, base, sharding)
+    new ShardedKvStore2(chunkSource.chunkManager, base, sharding)
   );
 }
 
+// node_modules/neuroglancer/lib/datasource/precomputed/backend.js
+init_backend2();
+init_kvstore();
+
 // node_modules/neuroglancer/lib/mesh/draco/index.js
 init_legacy_browser();
+init_worker_landed();
 var decodeResult = void 0;
 var numPartitions = 0;
 var wasmModule;
@@ -20333,6 +22227,9 @@ async function decodeDraco(buffer) {
 
 // node_modules/neuroglancer/lib/skeleton/decode_precomputed_skeleton.js
 init_legacy_browser();
+init_worker_landed();
+init_data_type();
+init_endian();
 function decodeSkeletonChunk2(chunk, response, vertexAttributes) {
   const dv = new DataView(response);
   const numVertices = dv.getUint32(0, true);
@@ -20374,14 +22271,18 @@ function decodeSkeletonChunk2(chunk, response, vertexAttributes) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/compresso.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/async_computation/decode_compresso_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var decodeCompresso = asyncComputation(
   "decodeCompresso"
 );
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/compresso.js
+init_request();
 async function decodeCompressoChunk(chunk, signal, response) {
   const image = await requestAsyncComputation(
     decodeCompresso,
@@ -20394,12 +22295,17 @@ async function decodeCompressoChunk(chunk, signal, response) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/jxl.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/async_computation/decode_jxl_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var decodeJxl = asyncComputation("decodeJxl");
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/jxl.js
+init_request();
+init_postprocess();
 async function decodeJxlChunk(chunk, signal, response) {
   const chunkDataSize = chunk.chunkDataSize;
   const { uint8Array: decoded } = await requestAsyncComputation(
@@ -20417,6 +22323,9 @@ async function decodeJxlChunk(chunk, signal, response) {
 
 // node_modules/neuroglancer/lib/sliceview/backend_chunk_decoders/png.js
 init_legacy_browser();
+init_worker_landed();
+init_request();
+init_data_type();
 async function decodePngChunk(chunk, signal, response) {
   const chunkDataSize = chunk.chunkDataSize;
   const dataType = chunk.source.spec.dataType;
@@ -20443,14 +22352,18 @@ async function decodePngChunk(chunk, signal, response) {
 }
 
 // node_modules/neuroglancer/lib/datasource/precomputed/backend.js
-var __defProp20 = Object.defineProperty;
-var __getOwnPropDesc20 = Object.getOwnPropertyDescriptor;
-var __decorateClass19 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc20(target2, key) : target2;
+init_backend5();
+init_endian();
+init_geom();
+init_worker_rpc();
+var __defProp21 = Object.defineProperty;
+var __getOwnPropDesc21 = Object.getOwnPropertyDescriptor;
+var __decorateClass20 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc21(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp20(target2, key, result);
+  if (kind && result) __defProp21(target2, key, result);
   return result;
 };
 var DEBUG_MULTISCALE_INDEX = false;
@@ -20470,7 +22383,7 @@ chunkDecoders2.set(VolumeChunkEncoding3.PNG, decodePngChunk);
 chunkDecoders2.set(VolumeChunkEncoding3.JXL, decodeJxlChunk);
 var PrecomputedVolumeChunkSource = class extends WithParameters(
   WithSharedKvStoreContextCounterpart(VolumeChunkSource),
-  VolumeChunkSourceParameters3
+  VolumeChunkSourceParameters4
 ) {
   chunkDecoder = chunkDecoders2.get(this.parameters.encoding);
   kvStore = this.sharedKvStoreContext.kvStoreContext.getKvStore(
@@ -20527,7 +22440,7 @@ var PrecomputedVolumeChunkSource = class extends WithParameters(
     }
   }
 };
-PrecomputedVolumeChunkSource = __decorateClass19([
+PrecomputedVolumeChunkSource = __decorateClass20([
   registerSharedObject()
 ], PrecomputedVolumeChunkSource);
 function decodeManifestChunk2(chunk, response) {
@@ -20573,7 +22486,7 @@ var PrecomputedMeshSource = class extends WithParameters(
     decodeFragmentChunk3(chunk, await response.response.arrayBuffer());
   }
 };
-PrecomputedMeshSource = __decorateClass19([
+PrecomputedMeshSource = __decorateClass20([
   registerSharedObject()
 ], PrecomputedMeshSource);
 function decodeMultiscaleManifestChunk2(chunk, response) {
@@ -20871,7 +22784,7 @@ var PrecomputedMultiscaleMeshSource = class extends WithParameters(
     );
   }
 };
-PrecomputedMultiscaleMeshSource = __decorateClass19([
+PrecomputedMultiscaleMeshSource = __decorateClass20([
   registerSharedObject()
 ], PrecomputedMultiscaleMeshSource);
 async function fetchByUint64(chunkSource, id, signal) {
@@ -20909,7 +22822,7 @@ var PrecomputedSkeletonSource = class extends WithParameters(
     );
   }
 };
-PrecomputedSkeletonSource = __decorateClass19([
+PrecomputedSkeletonSource = __decorateClass20([
   registerSharedObject()
 ], PrecomputedSkeletonSource);
 function parseAnnotations2(buffer, parameters, propertySerializer) {
@@ -21229,7 +23142,7 @@ var PrecomputedAnnotationSpatialIndexSourceBackend = class extends WithParameter
     }
   }
 };
-PrecomputedAnnotationSpatialIndexSourceBackend = __decorateClass19([
+PrecomputedAnnotationSpatialIndexSourceBackend = __decorateClass20([
   registerSharedObject()
 ], PrecomputedAnnotationSpatialIndexSourceBackend);
 var PrecomputedAnnotationSourceBackend = class extends WithParameters(
@@ -21289,19 +23202,29 @@ var PrecomputedAnnotationSourceBackend = class extends WithParameters(
     }
   }
 };
-PrecomputedAnnotationSourceBackend = __decorateClass19([
+PrecomputedAnnotationSourceBackend = __decorateClass20([
   registerSharedObject()
 ], PrecomputedAnnotationSourceBackend);
 
 // node_modules/neuroglancer/lib/datasource/graphene/backend.js
-var __defProp21 = Object.defineProperty;
-var __getOwnPropDesc21 = Object.getOwnPropertyDescriptor;
-var __decorateClass20 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc21(target2, key) : target2;
+init_backend2();
+init_kvstore();
+init_render_layer_backend();
+init_backend4();
+init_base3();
+init_backend5();
+init_geom();
+init_json();
+init_backend3();
+init_worker_rpc();
+var __defProp22 = Object.defineProperty;
+var __getOwnPropDesc22 = Object.getOwnPropertyDescriptor;
+var __decorateClass21 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc22(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp21(target2, key, result);
+  if (kind && result) __defProp22(target2, key, result);
   return result;
 };
 function downloadFragmentWithSharding(fragmentKvStore, fragmentId, signal) {
@@ -21399,7 +23322,7 @@ var GrapheneMeshSource = class extends WithParameters(
     return getGrapheneFragmentKey(fragmentId);
   }
 };
-GrapheneMeshSource = __decorateClass20([
+GrapheneMeshSource = __decorateClass21([
   registerSharedObject()
 ], GrapheneMeshSource);
 var ChunkedGraphChunk = class extends Chunk {
@@ -21495,7 +23418,7 @@ var GrapheneChunkedGraphChunkSource = class extends WithParameters(
     });
   }
 };
-GrapheneChunkedGraphChunkSource = __decorateClass20([
+GrapheneChunkedGraphChunkSource = __decorateClass21([
   registerSharedObject()
 ], GrapheneChunkedGraphChunkSource);
 var tempChunkPosition3 = vec3_exports.create();
@@ -21643,7 +23566,7 @@ var ChunkedGraphLayer = class extends withSegmentationLayerBackendState(
     }
   }
 };
-ChunkedGraphLayer = __decorateClass20([
+ChunkedGraphLayer = __decorateClass21([
   registerSharedObject(CHUNKED_GRAPH_LAYER_RPC_ID)
 ], ChunkedGraphLayer);
 registerRPC(CHUNKED_GRAPH_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, function(x) {
@@ -21663,21 +23586,15 @@ registerRPC(GRAPHENE_MESH_NEW_SEGMENT_RPC_ID, function(x) {
 
 // node_modules/neuroglancer/lib/datasource/n5/backend.js
 init_legacy_browser();
-
-// node_modules/neuroglancer/lib/async_computation/decode_blosc_request.js
-init_legacy_browser();
-var decodeBlosc = asyncComputation(
-  "decodeBlosc"
-);
-
-// node_modules/neuroglancer/lib/async_computation/decode_zstd_request.js
-init_legacy_browser();
-var decodeZstd = asyncComputation(
-  "decodeZstd"
-);
+init_worker_landed();
+init_decode_blosc_request();
+init_decode_zstd_request();
+init_request();
+init_backend();
 
 // node_modules/neuroglancer/lib/datasource/n5/base.js
 init_legacy_browser();
+init_worker_landed();
 var VolumeChunkEncoding4 = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["RAW"] = 0] = "RAW";
   VolumeChunkEncoding22[VolumeChunkEncoding22["ZLIB"] = 1] = "ZLIB";
@@ -21686,21 +23603,26 @@ var VolumeChunkEncoding4 = /* @__PURE__ */ ((VolumeChunkEncoding22) => {
   VolumeChunkEncoding22[VolumeChunkEncoding22["ZSTD"] = 4] = "ZSTD";
   return VolumeChunkEncoding22;
 })(VolumeChunkEncoding4 || {});
-var VolumeChunkSourceParameters4 = class {
+var VolumeChunkSourceParameters5 = class {
   url;
   encoding;
   static RPC_ID = "n5/VolumeChunkSource";
 };
 
 // node_modules/neuroglancer/lib/datasource/n5/backend.js
-var __defProp22 = Object.defineProperty;
-var __getOwnPropDesc22 = Object.getOwnPropertyDescriptor;
-var __decorateClass21 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc22(target2, key) : target2;
+init_backend2();
+init_backend5();
+init_endian();
+init_gzip();
+init_worker_rpc();
+var __defProp23 = Object.defineProperty;
+var __getOwnPropDesc23 = Object.getOwnPropertyDescriptor;
+var __decorateClass22 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc23(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp22(target2, key, result);
+  if (kind && result) __defProp23(target2, key, result);
   return result;
 };
 async function decodeChunk(chunk, signal, response, encoding) {
@@ -21768,7 +23690,7 @@ async function decodeChunk(chunk, signal, response, encoding) {
 }
 var PrecomputedVolumeChunkSource2 = class extends WithParameters(
   WithSharedKvStoreContextCounterpart(VolumeChunkSource),
-  VolumeChunkSourceParameters4
+  VolumeChunkSourceParameters5
 ) {
   chunkKvStore = this.sharedKvStoreContext.kvStoreContext.getKvStore(
     this.parameters.url
@@ -21796,34 +23718,53 @@ var PrecomputedVolumeChunkSource2 = class extends WithParameters(
     );
   }
 };
-PrecomputedVolumeChunkSource2 = __decorateClass21([
+PrecomputedVolumeChunkSource2 = __decorateClass22([
   registerSharedObject()
 ], PrecomputedVolumeChunkSource2);
 
 // node_modules/neuroglancer/lib/datasource/nifti/backend.js
 init_legacy_browser();
+init_worker_landed();
 var import_nifti_reader_js = __toESM(require_nifti(), 1);
+init_backend();
+init_generic_file_source();
 
 // node_modules/neuroglancer/lib/datasource/nifti/base.js
 init_legacy_browser();
+init_worker_landed();
 var GET_NIFTI_VOLUME_INFO_RPC_ID = "nifti/getNiftiVolumeInfo";
 var VolumeSourceParameters2 = class {
   url;
   static RPC_ID = "nifti/VolumeChunkSource";
 };
 
+// node_modules/neuroglancer/lib/datasource/nifti/backend.js
+init_backend2();
+init_backend5();
+
 // node_modules/neuroglancer/lib/sliceview/volume/base.js
 init_legacy_browser();
+init_worker_landed();
+init_base3();
+init_data_type();
+init_geom();
+init_matrix();
+init_vector();
 
 // node_modules/neuroglancer/lib/datasource/nifti/backend.js
-var __defProp23 = Object.defineProperty;
-var __getOwnPropDesc23 = Object.getOwnPropertyDescriptor;
-var __decorateClass22 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc23(target2, key) : target2;
+init_endian();
+init_geom();
+init_gzip();
+init_matrix();
+init_worker_rpc();
+var __defProp24 = Object.defineProperty;
+var __getOwnPropDesc24 = Object.getOwnPropertyDescriptor;
+var __decorateClass23 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc24(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp23(target2, key, result);
+  if (kind && result) __defProp24(target2, key, result);
   return result;
 };
 var NiftiFileData = class {
@@ -22061,22 +24002,33 @@ var NiftiVolumeChunkSource = class extends WithParameters(
     );
   }
 };
-NiftiVolumeChunkSource = __decorateClass22([
+NiftiVolumeChunkSource = __decorateClass23([
   registerSharedObject()
 ], NiftiVolumeChunkSource);
 
 // node_modules/neuroglancer/lib/datasource/obj/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/async_computation/obj_mesh_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var parseOBJFromArrayBuffer = asyncComputation("parseOBJFromArrayBuffer");
+
+// node_modules/neuroglancer/lib/datasource/obj/backend.js
+init_request();
+init_generic_file_source();
 
 // node_modules/neuroglancer/lib/single_mesh/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend();
+init_backend2();
 
 // node_modules/neuroglancer/lib/single_mesh/base.js
 init_legacy_browser();
+init_worker_landed();
 var SINGLE_MESH_LAYER_RPC_ID = "single_mesh/SingleMeshLayer";
 var GET_SINGLE_MESH_INFO_RPC_ID = "single_mesh/getSingleMeshInfo";
 var SINGLE_MESH_CHUNK_KEY = "";
@@ -22089,14 +24041,17 @@ var SingleMeshSourceParametersWithInfo = class extends SingleMeshSourceParameter
 };
 
 // node_modules/neuroglancer/lib/single_mesh/backend.js
-var __defProp24 = Object.defineProperty;
-var __getOwnPropDesc24 = Object.getOwnPropertyDescriptor;
-var __decorateClass23 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc24(target2, key) : target2;
+init_json();
+init_backend3();
+init_worker_rpc();
+var __defProp25 = Object.defineProperty;
+var __getOwnPropDesc25 = Object.getOwnPropertyDescriptor;
+var __decorateClass24 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc25(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp24(target2, key, result);
+  if (kind && result) __defProp25(target2, key, result);
   return result;
 };
 var SINGLE_MESH_CHUNK_PRIORITY = 50;
@@ -22192,7 +24147,7 @@ var SingleMeshSource = class extends WithParameters(
     chunk.data = data;
   }
 };
-SingleMeshSource = __decorateClass23([
+SingleMeshSource = __decorateClass24([
   registerSharedObject()
 ], SingleMeshSource);
 var SingleMeshLayerBase = withSharedVisibility(
@@ -22227,7 +24182,7 @@ var SingleMeshLayer = class extends SingleMeshLayerBase {
     );
   }
 };
-SingleMeshLayer = __decorateClass23([
+SingleMeshLayer = __decorateClass24([
   registerSharedObject(SINGLE_MESH_LAYER_RPC_ID)
 ], SingleMeshLayer);
 registerPromiseRPC(
@@ -22263,13 +24218,18 @@ registerSingleMeshFactory("obj", {
 
 // node_modules/neuroglancer/lib/util/false.js
 init_legacy_browser();
+init_worker_landed();
 var false_default = false;
 
 // node_modules/neuroglancer/lib/datasource/render/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_request();
+init_backend();
 
 // node_modules/neuroglancer/lib/datasource/render/base.js
 init_legacy_browser();
+init_worker_landed();
 var RenderBaseSourceParameters = class {
   baseUrl;
   owner;
@@ -22288,14 +24248,19 @@ var TileChunkSourceParameters = class extends RenderSourceParameters {
 };
 
 // node_modules/neuroglancer/lib/datasource/render/backend.js
-var __defProp25 = Object.defineProperty;
-var __getOwnPropDesc25 = Object.getOwnPropertyDescriptor;
-var __decorateClass24 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc25(target2, key) : target2;
+init_postprocess();
+init_backend5();
+init_endian();
+init_geom();
+init_worker_rpc();
+var __defProp26 = Object.defineProperty;
+var __getOwnPropDesc26 = Object.getOwnPropertyDescriptor;
+var __decorateClass25 = (decorators, target2, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc26(target2, key) : target2;
   for (var i = decorators.length - 1, decorator; i >= 0; i--)
     if (decorator = decorators[i])
       result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp25(target2, key, result);
+  if (kind && result) __defProp26(target2, key, result);
   return result;
 };
 var chunkDecoders3 = /* @__PURE__ */ new Map();
@@ -22403,18 +24368,24 @@ var TileChunkSource = class extends WithParameters(
     await this.chunkDecoder(chunk, signal, await response.arrayBuffer());
   }
 };
-TileChunkSource = __decorateClass24([
+TileChunkSource = __decorateClass25([
   registerSharedObject()
 ], TileChunkSource);
 
 // node_modules/neuroglancer/lib/datasource/vtk/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_request();
 
 // node_modules/neuroglancer/lib/async_computation/vtk_mesh_request.js
 init_legacy_browser();
+init_worker_landed();
+init_async_computation();
 var parseVTKFromArrayBuffer = asyncComputation("parseVTKFromArrayBuffer");
 
 // node_modules/neuroglancer/lib/datasource/vtk/backend.js
+init_generic_file_source();
+init_data_type();
 async function parse2(readResponse, progressOptions) {
   const buffer = await readResponse.response.arrayBuffer();
   return requestAsyncComputation(
@@ -22455,697 +24426,21 @@ registerSingleMeshFactory("vtk", {
   }
 });
 
-// node_modules/neuroglancer/lib/datasource/zarr/backend.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/blosc/decode.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/decode.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/index.js
-init_legacy_browser();
-var CodecKind = /* @__PURE__ */ ((CodecKind2) => {
-  CodecKind2[CodecKind2["arrayToArray"] = 0] = "arrayToArray";
-  CodecKind2[CodecKind2["arrayToBytes"] = 1] = "arrayToBytes";
-  CodecKind2[CodecKind2["bytesToBytes"] = 2] = "bytesToBytes";
-  return CodecKind2;
-})(CodecKind || {});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/decode.js
-var codecRegistry = {
-  [CodecKind.arrayToArray]: /* @__PURE__ */ new Map(),
-  [CodecKind.arrayToBytes]: /* @__PURE__ */ new Map(),
-  [CodecKind.bytesToBytes]: /* @__PURE__ */ new Map(),
-  sharding: /* @__PURE__ */ new Map()
-};
-function registerCodec(codec) {
-  if (codec.kind === CodecKind.arrayToBytes && "getShardedKvStore" in codec) {
-    codecRegistry.sharding.set(codec.name, codec);
-  } else {
-    codecRegistry[codec.kind].set(codec.name, codec);
-  }
-}
-async function decodeArray(codecs, encoded, signal) {
-  const bytesToBytes = codecs[CodecKind.bytesToBytes];
-  for (let i = bytesToBytes.length; i--; ) {
-    const codec = bytesToBytes[i];
-    const impl = codecRegistry[CodecKind.bytesToBytes].get(codec.name);
-    if (impl === void 0) {
-      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
-    }
-    encoded = await impl.decode(codec.configuration, encoded, signal);
-  }
-  let decoded;
-  {
-    const codec = codecs[CodecKind.arrayToBytes];
-    const impl = codecRegistry[CodecKind.arrayToBytes].get(codec.name);
-    if (impl === void 0) {
-      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
-    }
-    decoded = await impl.decode(
-      codec.configuration,
-      codecs.arrayInfo[codecs.arrayInfo.length - 1],
-      encoded,
-      signal
-    );
-  }
-  const arrayToArray = codecs[CodecKind.arrayToArray];
-  for (let i = arrayToArray.length; i--; ) {
-    const codec = arrayToArray[i];
-    const impl = codecRegistry[CodecKind.arrayToArray].get(codec.name);
-    if (impl === void 0) {
-      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
-    }
-    decoded = await impl.decode(
-      codec.configuration,
-      codecs.arrayInfo[i],
-      decoded,
-      signal
-    );
-  }
-  return decoded;
-}
-function applySharding(chunkManager, codecs, baseKvStore) {
-  let kvStore = baseKvStore.store;
-  let curCodecs = codecs;
-  while (true) {
-    const { shardingInfo } = curCodecs;
-    if (shardingInfo === void 0) break;
-    const codec = curCodecs[CodecKind.arrayToBytes];
-    const impl = codecRegistry.sharding.get(codec.name);
-    if (impl === void 0) {
-      throw new Error(`Unsupported codec: ${JSON.stringify(codec.name)}`);
-    }
-    kvStore = impl.getShardedKvStore(
-      codec.configuration,
-      chunkManager,
-      kvStore
-    );
-    curCodecs = shardingInfo.subChunkCodecs;
-  }
-  const decodeCodecs = curCodecs;
-  const pathPrefix = baseKvStore.path;
-  function getChunkKey(chunkGridPosition, baseKey) {
-    let key = pathPrefix + baseKey;
-    const rank = chunkGridPosition.length;
-    let curCodecs2 = codecs;
-    while (curCodecs2.shardingInfo !== void 0) {
-      const layoutInfo = codecs.layoutInfo[codecs.layoutInfo.length - 1];
-      const { physicalToLogicalDimension, readChunkShape } = layoutInfo;
-      const { subChunkShape, subChunkGridShape, subChunkCodecs } = curCodecs2.shardingInfo;
-      const subChunk = new Array(rank);
-      for (let fOrderPhysicalDim = 0; fOrderPhysicalDim < rank; ++fOrderPhysicalDim) {
-        const subChunkDim = physicalToLogicalDimension[rank - 1 - fOrderPhysicalDim];
-        subChunk[subChunkDim] = Math.floor(
-          chunkGridPosition[fOrderPhysicalDim] * readChunkShape[subChunkDim] / subChunkShape[subChunkDim]
-        ) % subChunkGridShape[subChunkDim];
-      }
-      key = { base: key, subChunk };
-      curCodecs2 = subChunkCodecs;
-    }
-    return key;
-  }
-  return { kvStore, getChunkKey, decodeCodecs };
-}
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/blosc/decode.js
-registerCodec({
-  name: "blosc",
-  kind: CodecKind.bytesToBytes,
-  decode(configuration, encoded, signal) {
-    configuration;
-    return requestAsyncComputation(
-      decodeBlosc,
-      signal,
-      [encoded.buffer],
-      encoded
-    );
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/zstd/decode.js
-init_legacy_browser();
-registerCodec({
-  name: "zstd",
-  kind: CodecKind.bytesToBytes,
-  decode(configuration, encoded, signal) {
-    configuration;
-    return requestAsyncComputation(
-      decodeZstd,
-      signal,
-      [encoded.buffer],
-      encoded
-    );
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/bytes/decode.js
-init_legacy_browser();
-registerCodec({
-  name: "bytes",
-  kind: CodecKind.arrayToBytes,
-  async decode(configuration, decodedArrayInfo, encoded, signal) {
-    signal;
-    const { dataType, chunkShape } = decodedArrayInfo;
-    const numElements = chunkShape.reduce((a, b) => a * b, 1);
-    const bytesPerElement = DATA_TYPE_BYTES[dataType];
-    const expectedBytes = numElements * bytesPerElement;
-    if (encoded.byteLength !== expectedBytes) {
-      throw new Error(
-        `Raw-format chunk is ${encoded.byteLength} bytes, but ${numElements} * ${bytesPerElement} = ${expectedBytes} bytes are expected.`
-      );
-    }
-    const data = makeDataTypeArrayView(
-      dataType,
-      encoded.buffer,
-      encoded.byteOffset,
-      encoded.byteLength
-    );
-    convertEndian(data, configuration.endian, bytesPerElement);
-    return data;
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/crc32c/decode.js
-init_legacy_browser();
-var checksumSize = 4;
-registerCodec({
-  name: "crc32c",
-  kind: CodecKind.bytesToBytes,
-  async decode(configuration, encoded, signal) {
-    configuration;
-    signal;
-    if (encoded.length < checksumSize) {
-      throw new Error(
-        `Expected buffer of size at least ${checksumSize} bytes but received: ${encoded.length} bytes`
-      );
-    }
-    return encoded.subarray(0, encoded.length - checksumSize);
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/base.js
-init_legacy_browser();
-var VolumeChunkSourceParameters5 = class {
-  url;
-  metadata;
-  static RPC_ID = "zarr/VolumeChunkSource";
-};
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/gzip/decode.js
-init_legacy_browser();
-for (const [name, compressionFormat] of [
-  ["gzip", "gzip"],
-  ["zlib", "deflate"]
-]) {
-  registerCodec({
-    name,
-    kind: CodecKind.bytesToBytes,
-    async decode(configuration, encoded, signal) {
-      configuration;
-      return new Uint8Array(
-        await decodeGzip(encoded, compressionFormat, signal)
-      );
-    }
-  });
-}
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/decode.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/resolve.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/resolve.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/metadata/parse_util.js
-init_legacy_browser();
-function parseNameAndConfiguration(obj, parseName, parseConfiguration) {
-  verifyObject(obj);
-  const name = verifyObjectProperty(
-    obj,
-    "name",
-    (value) => parseName(verifyString(value))
-  );
-  const configuration = verifyObjectProperty(obj, "configuration", (value) => {
-    if (value === void 0) {
-      value = {};
-    } else {
-      verifyObject(value);
-    }
-    return parseConfiguration(value, name);
-  });
-  return { name, configuration };
-}
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/resolve.js
-function getCodecResolver(obj) {
-  const { name: resolver, configuration } = parseNameAndConfiguration(
-    obj,
-    (name) => {
-      const resolver2 = codecRegistry2.get(name);
-      if (resolver2 === void 0) {
-        throw new Error(`Unknown codec: ${JSON.stringify(name)}`);
-      }
-      return resolver2;
-    },
-    (configuration2) => configuration2
-  );
-  return { resolver, configuration };
-}
-var codecRegistry2 = /* @__PURE__ */ new Map();
-function registerCodec2(resolver) {
-  codecRegistry2.set(resolver.name, resolver);
-}
-function parseCodecChainSpec(obj, decodedArrayInfo) {
-  const arrayToArray = [];
-  const arrayInfo = [];
-  const layoutInfo = [];
-  const encodedSize = [];
-  arrayInfo.push(decodedArrayInfo);
-  const codecSpecs = parseArray(obj, getCodecResolver);
-  const numCodecs = codecSpecs.length;
-  let i = 0;
-  for (; i < numCodecs; ++i) {
-    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
-    if (resolver.kind !== CodecKind.arrayToArray) {
-      break;
-    }
-    const arrayResolver = resolver;
-    const { configuration, encodedArrayInfo } = arrayResolver.resolve(
-      initialConfiguration,
-      decodedArrayInfo
-    );
-    arrayInfo.push(encodedArrayInfo);
-    decodedArrayInfo = encodedArrayInfo;
-    arrayToArray.push({
-      kind: CodecKind.arrayToArray,
-      name: resolver.name,
-      configuration
-    });
-  }
-  if (i === numCodecs || codecSpecs[i].resolver.kind !== CodecKind.arrayToBytes) {
-    throw new Error("Missing array -> bytes codec");
-  }
-  const {
-    codecSpec: arrayToBytes,
-    layoutInfo: finalLayoutInfo,
-    encodedSize: initialEncodedSize,
-    shardingInfo
-  } = (() => {
-    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
-    const arrayToBytesResolver = resolver;
-    const { configuration, shardingInfo: shardingInfo2, encodedSize: encodedSize2 } = arrayToBytesResolver.resolve(initialConfiguration, decodedArrayInfo);
-    if (shardingInfo2 !== void 0) {
-      if (i + 1 !== numCodecs) {
-        throw new Error(
-          "bytes -> bytes codecs not supported following sharding codec"
-        );
-      }
-    }
-    const layoutInfo2 = arrayToBytesResolver.getDecodedArrayLayoutInfo(
-      configuration,
-      decodedArrayInfo
-    );
-    const codecSpec = {
-      name: resolver.name,
-      kind: CodecKind.arrayToBytes,
-      configuration
-    };
-    return { codecSpec, layoutInfo: layoutInfo2, encodedSize: encodedSize2, shardingInfo: shardingInfo2 };
-  })();
-  layoutInfo[i] = finalLayoutInfo;
-  encodedSize.push(initialEncodedSize);
-  const curEncodedSize = initialEncodedSize;
-  const bytesToBytes = [];
-  ++i;
-  while (i < numCodecs) {
-    const { resolver, configuration: initialConfiguration } = codecSpecs[i];
-    if (resolver.kind !== CodecKind.bytesToBytes) {
-      throw new Error(
-        `Expected bytes -> bytes codec, but received ${JSON.stringify(
-          resolver.name
-        )} of kind ${CodecKind[resolver.kind]}`
-      );
-    }
-    const bytesResolver = resolver;
-    const { configuration, encodedSize: newEncodedSize } = bytesResolver.resolve(initialConfiguration, curEncodedSize);
-    bytesToBytes.push({
-      name: resolver.name,
-      kind: resolver.kind,
-      configuration
-    });
-    encodedSize.push(newEncodedSize);
-    ++i;
-  }
-  for (let j = arrayToArray.length - 1; j >= 0; --j) {
-    layoutInfo[j] = codecSpecs[j].resolver.getDecodedArrayLayoutInfo(
-      arrayToArray[j].configuration,
-      arrayInfo[j],
-      layoutInfo[j + 1]
-    );
-  }
-  return {
-    [CodecKind.arrayToArray]: arrayToArray,
-    [CodecKind.arrayToBytes]: arrayToBytes,
-    [CodecKind.bytesToBytes]: bytesToBytes,
-    arrayInfo,
-    layoutInfo,
-    shardingInfo,
-    encodedSize
-  };
-}
-
-// node_modules/neuroglancer/lib/datasource/zarr/metadata/parse.js
-init_legacy_browser();
-
-// node_modules/neuroglancer/lib/datasource/zarr/metadata/index.js
-init_legacy_browser();
-var ChunkKeyEncoding = /* @__PURE__ */ ((ChunkKeyEncoding22) => {
-  ChunkKeyEncoding22[ChunkKeyEncoding22["DEFAULT"] = 0] = "DEFAULT";
-  ChunkKeyEncoding22[ChunkKeyEncoding22["V2"] = 1] = "V2";
-  return ChunkKeyEncoding22;
-})(ChunkKeyEncoding || {});
-
-// node_modules/neuroglancer/lib/datasource/zarr/metadata/parse.js
-function parseChunkShape(obj, rank) {
-  return parseFixedLengthArray(new Array(rank), obj, (x) => {
-    if (typeof x !== "number" || !Number.isInteger(x) || x <= 0) {
-      throw new Error(
-        `Expected positive integer, but received: ${JSON.stringify(x)}`
-      );
-    }
-    return x;
-  });
-}
-var UNITS = /* @__PURE__ */ new Map([
-  ["", { unit: "", scale: 1 }],
-  ["angstrom", { unit: "m", scale: 1e-10 }],
-  ["foot", { unit: "m", scale: 0.3048 }],
-  ["inch", { unit: "m", scale: 0.0254 }],
-  ["mile", { unit: "m", scale: 1609.34 }],
-  // eslint-disable-next-line no-loss-of-precision
-  ["parsec", { unit: "m", scale: 30856775814913670 }],
-  ["yard", { unit: "m", scale: 0.9144 }],
-  ["minute", { unit: "s", scale: 60 }],
-  ["hour", { unit: "s", scale: 60 * 60 }],
-  ["day", { unit: "s", scale: 60 * 60 * 24 }]
-]);
-for (const unit of ["meter", "second"]) {
-  for (const siPrefix of allSiPrefixes) {
-    const { longPrefix, prefix } = siPrefix;
-    if (longPrefix === void 0) continue;
-    const unitInfo = { unit: unit[0], scale: 10 ** siPrefix.exponent };
-    UNITS.set(`${longPrefix}${unit}`, unitInfo);
-    UNITS.set(`${prefix}${unit[0]}`, unitInfo);
-  }
-}
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/resolve.js
-var ShardIndexLocation = /* @__PURE__ */ ((ShardIndexLocation2) => {
-  ShardIndexLocation2[ShardIndexLocation2["START"] = 0] = "START";
-  ShardIndexLocation2[ShardIndexLocation2["END"] = 1] = "END";
-  return ShardIndexLocation2;
-})(ShardIndexLocation || {});
-registerCodec2({
-  name: "sharding_indexed",
-  kind: CodecKind.arrayToBytes,
-  resolve(configuration, decodedArrayInfo) {
-    verifyObject(configuration);
-    const subChunkShape = verifyObjectProperty(
-      configuration,
-      "chunk_shape",
-      (value) => parseChunkShape(value, decodedArrayInfo.chunkShape.length)
-    );
-    const indexLocation = verifyOptionalObjectProperty(
-      configuration,
-      "index_location",
-      (x) => verifyEnumString(x, ShardIndexLocation, /^[a-z]+$/),
-      1
-      /* END */
-    );
-    const subChunkGridShape = Array.from(
-      decodedArrayInfo.chunkShape,
-      (outerSize, i) => {
-        const innerSize = subChunkShape[i];
-        if (outerSize % innerSize !== 0) {
-          throw new Error(
-            `sub-chunk shape of ${JSON.stringify(
-              innerSize
-            )} does not evenly divide outer chunk shape of ${JSON.stringify(
-              decodedArrayInfo.chunkShape
-            )}`
-          );
-        }
-        return outerSize / innerSize;
-      }
-    );
-    const indexShape = Array.from(subChunkGridShape);
-    indexShape.push(2);
-    const indexCodecs = verifyObjectProperty(
-      configuration,
-      "index_codecs",
-      (value) => parseCodecChainSpec(value, {
-        dataType: DataType.UINT64,
-        chunkShape: indexShape
-      })
-    );
-    if (indexCodecs.encodedSize[indexCodecs.encodedSize.length - 1] === void 0) {
-      throw new Error("index_codecs must specify fixed-size encoding");
-    }
-    const subChunkCodecs = verifyObjectProperty(
-      configuration,
-      "codecs",
-      (value) => parseCodecChainSpec(value, {
-        dataType: decodedArrayInfo.dataType,
-        chunkShape: subChunkShape
-      })
-    );
-    return {
-      configuration: {
-        indexCodecs,
-        subChunkCodecs,
-        subChunkShape,
-        subChunkGridShape,
-        indexLocation
-      },
-      shardingInfo: { subChunkShape, subChunkGridShape, subChunkCodecs }
-    };
-  },
-  getDecodedArrayLayoutInfo(configuration, decodedArrayInfo) {
-    decodedArrayInfo;
-    return configuration.subChunkCodecs.layoutInfo[0];
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/sharding_indexed/decode.js
-var MISSING_VALUE = BigInt("18446744073709551615");
-function makeIndexCache(chunkManager, base, configuration) {
-  return new SimpleAsyncCache(chunkManager.addRef(), {
-    get: async (key, progressOptions) => {
-      const { indexCodecs } = configuration;
-      const encodedSize = indexCodecs.encodedSize[indexCodecs.encodedSize.length - 1];
-      let byteRange;
-      switch (configuration.indexLocation) {
-        case ShardIndexLocation.START:
-          byteRange = { offset: 0, length: encodedSize };
-          break;
-        case ShardIndexLocation.END:
-          byteRange = { suffixLength: encodedSize };
-          break;
-      }
-      const response = await base.read(key, {
-        ...progressOptions,
-        byteRange
-      });
-      if (response === void 0) {
-        return { size: 0, data: void 0 };
-      }
-      const index = await decodeArray(
-        configuration.indexCodecs,
-        new Uint8Array(await response.response.arrayBuffer()),
-        progressOptions.signal
-      );
-      return {
-        size: index.byteLength,
-        data: new BigUint64Array(
-          index.buffer,
-          index.byteOffset,
-          index.byteLength / 8
-        )
-      };
-    }
-  });
-}
-var ShardedKvStore2 = class extends RefCounted {
-  constructor(configuration, chunkManager, base) {
-    super();
-    this.configuration = configuration;
-    this.base = base;
-    this.indexCache = this.registerDisposer(
-      makeIndexCache(chunkManager, base, configuration)
-    );
-    const { subChunkGridShape } = this.configuration;
-    const rank = subChunkGridShape.length;
-    const physicalToLogicalIndexDimension = this.configuration.indexCodecs.layoutInfo[0].physicalToLogicalDimension;
-    const indexStrides = this.indexStrides = new Array(rank + 1);
-    let stride = 1;
-    for (let physicalIndexDim = rank; physicalIndexDim >= 0; --physicalIndexDim) {
-      const logicalIndexDim = physicalToLogicalIndexDimension[physicalIndexDim];
-      indexStrides[logicalIndexDim] = stride;
-      stride *= logicalIndexDim === rank ? 2 : subChunkGridShape[logicalIndexDim];
-    }
-  }
-  indexCache;
-  indexStrides;
-  async findKey(key, progressOptions) {
-    const shardIndex = await this.indexCache.get(key.base, progressOptions);
-    if (shardIndex === void 0) {
-      return void 0;
-    }
-    const rank = this.configuration.subChunkShape.length;
-    const { subChunk } = key;
-    const { indexStrides } = this;
-    let indexOffset = 0;
-    for (let logicalIndexDim = 0; logicalIndexDim < rank; ++logicalIndexDim) {
-      const pos = subChunk[logicalIndexDim];
-      indexOffset += pos * indexStrides[logicalIndexDim];
-    }
-    const dataOffset = shardIndex[indexOffset];
-    const dataLength = shardIndex[indexOffset + indexStrides[rank]];
-    if (dataOffset === MISSING_VALUE && dataLength === MISSING_VALUE) {
-      return void 0;
-    }
-    return {
-      offset: Number(dataOffset),
-      length: Number(dataLength)
-    };
-  }
-  async stat(key, options) {
-    const fullByteRange = await this.findKey(key, options);
-    if (fullByteRange === void 0) return void 0;
-    return { totalSize: fullByteRange.length };
-  }
-  async read(key, options) {
-    const fullByteRange = await this.findKey(key, options);
-    if (fullByteRange === void 0) return void 0;
-    return new FileByteRangeHandle(
-      new KvStoreFileHandle(this.base, key.base),
-      fullByteRange
-    ).read(options);
-  }
-  getUrl(key) {
-    return `subchunk ${JSON.stringify(key.subChunk)} within shard ${this.base.getUrl(key.base)}`;
-  }
-  get supportsOffsetReads() {
-    return true;
-  }
-  get supportsSuffixReads() {
-    return true;
-  }
-};
-registerCodec({
-  name: "sharding_indexed",
-  kind: CodecKind.arrayToBytes,
-  getShardedKvStore(configuration, chunkManager, base) {
-    return new ShardedKvStore2(configuration, chunkManager, base);
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/codec/transpose/decode.js
-init_legacy_browser();
-registerCodec({
-  name: "transpose",
-  kind: CodecKind.arrayToArray,
-  async decode(configuration, decodedArrayInfo, encoded, signal) {
-    decodedArrayInfo;
-    signal;
-    configuration;
-    return encoded;
-  }
-});
-
-// node_modules/neuroglancer/lib/datasource/zarr/backend.js
-var __defProp26 = Object.defineProperty;
-var __getOwnPropDesc26 = Object.getOwnPropertyDescriptor;
-var __decorateClass25 = (decorators, target2, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc26(target2, key) : target2;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target2, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp26(target2, key, result);
-  return result;
-};
-var ZarrVolumeChunkSource = class extends WithParameters(
-  WithSharedKvStoreContextCounterpart(VolumeChunkSource),
-  VolumeChunkSourceParameters5
-) {
-  chunkKvStore = applySharding(
-    this.chunkManager,
-    this.parameters.metadata.codecs,
-    this.sharedKvStoreContext.kvStoreContext.getKvStore(this.parameters.url)
-  );
-  async download(chunk, signal) {
-    chunk.chunkDataSize = this.spec.chunkDataSize;
-    const { parameters } = this;
-    const { chunkGridPosition } = chunk;
-    const { metadata } = parameters;
-    let baseKey = "";
-    const rank = this.spec.rank;
-    const { physicalToLogicalDimension } = metadata.codecs.layoutInfo[0];
-    let sep;
-    if (metadata.chunkKeyEncoding === ChunkKeyEncoding.DEFAULT) {
-      baseKey += "c";
-      sep = metadata.dimensionSeparator;
-    } else {
-      sep = "";
-      if (rank === 0) {
-        baseKey += "0";
-      }
-    }
-    const keyCoords = new Array(rank);
-    const { readChunkShape } = metadata.codecs.layoutInfo[0];
-    const { chunkShape } = metadata;
-    for (let fOrderPhysicalDim = 0; fOrderPhysicalDim < rank; ++fOrderPhysicalDim) {
-      const decodedDim = physicalToLogicalDimension[rank - 1 - fOrderPhysicalDim];
-      keyCoords[decodedDim] = Math.floor(
-        chunkGridPosition[fOrderPhysicalDim] * readChunkShape[decodedDim] / chunkShape[decodedDim]
-      );
-    }
-    for (let i = 0; i < rank; ++i) {
-      baseKey += `${sep}${keyCoords[i]}`;
-      sep = metadata.dimensionSeparator;
-    }
-    const { chunkKvStore } = this;
-    const response = await chunkKvStore.kvStore.read(
-      chunkKvStore.getChunkKey(chunkGridPosition, baseKey),
-      { signal }
-    );
-    if (response !== void 0) {
-      const decoded = await decodeArray(
-        chunkKvStore.decodeCodecs,
-        new Uint8Array(await response.response.arrayBuffer()),
-        signal
-      );
-      await postProcessRawData(chunk, signal, decoded);
-    }
-  }
-};
-ZarrVolumeChunkSource = __decorateClass25([
-  registerSharedObject()
-], ZarrVolumeChunkSource);
+// node_modules/neuroglancer/lib/datasource/enabled_backend_modules.js
+init_backend6();
 
 // node_modules/neuroglancer/lib/kvstore/enabled_backend_modules.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/byte_range/register.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/byte_range/index.js
 init_legacy_browser();
+init_worker_landed();
+init_file_handle();
 function parseKey(key) {
   const m = key.match(/^([0-9]+)-([0-9]+)$/);
   if (m !== null) {
@@ -23187,6 +24482,9 @@ var ByteRangeKvStore = class {
 };
 
 // node_modules/neuroglancer/lib/kvstore/byte_range/register.js
+init_kvstore();
+init_register();
+init_url();
 function byteRangeProvider() {
   return {
     scheme: "byte-range",
@@ -23208,9 +24506,14 @@ frontendBackendIsomorphicKvStoreProviderRegistry.registerKvStoreAdapterProvider(
 
 // node_modules/neuroglancer/lib/kvstore/gcs/register.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/gcs/index.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
+init_json();
+init_progress_listener();
 var __knownSymbol = (name, symbol) => (symbol = Symbol[name]) ? symbol : Symbol.for("Symbol." + name);
 var __typeError = (msg) => {
   throw TypeError(msg);
@@ -23327,6 +24630,7 @@ var GcsKvStore = class {
 };
 
 // node_modules/neuroglancer/lib/kvstore/gcs/register.js
+init_register();
 function gcsProvider(_context) {
   return {
     scheme: "gs",
@@ -23350,9 +24654,12 @@ frontendBackendIsomorphicKvStoreProviderRegistry.registerBaseKvStoreProvider(
 
 // node_modules/neuroglancer/lib/kvstore/gzip/register.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/gzip/index.js
 init_legacy_browser();
+init_worker_landed();
+init_gzip();
 var GzipKvStore = class {
   constructor(base, scheme, format) {
     this.base = base;
@@ -23404,6 +24711,9 @@ function registerAutoDetect(registry) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/gzip/register.js
+init_kvstore();
+init_register();
+init_url();
 function gzipProvider(scheme, format) {
   return {
     scheme,
@@ -23430,12 +24740,19 @@ registerAutoDetect(
 
 // node_modules/neuroglancer/lib/kvstore/http/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
 
 // node_modules/neuroglancer/lib/kvstore/http/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/proxy.js
 init_legacy_browser();
+init_worker_landed();
+init_shared_common2();
+init_url();
+init_worker_rpc();
 registerPromiseRPC(
   STAT_RPC_ID,
   async function(options, progressOptions) {
@@ -23552,12 +24869,19 @@ registerProviders(backendOnlyKvStoreProviderRegistry, HttpKvStore);
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/list.js
 init_legacy_browser();
+init_worker_landed();
+init_kvstore();
+init_array();
+init_string();
 function getListResponseFromSnapshot(snapshot, prefix) {
   const { nodes } = snapshot;
   const startIndex = binarySearchLowerBound(
@@ -23608,12 +24932,16 @@ function getListResponseFromSnapshot(snapshot, prefix) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/metadata_cache.js
 init_legacy_browser();
+init_worker_landed();
+init_generic_file_source();
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/manifest.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/valibot/dist/index.mjs
 init_legacy_browser();
+init_worker_landed();
 var store$4;
 var DEFAULT_CONFIG = {
   lang: void 0,
@@ -24358,15 +25686,19 @@ function pipe(...pipe$1) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/decode_utils.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/msgpackr/index.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/msgpackr/pack.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/msgpackr/unpack.js
 init_legacy_browser();
+init_worker_landed();
 var decoder;
 try {
   decoder = new TextDecoder();
@@ -26510,9 +27842,15 @@ var RESERVE_START_SPACE = 2048;
 
 // node_modules/msgpackr/iterators.js
 init_legacy_browser();
+init_worker_landed();
+
+// node_modules/neuroglancer/lib/kvstore/icechunk/decode_utils.js
+init_decode_zstd_request();
+init_request();
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/crockford_base32.js
 init_legacy_browser();
+init_worker_landed();
 var ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function crockfordBase32Encode(input) {
   const numBytes = input.length;
@@ -26680,6 +28018,7 @@ function parseDecodedMsgpack(schema, name, decoded) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/manifest.js
+init_url();
 var MANIFEST_FILE_TYPE = 2;
 var InlineChunkPayload = strictObject({
   Inline: instance(Uint8Array)
@@ -26736,6 +28075,8 @@ function getManifestUrl(baseUrl, id) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/ref.js
 init_legacy_browser();
+init_worker_landed();
+init_json();
 function decodeRef(obj) {
   verifyObject(obj);
   if (Object.keys(obj).length !== 1) {
@@ -26760,6 +28101,10 @@ function isBranchRef(name) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/snapshot.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
+init_array();
+init_string();
 var SNAPSHOT_FILE_TYPE = 1;
 var SnapshotId = DataId12;
 var AttributesId = DataId12;
@@ -26941,6 +28286,8 @@ function getSnapshotUrl(baseUrl, id) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/metadata_cache.js
+init_url();
+init_progress_listener();
 var __knownSymbol2 = (name, symbol) => (symbol = Symbol[name]) ? symbol : Symbol.for("Symbol." + name);
 var __typeError2 = (msg) => {
   throw TypeError(msg);
@@ -27172,6 +28519,9 @@ function resolveRefSpec(sharedKvStoreContext, url, refSpec, options) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/read.js
 init_legacy_browser();
+init_worker_landed();
+init_file_handle();
+init_url();
 function resolveIcechunkPath(snapshot, path) {
   let nodePath;
   let chunk;
@@ -27308,6 +28658,8 @@ async function read3(sharedKvStoreContext, baseUrl, snapshot, path, options) {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/url.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
 var BRANCH_PREFIX = "branch.";
 var TAG_PREFIX = "tag.";
 function getIcechunkUrl(options, key) {
@@ -27426,6 +28778,9 @@ var IcechunkKvStore = class {
 
 // node_modules/neuroglancer/lib/kvstore/icechunk/complete_url.js
 init_legacy_browser();
+init_worker_landed();
+init_kvstore();
+init_url();
 async function completeIcechunkUrl(_sharedKvStoreContext, options) {
   const { url } = options;
   const suffix = url.suffix ?? "";
@@ -27513,9 +28868,13 @@ backendOnlyKvStoreProviderRegistry.registerKvStoreAdapterProvider(
 
 // node_modules/neuroglancer/lib/kvstore/middleauth/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
 
 // node_modules/neuroglancer/lib/kvstore/middleauth/common.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
 var SCHEME_PREFIX = "middleauth+";
 function getMiddleAuthCredentialsProvider(credentialsManager, url) {
   return credentialsManager.getCredentialsProvider(
@@ -27565,6 +28924,8 @@ registerProviders2(backendOnlyKvStoreProviderRegistry, HttpKvStore);
 
 // node_modules/neuroglancer/lib/kvstore/ngauth/register.js
 init_legacy_browser();
+init_worker_landed();
+init_register();
 function getNgauthCredentialsProvider(credentialsManager, authServer, bucket) {
   return false_default ? credentialsManager.getCredentialsProvider("gcs", { bucket }) : credentialsManager.getCredentialsProvider("ngauth_gcs", {
     authServer,
@@ -27609,22 +28970,32 @@ for (const scheme of ["http", "https"]) {
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/list.js
 init_legacy_browser();
+init_worker_landed();
+init_kvstore();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/btree.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/decode_utils.js
 init_legacy_browser();
+init_worker_landed();
 var import_crc32c = __toESM(require_crc32c(), 1);
+init_decode_zstd_request();
+init_request();
 
 // node_modules/neuroglancer/lib/util/leb128.js
 init_legacy_browser();
+init_worker_landed();
 function decodeLeb128(array2, offset) {
   let result = 0;
   let shift = 0;
@@ -27833,9 +29204,11 @@ function readStructOfArrays(members, validate) {
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/indirect_data_reference.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/key.js
 init_legacy_browser();
+init_worker_landed();
 var EMPTY_KEY = new Uint8Array(0);
 function compareArraysLexicographically(a, b) {
   const minLength = Math.min(a.length, b.length);
@@ -27875,6 +29248,7 @@ function keyStartsWith(key, prefix) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/indirect_data_reference.js
+init_url();
 function readDataFileId(reader, options) {
   const { dataFileTable } = options;
   const index = readLeb128(reader);
@@ -27994,6 +29368,7 @@ function readDataFileTable(reader, transitiveBaseUrl) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/btree.js
+init_array();
 var BTREE_NODE_MAGIC_VALUE = 215687390;
 var BTREE_NODE_FORMAT_VERSION = 0;
 var MAX_BTREE_NODE_ARITY = 1024 * 1024;
@@ -28279,12 +29654,18 @@ function findBtreeInteriorEntry(entries, key) {
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/metadata_cache.js
 init_legacy_browser();
+init_worker_landed();
+init_generic_file_source();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/manifest.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/version_tree.js
 init_legacy_browser();
+init_worker_landed();
+init_array();
+init_bigint();
 var MAX_VERSION_TREE_ARITY_LOG2 = 16;
 function readVersionTreeLeafNode(reader, versionTreeArityLog2, dataFileTable) {
   const maxNumEntries = 2 ** versionTreeArityLog2;
@@ -28827,6 +30208,8 @@ async function decodeManifest2(buffer, baseUrl, signal) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/metadata_cache.js
+init_url();
+init_progress_listener();
 var __knownSymbol3 = (name, symbol) => (symbol = Symbol[name]) ? symbol : Symbol.for("Symbol." + name);
 var __typeError3 = (msg) => {
   throw TypeError(msg);
@@ -29159,6 +30542,9 @@ async function listSubtree(nodeReference, height, inclusiveMinKey, subtreeCommon
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/read.js
 init_legacy_browser();
+init_worker_landed();
+init_file_handle();
+init_kvstore();
 var DEBUG4 = false;
 async function findEntryInRoot(sharedKvStoreContext, root2, key, options) {
   if (locationIsMissing(root2.root.location)) {
@@ -29234,9 +30620,12 @@ async function readFromLeafNodeEntry(sharedKvStoreContext, entry, options) {
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/read_version.js
 init_legacy_browser();
+init_worker_landed();
+init_generic_file_source();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/version_specifier.js
 init_legacy_browser();
+init_worker_landed();
 function formatVersion(version) {
   if (version === void 0) return "HEAD";
   if ("generationNumber" in version) {
@@ -29557,6 +30946,8 @@ var findVersionUpperBoundImpl = findVersionImpl({
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/url.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
 function getOcdbtUrl(options, key) {
   const { version, baseUrl } = options;
   const versionString = version === void 0 ? "" : `@${formatVersion(version)}/`;
@@ -29650,9 +31041,12 @@ var OcdbtKvStore = class {
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/complete_url.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/list_versions.js
 init_legacy_browser();
+init_worker_landed();
+init_bigint();
 var DEBUG5 = false;
 async function listVersions(sharedKvStoreContext, manifest, options) {
   var _a;
@@ -29757,6 +31151,7 @@ async function listVersions(sharedKvStoreContext, manifest, options) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/ocdbt/complete_url.js
+init_url();
 async function listVersionsLimited(sharedKvStoreContext, manifest, minGenerationIndex, maxGenerationIndex, limit, options) {
   if (maxGenerationIndex <= minGenerationIndex + limit) {
     const { versions } = await listVersions(sharedKvStoreContext, manifest, {
@@ -29878,15 +31273,21 @@ backendOnlyKvStoreProviderRegistry.registerKvStoreAdapterProvider(
 
 // node_modules/neuroglancer/lib/kvstore/s3/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
 
 // node_modules/neuroglancer/lib/kvstore/s3/backend.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/s3/common.js
 init_legacy_browser();
+init_worker_landed();
 
 // node_modules/neuroglancer/lib/kvstore/s3/list.js
 init_legacy_browser();
+init_worker_landed();
+init_url();
 var EXPECTED_XML_NAMESPACE_URIS = [
   "http://doc.s3.amazonaws.com/2006-03-01/",
   "http://s3.amazonaws.com/doc/2006-03-01/"
@@ -30036,6 +31437,8 @@ async function listS3CompatibleUrl(url, origin, memoize, fetchOkImpl, options) {
 }
 
 // node_modules/neuroglancer/lib/kvstore/s3/common.js
+init_url();
+init_progress_listener();
 var __knownSymbol4 = (name, symbol) => (symbol = Symbol[name]) ? symbol : Symbol.for("Symbol." + name);
 var __typeError4 = (msg) => {
   throw TypeError(msg);
@@ -30206,12 +31609,22 @@ registerProviders3(backendOnlyKvStoreProviderRegistry, S3KvStore);
 
 // node_modules/neuroglancer/lib/kvstore/zip/register_backend.js
 init_legacy_browser();
+init_worker_landed();
+init_backend2();
+init_kvstore();
+init_url();
 
 // node_modules/neuroglancer/lib/kvstore/zip/backend.js
 init_legacy_browser();
+init_worker_landed();
+init_generic_file_source();
+init_file_handle();
+init_kvstore();
+init_url();
 
 // node_modules/neuroglancer/lib/kvstore/zip/metadata.js
 init_legacy_browser();
+init_worker_landed();
 var import_crc_32 = __toESM(require_crc32(), 1);
 var EOCDR_WITHOUT_COMMENT_SIZE = 22;
 var MAX_COMMENT_SIZE = 65535;
@@ -30683,6 +32096,9 @@ var ZipCompressionMethod = /* @__PURE__ */ ((ZipCompressionMethod2) => {
 })(ZipCompressionMethod || {});
 
 // node_modules/neuroglancer/lib/kvstore/zip/backend.js
+init_array();
+init_progress_listener();
+init_string();
 var __knownSymbol5 = (name, symbol) => (symbol = Symbol[name]) ? symbol : Symbol.for("Symbol." + name);
 var __typeError5 = (msg) => {
   throw TypeError(msg);
@@ -30910,6 +32326,8 @@ backendOnlyKvStoreProviderRegistry.registerKvStoreAdapterProvider(zipProvider);
 
 // node_modules/neuroglancer/lib/worker_rpc_context.js
 init_legacy_browser();
+init_worker_landed();
+init_worker_rpc();
 var rpc = new RPC(
   self,
   /*waitUntilReady=*/

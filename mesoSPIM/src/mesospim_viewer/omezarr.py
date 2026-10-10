@@ -334,6 +334,64 @@ def read_store(path: str | Path) -> Store:
     )
 
 
+@dataclass(frozen=True)
+class Level:
+    """One copy of a store's pyramid: its array, and how the array is cut into files.
+
+    ``files`` is the shape of what one file on disk holds, per axis: the shard
+    where the array is sharded, the chunk where it is not.
+    """
+
+    path: str  # the array's folder inside the store, "0" for the finest
+    shape: tuple[int, ...]
+    files: tuple[int, ...]
+
+    def index_of(self, name: str) -> tuple[int, ...] | None:
+        """Where in the array a chunk file sits, from its path below the array's folder.
+
+        ``c/0/1/5/3/2`` (zarr v3), ``0.1.5.3.2`` or ``0/1/5/3/2`` (zarr v2); None for
+        anything that is not a chunk file of this array.
+        """
+        parts = name.replace(".", "/").split("/")
+        if parts and parts[0] == "c":
+            parts = parts[1:]
+        if len(parts) != len(self.shape) or not all(part.isdigit() for part in parts):
+            return None
+        return tuple(int(part) for part in parts)
+
+    def count(self, axis: int) -> int:
+        """How many files the array is cut into along one axis."""
+        return -(-self.shape[axis] // self.files[axis])
+
+
+def read_levels(store: Store) -> tuple[Level, ...]:
+    """The store's pyramid as it is on disk now, finest first.
+
+    A level whose array cannot be read yet -- being created at this moment --
+    is left out, and so are the coarser ones after it.
+    """
+    found = []
+    for path in store.levels or ("0",):
+        folder = store.path / path
+        described = _read_json(folder / "zarr.json")
+        if isinstance(described, dict) and isinstance(described.get("shape"), list):
+            grid = described.get("chunk_grid")
+            configuration = grid.get("configuration") if isinstance(grid, dict) else None
+            files = configuration.get("chunk_shape") if isinstance(configuration, dict) else None
+        else:
+            described = _read_json(folder / ".zarray")
+            files = described.get("chunks") if isinstance(described, dict) else None
+        if not isinstance(described, dict) or not isinstance(files, list):
+            break
+        shape = described.get("shape")
+        if not isinstance(shape, list) or len(shape) != len(files) or not all(files):
+            break
+        found.append(
+            Level(path=path, shape=tuple(int(n) for n in shape), files=tuple(int(n) for n in files))
+        )
+    return tuple(found)
+
+
 # How many planes of a copy are looked at to set a channel's contrast.
 SAMPLE_PLANES = 16
 # A copy is sampled only while one plane of it costs at most this much to read. A
@@ -343,13 +401,14 @@ SAMPLE_BYTES = 32 * 2**20
 
 
 def sample_window(store: Store, channel: int | None = None) -> tuple[float, float] | None:
-    """The darkest and brightest value of one channel, in a small coarse sample.
+    """A contrast window for one channel, from a small coarse sample of its voxels.
 
     For a channel whose store gives no contrast window: the writers of the
     acquisition software leave it out, and the engine's default of the whole
     0..65535 range shows a camera's few thousand counts as nearly black. The
-    sample is what the operator's Min-Max button would find on a picture of the
-    whole stack: the coarsest copy in the store's pyramid, at the first time
+    sample is a picture of the whole stack, and the window runs from its
+    background to just under its brightest voxels (:func:`robust_window`): the
+    coarsest copy in the store's pyramid, at the first time
     point, through up to ``SAMPLE_PLANES`` planes spread over the depth.
 
     While a store is being written, the coarsest copy is the last to get its
@@ -392,10 +451,36 @@ def sample_window(store: Store, channel: int | None = None) -> tuple[float, floa
         written = sample[sample != array.fill_value] if array.fill_value is not None else sample
         if written.size == 0:
             continue  # nothing of this copy is written yet
-        low, high = float(written.min()), float(written.max())
-        if high > low:
-            return (low, high)
+        window = robust_window(written)
+        if window is not None:
+            return window
     return None
+
+
+# The black point sits at the camera's background and the white point just under
+# the brightest structure: a single hot pixel must not decide the contrast.
+LOW_PERCENTILE = 1.0
+HIGH_PERCENTILE = 99.95
+
+
+def robust_window(values) -> tuple[float, float] | None:
+    """A contrast window for a sample of voxel values, or None when it is flat.
+
+    From the background (the 1st percentile) to just under the brightest
+    voxels (the 99.95th percentile), opened up by a tenth so the brightest
+    structure is not clipped.
+    """
+    import numpy as np
+
+    values = np.asarray(values)
+    if values.size == 0:
+        return None
+    low, high = (float(v) for v in np.percentile(values, [LOW_PERCENTILE, HIGH_PERCENTILE]))
+    if high <= low:
+        low, high = float(values.min()), float(values.max())
+        if high <= low:
+            return None
+    return (low, low + (high - low) * 1.1)
 
 
 def _plane_bytes(store: Store, array) -> int:

@@ -1,18 +1,18 @@
 /**
  * A native neuroglancer page that shows whatever the Python side publishes.
  *
- * The page does three things and nothing else:
+ * The page does four things:
  *
  * 1. builds a stock neuroglancer viewer: with its own panels ("full"), with
  *    our own panel beside a bare engine ("simple", panel.js), or as a bare
  *    canvas for a host that draws its own controls ("bare");
- * 2. long-polls `/api/state` and brings the layers into line with it, keeping
- *    the operator's own adjustments on layers that did not change;
- * 3. reports the camera to `/api/view` and a double-click to `/api/pick`.
- *
- * Until the operator pans or zooms, the view keeps framing everything shown,
- * so tiles landing during an acquisition, or datasets dropped onto the window,
- * come into view as they arrive. The Show all button brings that back.
+ * 2. waits on `/api/state` and brings the layers into line with the scene, in
+ *    place (layers.js): a tile that lands is a source added, never a layer
+ *    rebuilt;
+ * 3. hears which files have landed in the stores it shows and has the engine
+ *    read exactly those (engine/landed.js), and where the newest plane of a
+ *    running acquisition is (camera.js);
+ * 4. reports the camera to `/api/view` and a double-click to `/api/pick`.
  *
  * Everything about what is shown -- which stores, where they sit, how their
  * channels mix -- is decided in Python and arrives as ordinary neuroglancer
@@ -31,9 +31,27 @@ import {
   bindDefaultCopyHandler,
   bindDefaultPasteHandler,
 } from "neuroglancer/unstable/ui/default_clipboard_handling.js";
-import { makeLayer, deleteLayer } from "neuroglancer/unstable/layer/index.js";
 import { registerActionListener } from "neuroglancer/unstable/util/event_action_map.js";
-import { mountPanel, SEPARATOR } from "./panel.js";
+import {
+  acquiring,
+  fitEverything,
+  following,
+  followAgain,
+  framing,
+  globalSpace,
+  KEEP_CLEAR,
+  layoutOf,
+  setLayout,
+  goToNewest,
+  moveTo,
+  setNewest,
+  toFirstTimePoint,
+  watchOperator,
+} from "./camera.js";
+import { isAuto, operatorMoved, setAuto, watchContrast } from "./contrast.js";
+import { landed, landedAnywhere } from "./engine/landed.js";
+import { applyLayers, watchRetiring } from "./layers.js";
+import { mountPanel } from "./panel.js";
 import "./page.css";
 
 const POLL_WAIT_S = 25;
@@ -41,21 +59,21 @@ const RETRY_MS = 1000;
 const SETTLE_MS = 100;
 const SETTLE_LIMIT_MS = 30_000;
 const REPORT_MS = 150;
-const FIT_MARGIN = 1.15;
 
 // -- talking to Python ---------------------------------------------------------
 
-async function fetchState(since, wait) {
-  const response = await fetch(`/api/state?since=${since}&wait=${wait}`);
+async function fetchState(held, wait) {
+  const query = `since=${held.version}&events=${held.sequence}&follow=${held.follow}&wait=${wait}`;
+  const response = await fetch(`/api/state?${query}`);
   if (!response.ok) throw new Error(`state: ${response.status}`);
   return response.json();
 }
 
-function post(route, payload) {
+export function post(route, payload) {
   return fetch(route, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload ?? {}),
   }).catch(() => undefined);
 }
 
@@ -96,18 +114,11 @@ function buildViewer(ui) {
     viewer.showAxisLines.value = false;
     viewer.display.scheduleRedraw();
   }
-  if (ui.chrome === "simple") {
-    viewer.panel = mountPanel(viewer, { fit: () => fitEverything(viewer), framing });
-  }
   window.viewer = viewer;
   return viewer;
 }
 
 // -- the camera, by axis name --------------------------------------------------
-
-function globalSpace(viewer) {
-  return viewer.navigationState.position.coordinateSpace.value;
-}
 
 function describePoint(viewer, coordinates) {
   const space = globalSpace(viewer);
@@ -124,7 +135,7 @@ function reportView(viewer) {
   post("/api/view", {
     ...describePoint(viewer, position.value),
     crossSectionScale: zoomFactor.value,
-    layout: viewer.layout.toJSON(),
+    layout: layoutOf(viewer),
   });
 }
 
@@ -159,245 +170,117 @@ async function whenSettled(viewer) {
   return settled(viewer);
 }
 
-function moveTo(viewer, named) {
+// The space the picture is drawn in, as Python gives it: x, y, z at the finest
+// voxel size shown. Set before the first source loads, so that a step along z
+// is one plane of the finest stack whichever source arrives first.
+function setDimensions(viewer, dimensions) {
+  const wanted = Object.entries(dimensions ?? {});
+  if (wanted.length === 0) return;
+  const space = viewer.coordinateSpace.value;
+  const held = new Map((space?.names ?? []).map((name, i) => [name, space.scales[i]]));
+  const differs = wanted.some(([name, [scale]]) => {
+    const now = held.get(name);
+    return now === undefined || Math.abs(now - scale) > 1e-9 * Math.max(Math.abs(now), Math.abs(scale));
+  });
+  if (!differs) return;
+  // Where the view is, kept in micrometres across the change of voxel size.
   const { position } = viewer.navigationState;
-  const space = globalSpace(viewer);
-  if (!space?.rank) return;
-  const target = Float32Array.from(position.value);
-  space.names.forEach((name, index) => {
-    const wanted = named[name];
-    if (typeof wanted !== "number") return;
-    // Python speaks micrometres and seconds; the engine counts voxels of a
-    // space whose scales are in metres and seconds.
-    const factor = space.units[index] === "m" ? 1e-6 : 1;
-    target[index] = (wanted * factor) / space.scales[index];
-  });
-  position.value = target;
-}
-
-// The view frames everything shown, again after every change, until the
-// operator pans or zooms it: then it is theirs, until a fit is asked for
-// (Python's fit(), the Show all button, or the 2D/3D switch) and it follows
-// again. The panel hears when that changes, to offer Show all only when the
-// view is the operator's.
-const framing = {
-  following: true,
-  fitting: false,
-  fitted: null,
-  listeners: [],
-  follow(following) {
-    if (following === this.following) return;
-    this.following = following;
-    for (const listener of this.listeners) listener(following);
-  },
-};
-
-// What the operator moves when they pan or zoom: the two axes across the
-// screen and the zoom of both views. Depth and time are left out, so stepping
-// through planes or time points does not stop the view from following.
-function framed(viewer) {
-  const { position, pose, zoomFactor } = viewer.navigationState;
-  const drawn = Array.from(pose.displayDimensionRenderInfo.value?.displayDimensionIndices ?? []);
-  return [
-    ...drawn.slice(0, 2).filter((axis) => axis >= 0).map((axis) => position.value[axis]),
-    zoomFactor.value,
-    viewer.perspectiveNavigationState.zoomFactor.value,
-  ];
-}
-
-function watchOperator(viewer) {
-  const moved = () => {
-    if (framing.fitting || !framing.fitted) return;
-    const now = framed(viewer);
-    const held = framing.fitted;
-    const changed = now.length !== held.length ||
-      now.some((value, i) => Math.abs(value - held[i]) > 1e-6 * Math.max(1, Math.abs(held[i])));
-    if (changed) framing.follow(false);
-  };
-  viewer.navigationState.changed.add(moved);
-  viewer.perspectiveNavigationState.changed.add(moved);
-}
-
-function fitEverything(viewer) {
-  framing.fitting = true;
-  try {
-    fitCamera(viewer);
-  } finally {
-    framing.fitting = false;
+  const names = Array.from(space?.names ?? []);
+  const at = Object.fromEntries(names.map((name, i) => [name, position.value[i] * space.scales[i]]));
+  viewer.coordinateSpace.restoreState(dimensions);
+  const next = viewer.coordinateSpace.value;
+  if (next?.rank && names.length) {
+    const moved = Float32Array.from(position.value);
+    next.names.forEach((name, i) => {
+      if (at[name] !== undefined && next.scales[i]) moved[i] = at[name] / next.scales[i];
+    });
+    position.value = moved;
   }
-  framing.fitted = framed(viewer);
-  framing.follow(true);
 }
 
-function fitCamera(viewer) {
-  const { position, pose, zoomFactor } = viewer.navigationState;
-  const space = globalSpace(viewer);
-  if (!space?.rank) return;
-  const render = pose.displayDimensionRenderInfo.value;
-  const drawn = Array.from(render?.displayDimensionIndices ?? []).filter((axis) => axis >= 0);
-  const { lowerBounds, upperBounds } = space.bounds;
-  const extent = (axis) => {
-    const low = lowerBounds[axis];
-    const high = upperBounds[axis];
-    return Number.isFinite(low) && Number.isFinite(high) ? high - low : null;
-  };
-  const middle = Float32Array.from(position.value);
-  for (const axis of drawn.slice(0, 2)) {
-    if (extent(axis) !== null) middle[axis] = (lowerBounds[axis] + upperBounds[axis]) / 2;
-  }
-  position.value = middle;
-
-  let flat = null;
-  let volume = null;
-  for (const panel of viewer.display.panels) {
-    if ("sliceView" in panel) flat = panel.renderViewport;
-    else if ("sliceViews" in panel) volume = panel.renderViewport;
-  }
-  let fit = 0;
-  drawn.slice(0, 2).forEach((axis, slot) => {
-    const across = extent(axis);
-    const pixels = slot === 0 ? flat?.logicalWidth : flat?.logicalHeight;
-    if (across === null || !pixels) return;
-    fit = Math.max(fit, (across * render.canonicalVoxelFactors[slot]) / pixels);
-  });
-  if (fit > 0) zoomFactor.value = fit * FIT_MARGIN;
-  let boxFit = 0;
-  const smaller = Math.min(volume?.logicalWidth ?? 0, volume?.logicalHeight ?? 0);
-  drawn.slice(0, 3).forEach((axis, slot) => {
-    const across = extent(axis);
-    if (across === null || !smaller) return;
-    boxFit = Math.max(boxFit, (across * render.canonicalVoxelFactors[slot] * volume.logicalHeight) / smaller);
-  });
-  if (boxFit > 0) viewer.perspectiveNavigationState.zoomFactor.value = boxFit * FIT_MARGIN;
-}
-
-// An acquisition opens on its first time point. Left to itself the engine
-// starts in the middle of every axis it does not draw, which for a time-lapse
-// is a time point in the middle of the run. Later, the time point is the
-// operator's: a tile landing in an acquisition already shown leaves it alone.
-function toFirstTimePoint(viewer) {
-  const { position } = viewer.navigationState;
-  const space = globalSpace(viewer);
-  const axis = space?.names?.indexOf("t") ?? -1;
-  if (axis === -1 || !Number.isFinite(space.bounds.lowerBounds[axis])) return;
-  const start = Float32Array.from(position.value);
-  // Time point i is drawn over i - 0.5 .. i + 0.5; the first starts at the lower bound.
-  start[axis] = space.bounds.lowerBounds[axis] + 0.5;
-  position.value = start;
-}
-
-function acquisitionsOf(layers) {
-  return new Set(layers.map((layer) => layer.name.split(SEPARATOR)[0]));
-}
-
-// -- the layers ----------------------------------------------------------------
-
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-// What Python last asked for, per layer name. A layer is rebuilt only when
-// Python's own description of it changes; what the operator has adjusted on it
-// in the meantime is kept.
-const lastAsked = new Map();
-
-// Fields the operator may have changed in the engine's panel, carried across a
-// rebuild wherever Python did not change them itself.
-const OPERATOR_FIELDS = [
-  "shaderControls",
-  "opacity",
-  "blend",
-  "visible",
-  "volumeRendering",
-  "volumeRenderingGain",
-  "volumeRenderingDepthSamples",
-];
-
-function carryAdjustments(spec, before, held) {
-  const merged = { ...spec };
-  for (const field of OPERATOR_FIELDS) {
-    if (held[field] === undefined) continue;
-    if (before && same(before[field], spec[field])) merged[field] = held[field];
-  }
-  if (held.shaderControls && same(before?.shader, spec.shader)) {
-    merged.shaderControls = { ...(spec.shaderControls ?? {}), ...held.shaderControls };
-  }
-  return merged;
-}
-
-// The engine remembers what it read of a store for as long as the page lives:
-// its description, its chunks, and the shards and shard indexes it found
-// missing. So a store that has grown on disk is not read again under the same
-// address; Python gives it a new one (viewer.py, _url_for), and the layer is
-// rebuilt over that like any other change.
-function applyLayers(viewer, specs) {
-  const manager = viewer.layerManager;
-  const wanted = new Set(specs.map((spec) => spec.name));
-  for (const managed of [...manager.managedLayers]) {
-    if (wanted.has(managed.name)) continue;
-    deleteLayer(managed);
-    lastAsked.delete(managed.name);
-  }
-  specs.forEach((spec, index) => {
-    const before = lastAsked.get(spec.name);
-    let managed = manager.getLayerByName(spec.name);
-    if (managed && before && same(before, spec)) return;
-    // `_revision` is Python's count of how often the layer's stores were read
-    // again, not anything the engine knows.
-    const { _revision, ...forEngine } = spec;
-    let description = forEngine;
-    if (managed) {
-      // The engine's JSON leaves out a value that equals its own default, so the
-      // opacity is read live: an operator's 0.5 is a choice even if it is the default.
-      const held = { ...(managed.toJSON() ?? {}), visible: managed.visible };
-      if (managed.layer?.opacity) held.opacity = managed.layer.opacity.value;
-      description = carryAdjustments(forEngine, before, held);
-      deleteLayer(managed);
-    }
-    managed = makeLayer(viewer.layerSpecification, spec.name, description);
-    viewer.layerSpecification.add(managed, index);
-    lastAsked.set(spec.name, spec);
-  });
-  specs.forEach((spec, wanted) => {
-    const here = manager.managedLayers.findIndex((managed) => managed.name === spec.name);
-    if (here !== -1 && here !== wanted) manager.reorderManagedLayer(here, wanted);
-  });
-}
+const acquisitionsOf = (layers) => new Set(layers.map((layer) => layer._acquisition));
 
 // -- keeping up with Python ----------------------------------------------------
 
-async function follow(viewer, first) {
-  let version = -1;
-  let cameraVersion = first?.cameraVersion ?? 0;
-  let answer = first;
-  let shown = new Set();
-  for (;;) {
-    if (answer && answer.version !== version) {
-      version = answer.version;
-      viewer.panel?.setChoices(answer.choices);
-      viewer.panel?.setRemovable(answer.ui?.removable === true);
-      viewer.panel?.setNotice(answer.notice);
-      const state = answer.state ?? {};
-      if (state.layout && viewer.layout.toJSON() !== state.layout) viewer.layout.restoreState(state.layout);
-      applyLayers(viewer, state.layers ?? []);
-      const camera = answer.cameraVersion !== cameraVersion ? answer.camera ?? {} : null;
-      cameraVersion = answer.cameraVersion;
-      const acquisitions = acquisitionsOf(state.layers ?? []);
-      const opened = [...acquisitions].some((name) => !shown.has(name));
-      shown = acquisitions;
-      // Axes are named, and the engine can only find a name once a source has
-      // said what its axes are: so this waits for the sources, then chooses the
-      // axes on screen, and only then moves or fits the camera. A view still
-      // following the picture is fitted again, to take in what has just landed.
-      whenSettled(viewer).then(() => {
-        if (state.displayDimensions) {
-          viewer.navigationState.pose.displayDimensions.restoreState(state.displayDimensions);
+function applyScene(viewer, answer, seen) {
+  const state = answer.state ?? {};
+  viewer.panel?.setUi(answer.ui ?? {});
+  viewer.panel?.setAcquisitions(answer.acquisitions ?? []);
+  viewer.panel?.setNotice(answer.notice);
+  // The layout is Python's to set, not to hold: it is taken when Python changes
+  // it, and otherwise the 2D/3D switch is the operator's.
+  if (state.layout && state.layout !== seen.layout) {
+    if (layoutOf(viewer) !== state.layout) setLayout(viewer, state.layout);
+    seen.layout = state.layout;
+  }
+  framing.busy += 1;
+  applyLayers(viewer, state.layers ?? [], (left) => {
+    if (left === 0 && (state.layers ?? []).length > 0) {
+      // Nothing of the old picture stays: the engine's space is empty now, and
+      // the new picture gets a fresh one, with the view in its middle and
+      // framing everything. (Left alone, the engine would keep the old
+      // position against the new picture's axes.)
+      viewer.navigationState.position.reset();
+      seen.fresh = true;
+    }
+    setDimensions(viewer, state.dimensions);
+  });
+  const camera = answer.cameraVersion !== seen.cameraVersion ? answer.camera ?? {} : null;
+  seen.cameraVersion = answer.cameraVersion;
+  // A fit Python asked for is kept until it can be done: the sources it is
+  // meant for may arrive with a later scene.
+  if (camera?.fit) seen.fit = true;
+  const acquisitions = acquisitionsOf(state.layers ?? []);
+  const opened = [...acquisitions].some((name) => !seen.shown.has(name));
+  seen.shown = acquisitions;
+  // Axes are named, and the engine can only find a name once a source has
+  // said what its axes are: so this waits for the sources, then chooses the
+  // axes on screen, and only then moves or fits the camera. A view still
+  // framing the picture is fitted again, to take in what has just landed.
+  const turn = ++seen.turn;
+  whenSettled(viewer).then(() => {
+    try {
+      if (state.displayDimensions) {
+        viewer.navigationState.pose.displayDimensions.restoreState(state.displayDimensions);
+      }
+      if (opened) toFirstTimePoint(viewer);
+      if (camera?.position) moveTo(viewer, camera.position);
+      if (turn !== seen.turn) return; // a later scene is on its way: it does the framing
+      if (seen.fit || seen.fresh || (!camera?.position && framing.value)) {
+        if (fitEverything(viewer)) {
+          seen.fit = false;
+          seen.fresh = false;
         }
-        if (opened) toFirstTimePoint(viewer);
-        if (camera?.position) moveTo(viewer, camera.position);
-        if (camera?.fit || (!camera?.position && framing.following)) fitEverything(viewer);
-      });
+      }
+      if (following.value) goToNewest(viewer);
+    } finally {
+      framing.busy -= 1;
+    }
+  });
+}
+
+async function follow(viewer, first) {
+  const held = { version: -1, sequence: -1, follow: -1 };
+  const seen = { cameraVersion: first?.cameraVersion ?? 0, shown: new Set(), turn: 0, layout: null, fit: false, fresh: false };
+  let answer = first;
+  for (;;) {
+    if (answer) {
+      if (answer.state && answer.version !== held.version) applyScene(viewer, answer, seen);
+      held.version = answer.version;
+      // A page that fell behind the log of events reads again whatever it found missing.
+      if (answer.resync) landedAnywhere(viewer);
+      for (const event of answer.events ?? []) {
+        if (event.type === "landed") landed(viewer, event.store, event.files);
+      }
+      held.sequence = answer.sequence ?? held.sequence;
+      const count = answer.follow?.count ?? 0;
+      if (count !== held.follow) {
+        held.follow = count;
+        setNewest(viewer, answer.follow);
+      }
     }
     try {
-      answer = await fetchState(version, POLL_WAIT_S);
+      answer = await fetchState(held, POLL_WAIT_S);
     } catch {
       answer = null;
       await sleep(RETRY_MS);
@@ -408,13 +291,39 @@ async function follow(viewer, first) {
 async function main() {
   let first = null;
   try {
-    first = await fetchState(-1, 0);
+    first = await fetchState({ version: -1, sequence: -1, follow: -1 }, 0);
   } catch {
     // Python is not answering yet; the loop below keeps asking.
   }
-  const viewer = buildViewer(readUi(first));
+  const ui = readUi(first);
+  const viewer = buildViewer(ui);
+  const contrast = watchContrast(viewer);
+  if (ui.chrome === "simple") {
+    Object.assign(KEEP_CLEAR, { top: 48, bottom: 56 });
+    viewer.panel = mountPanel(viewer, {
+      fit: () => fitEverything(viewer),
+      live: () => followAgain(viewer),
+      framing,
+      following,
+      acquiring,
+      post,
+      contrast: { ...contrast, isAuto, setAuto: (name, on) => setAuto(viewer, name, on), moved: (name) => operatorMoved(viewer, name) },
+    });
+  }
   bindReports(viewer);
   watchOperator(viewer);
+  watchRetiring(viewer);
+  // For the tests, and for a look from the browser's console.
+  window.mesospim = {
+    framing,
+    following,
+    acquiring,
+    isAuto,
+    setAuto: (name, on) => setAuto(viewer, name, on),
+    fit: () => fitEverything(viewer),
+    live: () => followAgain(viewer),
+    layout: () => layoutOf(viewer),
+  };
   await follow(viewer, first);
 }
 
