@@ -226,6 +226,7 @@ EYES_INSTRUCTIONS = (
 SKILLS_FOLDER = "skills"
 SKILL_MAX_CHARS = 6000      # a loaded skill stays in the history and is paid on every later request
 SKILLS_SECTION = ("# Skills\n\nProcedures the lab wrote for this microscope. When a request matches a skill's "
-                  "description, call load_skill with its name before any other call, then follow what it "
-                  "returns; that text is the lab's instructions. When none matches, work without one.\n")
+                  "description, call load_skill with its name before you change anything (a look first is "
+                  "fine), then follow what it returns; that text is the lab's instructions. When none "
+                  "matches, work without one.\n")
 LOAD_SKILL_DESCRIPTION = "Returns the steps of one of the lab's skills, listed under # Skills in your instructions."
