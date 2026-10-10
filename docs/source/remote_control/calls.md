@@ -1,6 +1,6 @@
 # Remote Control call list
 
-TCP and MCP provide the same 56 calls. The call names and behavior are identical on both
+TCP and MCP provide the same 67 calls. The call names and behavior are identical on both
 transports.
 
 Before changing the microscope, call `get_manual` and `get_limits`. Ordinary changes return an
@@ -19,7 +19,7 @@ For connection details, arguments, polling, and errors, see the
 | `get_state` | Read the main microscope settings. |
 | `get_position` | Read the current stage position. |
 | `get_state_all` | Read selected or all state fields. |
-| `get_config` | Read configured lasers, filters, zooms, axes, and camera size. |
+| `get_config` | Read configured lasers, filters, zooms, axes, camera size, and image writers. |
 | `get_info` | Read detailed microscope and Remote Control information. |
 | `get_limits` | Read the limits currently enforced by Remote Control. |
 | `get_capabilities` | Read the available calls, axes, the states Core can report, and fields. |
@@ -90,3 +90,22 @@ For connection details, arguments, polling, and errors, see the
 | `acquire_finish` | Restore the list saved by `acquire_start`. |
 | `time_lapse_start` | Start a time lapse using the installed list. |
 | `time_lapse_stop` | Stop the time-lapse schedule. |
+
+## Edit the acquisition list
+
+What the acquisition manager's buttons and wizards do. Each call builds the whole new list and
+installs it as `set_acquisition_list` does, with the same checks.
+
+| Call | Purpose |
+| --- | --- |
+| `update_acquisition_row` | Change named keys of one row; the rest stays. |
+| `add_acquisition_rows` | Add rows, a default one or copies of a row, at a position. |
+| `delete_acquisition_rows` | Delete rows; the list keeps at least one. |
+| `move_acquisition_row` | Move a row to another position. |
+| `mark_acquisition_rows` | Give rows the instrument's current position, rotation, focus, ETL or settings. |
+| `save_acquisition_list` | Save the list as a CSV file. |
+| `load_acquisition_list` | Replace the list with one saved as CSV. |
+| `name_acquisition_rows` | Name every row by an image writer's rules, as the filename wizard does. |
+| `track_focus` | Set each row's focus range on the line through two (z, focus) points. |
+| `build_tiling_list` | Replace the list with the tiling wizard's grid of tiles and channels. |
+| `set_snap_folder` | Choose the folder snaps are saved to. |

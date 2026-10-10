@@ -18,7 +18,7 @@ import time
 import pytest
 
 from mesoSPIM.test.remote_control.support.clients import RemoteControl
-from mesoSPIM.test.remote_control.support.contracts import OPERATIONAL_COMMANDS, VALID_CASES
+from mesoSPIM.test.remote_control.support.contracts import OPERATIONAL_COMMANDS, TABLE_CALLS, VALID_CASES
 from mesoSPIM.test.remote_control.support.live_session import bounded_delta as _bounded_delta
 from mesoSPIM.test.remote_control.support.live_session import demo_acquisition as _demo_acquisition
 from mesoSPIM.test.remote_control.support.live_session import different as _different
@@ -33,8 +33,8 @@ from mesoSPIM.test.remote_control.support.live_session import wait_until as _wai
 
 pytestmark = pytest.mark.live_demo_all
 
-TOTAL = len(VALID_CASES)  # 56
-OPERATIONAL = len(OPERATIONAL_COMMANDS)  # 37
+TOTAL = len(VALID_CASES)  # 67
+OPERATIONAL = len(OPERATIONAL_COMMANDS)  # 49
 
 
 def test_live_demo_all_commands_are_functional_safe_and_restored(request):
@@ -100,6 +100,7 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
         "etl_r_offset",
         "galvo_l_frequency",
         "laser_l_delay_%",
+        "snap_folder",
     ]
     original = _must(tool, "get_state_all", {"keys": state_keys})
     original_acquisitions = _must(tool, "get_acquisition_list")["acquisitions"]
@@ -131,6 +132,7 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
     relative_delta = relative_target - x_target
 
     acquisition = _demo_acquisition(temp_folder, "set-list.raw", original)
+    x_here, y_here, z_here, f_here = (original["position"][axis + "_pos"] for axis in ("x", "y", "z", "f"))
     cases = copy.deepcopy(VALID_CASES)
     cases.update(
         {
@@ -158,6 +160,20 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
             "check_motion_limits": {"acquisitions": [acquisition]},
             "time_lapse_start": {"timepoints": 1, "interval_sec": 0},
             "snap": {"folder": str(temp_folder), "prefix": "remote"},
+            # the table calls, on the two rows install_table puts in, with the instrument's own options
+            "update_acquisition_row": {"row": 0, "changes": {"filename": "updated.raw"}},
+            "add_acquisition_rows": {"like": 0},
+            "save_acquisition_list": {"path": str(temp_folder / "list.csv"), "overwrite": True},
+            "load_acquisition_list": {"path": str(temp_folder / "list.csv")},
+            "name_acquisition_rows": {"writer": "RAW_Writer", "description": "remote"},
+            "track_focus": {"z_1": z_here, "f_1": f_here, "z_2": z_here + 100,
+                            "f_2": _bounded_delta(f_here, *axes["f"], 10)},
+            "build_tiling_list": {"x_start": x_here, "x_end": x_here, "y_start": y_here, "y_end": y_here,
+                                  "z_start": z_here, "z_end": z_here, "z_step": 1,
+                                  "channels": [{"laser": original["laser"], "intensity": 10,
+                                                "filter": original["filter"]}],
+                                  "folder": str(temp_folder), "writer": "RAW_Writer"},
+            "set_snap_folder": {"folder": str(temp_folder)},
         }
     )
 
@@ -176,6 +192,14 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
         item = _demo_acquisition(temp_folder, filename, original)
         accepted = _must(tool, "set_acquisition_list", {"acquisitions": [item], "selected_row": 0})
         _wait_for_operation(tool, accepted, "install acquisition list")
+
+    def install_table():
+        rows = [_demo_acquisition(temp_folder, name, original) for name in ("row-0.raw", "row-1.raw")]
+        accepted = _must(tool, "set_acquisition_list", {"acquisitions": rows, "selected_row": 0})
+        _wait_for_operation(tool, accepted, "install the two-row table")
+
+    def table():
+        return _must(tool, "get_acquisition_list")["acquisitions"]
 
     def verify(name, result):
         if name == "move_absolute":
@@ -237,6 +261,24 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
             assert result["started"] is True
         elif name == "time_lapse_stop":
             assert result["stopped"] is True
+        elif name == "update_acquisition_row":
+            assert [row["filename"] for row in table()] == ["updated.raw", "row-1.raw"]
+        elif name == "add_acquisition_rows":
+            assert len(table()) == 3
+        elif name == "delete_acquisition_rows":
+            assert [row["filename"] for row in table()] == ["row-0.raw"]
+        elif name == "save_acquisition_list":
+            assert (temp_folder / "list.csv").is_file()
+        elif name in {"load_acquisition_list", "move_acquisition_row", "mark_acquisition_rows"}:
+            assert len(table()) == 2
+        elif name == "name_acquisition_rows":
+            assert all(row["filename"].endswith(".raw") for row in table())
+        elif name == "track_focus":
+            assert [row["f_start"] for row in table()] == [f_here, f_here]
+        elif name == "build_tiling_list":
+            assert result["count"] == len(table()) == 1
+        elif name == "set_snap_folder":
+            _wait_until(lambda: state_value("snap_folder") == str(temp_folder), "snap folder readback")
         else:
             assert isinstance(result, dict)
 
@@ -255,6 +297,8 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
             try:
                 if name in acquisition_actions:
                     install_acquisition(acquisition_actions[name])
+                if name in TABLE_CALLS - {"load_acquisition_list", "set_snap_folder"}:
+                    install_table()
                 before_save_mtime = etl_path.stat().st_mtime_ns if name == "save_etl_config" else None
                 ok, result = tool(name, cases[name])
                 assert ok, result
@@ -332,6 +376,7 @@ def test_live_demo_all_commands_are_functional_safe_and_restored(request):
                 },
             ),
             ("open_shutters" if original.get("shutterstate") else "close_shutters", {}),
+            *([("set_snap_folder", {"folder": original["snap_folder"]})] if original.get("snap_folder") else []),
         )
         if not connection_lost:
             for name, arguments in cleanup_calls:
