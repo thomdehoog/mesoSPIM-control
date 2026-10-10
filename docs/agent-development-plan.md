@@ -1,6 +1,6 @@
 # Agent development plan: mesoSPIM AI Assistant, iteration 2
 
-Version 2.6, 9 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
+Version 2.7, 10 October 2026. Supersedes the 2.0 roadmap. The 1.x roadmap (phases A to H, all
 built or set aside) is in git: `git show 062a557:docs/agent-development-roadmap.md`.
 
 This document is written so that a new session can execute it without this one. Read it whole
@@ -592,10 +592,15 @@ and every new command registered like the 56 (the count in `test_commands.py` an
 
 Branch `agent/skills`. Footprint: Core 0, main window 0.
 
-**Owner: Nikita. Not for agent sessions** (decided 9 October 2026): writing skills is his, and
-none are written until he takes it up. The items below are a proposal for him. The procedure
-text 4.3 names was removed from the manual in 6071905; `git show 6071905~1:mesoSPIM/src/ai_assistant/manual.md`
-has it.
+**Shared** (decided 10 October 2026): the owner, Nikita and agent sessions all write skills; none
+ship with mesoSPIM. *Done 10 October 2026 on `agent/skills` (7d99ac2, 09b9a78, b87438f):* the
+loader (`ai_assistant/skills.py`, a `skills` folder next to the microscope's config), `load_skill`,
+the prompt's list by description, the tab's Connect line, the how-to page, and a benchmark with
+five test skills in `evals/skills/` (`cases_skills.json` for picking, `--skills` for following).
+Haiku: multi-step 33 to 42 of 48, generated 105 to 130 of 160, picking 61 of 75. Not done from
+the items below: TCP and MCP calls for skills (the skills use the tab's own tools), a lab
+override of shipped skills (none ship). Found: the simulated acquisition list is one blank row,
+so acquisition-with-checks cases cannot pass for a careful model; they need a real list.
 
 - [ ] **4.1. Format and place.** One Markdown file per skill. Head, four lines: `name:`,
   `description:` (one line; this is the trigger text in the prompt), `version:`, `tools:` (the
@@ -736,6 +741,8 @@ Three reviews of the 2.0 roadmap, 9 October 2026, each a separate agent with the
   manual clause and 2.6's first recording corrected. WP3 gains the control inventory with a
   coverage test (3.0) and the gaps it found (3.4b, section 9), after the owner asked whether the
   calls are comprehensive and checked through the same layer.
+- **2.7, 10 October 2026.** WP4 is shared; its infrastructure and a benchmark are done. The
+  benchmark judges the framework, not the skills' numbers, which belong to each lab.
 - **2.6, 9 October 2026.** Decisions 10 (general, not fitted) and 11 (fitting is per instrument,
   from real use), after the owner saw manual lines written to pass cases. 2.6 ticked with both
   recordings; the manual is 34 lines. WP4 is Nikita's. 3.7: the real-hardware sweep now sets up
