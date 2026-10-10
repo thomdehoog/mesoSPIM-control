@@ -10,8 +10,8 @@ handled, with its own step sizes, thresholds and order of steps.
 1. At **Connect**, the tab reads every skill file in the microscope's `skills` folder and writes
    in the transcript which it found, and why a file was left out.
 2. The model's instructions list each skill by its name and its one-line description only.
-3. When a request matches a description, the model calls `load_skill` with that name before
-   anything else. Only then does it receive the steps, so ten skills cost ten lines, not ten pages.
+3. When a request matches a description, the model calls `load_skill` with that name before it
+   changes anything; a first look is allowed. Only then does it receive the steps, so ten skills cost ten lines, not ten pages.
 4. The model follows the steps with the usual tools (`look`, `move_relative`, `set_intensity`,
    ...). A skill gives no new powers: everything still goes through the same commands, checks and
    limits.

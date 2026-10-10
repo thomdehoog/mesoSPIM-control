@@ -84,11 +84,14 @@ def test_the_harness_scores_the_skill_loaded_first_and_the_order_of_calls():
         return harness.run_case(_case(), scripted(calls + ("Done.",)), SCRIPTED, skills=found)
     good = run(("load_skill", {"name": "centring"}), ("look", {"question": "where?"}))
     assert harness.score(_case(skill="centring", calls_in_order=["load_skill", "look"]), good) == []
-    late = run(("look", {"question": "where?"}), ("load_skill", {"name": "centring"}))
-    assert harness.score(_case(skill="centring"), late) == ["load_skill came after look"]
-    assert harness.score(_case(calls_in_order=["load_skill", "look"]), late) == [
+    look_first = run(("look", {"question": "where?"}), ("load_skill", {"name": "centring"}))
+    assert harness.score(_case(skill="centring"), look_first) == []          # a look before it is fine
+    late = run(("move_relative", {"deltas": {"x": 10}}), ("load_skill", {"name": "centring"}))
+    assert harness.score(_case(skill="centring"), late) == ["load_skill came after move_relative"]
+    assert harness.score(_case(calls_in_order=["load_skill", "look"]), look_first) == [
         "expected the calls in this order: ['load_skill', 'look']"]
     wrong = run(("load_skill", {"name": "focusing"}),)
     assert harness.score(_case(skill="centring"), wrong) == ["loaded skill focusing, expected centring"]
     assert harness.score(_case(skill=None), wrong) == ["loaded skill focusing for a request that needs none"]
     assert harness.score(_case(skill="centring"), run(("look", {"question": "q"}),)) == ["expected load_skill centring"]
+

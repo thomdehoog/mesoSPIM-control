@@ -35,7 +35,8 @@ Expectations:
     reply_mentions_none none of these strings appears in a reply (no leaked manual text)
     truth          {name_max|name_min: bound}: the simulator's truth afterwards (sim.py), by size:
                    off_centre_um_max, focus_error_um_max, saturated_fraction_max, peak_fraction_min
-    skill          the skill load_skill must load first, before any other call; null: none loaded
+    skill          the skill load_skill must load first, before any call that changes something (reads
+                   and looks may come before it); null: none loaded
                    (run with skills: run.py --skills <folder>)
     calls_in_order tool names that must appear in this order among the calls (others may come between)
 Every case also fails when a reply quotes the <microscope_state> block, which the manual forbids.
@@ -494,8 +495,10 @@ def score(case, trace):
             failures.append(f"expected load_skill {wanted}")
         elif wanted is not None and loaded[0] != wanted:
             failures.append(f"loaded skill {loaded[0]}, expected {wanted}")
-        elif wanted is not None and names[0] != "load_skill":
-            failures.append(f"load_skill came after {names[0]}")
+        elif wanted is not None:
+            first_change = next((n for n in names[:names.index("load_skill")] if not _reads(n)), None)
+            if first_change:
+                failures.append(f"load_skill came after {first_change}")
     order = expect.get("calls_in_order", [])
     remaining = iter(names)
     if order and not all(name in remaining for name in order):     # a subsequence, in order
@@ -561,6 +564,11 @@ def rounds(tools):
     """How many times a look was followed by a setting or a move: the look-and-adjust rounds."""
     names = [t["tool"] for t in tools]
     return sum(1 for a, b in zip(names, names[1:]) if a == "look" and b in COMMANDS and COMMANDS[b].kind != READ)
+
+
+def _reads(name):
+    """A call that changes nothing on the instrument: a READ command, or the tab's look and ask_eyes."""
+    return name in ("look", "ask_eyes") or (name in COMMANDS and COMMANDS[name].kind == READ)
 
 
 def check_cases(cases):
