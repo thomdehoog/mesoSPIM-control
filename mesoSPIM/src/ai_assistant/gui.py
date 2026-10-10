@@ -61,6 +61,35 @@ def _chat_sized(html):
     return re.sub(r"\s*font-size:\s*[\d.]+pt;", "", html)
 
 
+def _clock(seconds):
+    """A countdown as m:ss, or h:mm:ss from an hour."""
+    minutes, seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+
+
+def _period(seconds):
+    seconds = int(seconds)
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600} h"
+    if seconds % 60 == 0:
+        return f"{seconds // 60} min"
+    return f"{seconds} s"
+
+
+def _schedule_text(item, running):
+    """One schedule row: its name, how often, and how long until it fires. A due schedule waits for
+    the turn that is running, since schedules fire only between turns."""
+    if "every_seconds" in item:
+        how = f"every {_period(item['every_seconds'])}"
+    elif "at" in item:
+        how = f"once at {item['at']}"
+    else:
+        how = "once"
+    when = "due, after this turn" if running and item["due_in_s"] == 0 else f"next in {_clock(item['due_in_s'])}"
+    return f"⏱ {item['name'].replace('_', ' ')} · {how} · {when}"
+
+
 class _Input(QtWidgets.QPlainTextEdit):
     """A two-line message box. Enter sends; Shift+Enter starts a new line. Offers the QLineEdit
     names the tab uses (text, setText, returnPressed) so the rest of the tab does not care."""
@@ -149,23 +178,24 @@ class ModelPicker(QtWidgets.QGroupBox):
         self.key_label = _field_label("API key", self, font)
         self.base_url_label = _field_label("Base URL", self, font)
 
-        # Line one: the type and what names the model. Line two, cloud only: the key, or the base
-        # URL with the key on the line below it (_on_provider_changed), so an OpenAI-style server
-        # is no wider than any other provider. Columns 5 and 7 take the leftover width, so the
-        # model, the file, the URL and the key all grow with the window.
+        # Line one: the type and, for the cloud, the provider. Line two: the model, a file and the
+        # folder button or a name. Line three, cloud only: the key, or the base URL with the key on
+        # the line below it (_on_provider_changed), so an OpenAI-style server is no wider than any
+        # other provider. Columns 5 and 7 take the leftover width, so the model, the file, the URL
+        # and the key all grow with the window.
         grid = self.grid
         grid.addWidget(self.type_label, 0, 0)
         grid.addWidget(self.mode, 0, 1)
-        grid.addWidget(self.local_model_label, 0, 2)
-        grid.addWidget(self.local_model, 0, 3, 1, 5)
-        grid.addWidget(self.folder_button, 0, 8)
         grid.addWidget(self.provider_label, 0, 2)
         grid.addWidget(self.provider, 0, 3)
-        grid.addWidget(self.model_label, 0, 4)
-        grid.addWidget(self.model, 0, 5, 1, 4)
-        grid.addWidget(self.base_url_label, 1, 2)
-        grid.addWidget(self.base_url, 1, 3, 1, 6)
-        grid.addWidget(self.sees, 3, 3, 1, 6)
+        grid.addWidget(self.local_model_label, 1, 2)
+        grid.addWidget(self.local_model, 1, 3, 1, 5)
+        grid.addWidget(self.folder_button, 1, 8)
+        grid.addWidget(self.model_label, 1, 2)
+        grid.addWidget(self.model, 1, 3, 1, 6)
+        grid.addWidget(self.base_url_label, 2, 2)
+        grid.addWidget(self.base_url, 2, 3, 1, 6)
+        grid.addWidget(self.sees, 4, 3, 1, 6)
         grid.setColumnStretch(5, 1)
         grid.setColumnStretch(7, 1)
 
@@ -212,15 +242,15 @@ class ModelPicker(QtWidgets.QGroupBox):
         else:
             placeholder = f"using {key_env} from the environment" if in_env else f"{name} API key"
         self.key.setPlaceholderText(placeholder)
-        # The key takes the whole second line, or the third, under the base URL.
+        # The key takes the whole third line, or the fourth, under the base URL.
         self.grid.removeWidget(self.key_label)
         self.grid.removeWidget(self.key)
         if preset["kind"] == "openai-compatible":
+            self.grid.addWidget(self.key_label, 3, 2)
+            self.grid.addWidget(self.key, 3, 3, 1, 6)
+        else:
             self.grid.addWidget(self.key_label, 2, 2)
             self.grid.addWidget(self.key, 2, 3, 1, 6)
-        else:
-            self.grid.addWidget(self.key_label, 1, 2)
-            self.grid.addWidget(self.key, 1, 3, 1, 6)
         self._on_mode_changed()
 
     def scan_models(self):
@@ -288,6 +318,26 @@ class AssistantWindow(QtWidgets.QWidget):
             widget.setVisible(False)
         layout.addLayout(confirm)
 
+        # The open request: its turns, tokens, wait and plan, with a Cancel of its own. Hidden
+        # while there is none.
+        request = QtWidgets.QHBoxLayout()
+        self.request_label = QtWidgets.QLabel(self)
+        self.request_label.setFont(font)
+        self.request_cancel = QtWidgets.QPushButton("Cancel request", self)
+        self.request_cancel.setFont(font)
+        self.request_cancel.clicked.connect(tab.on_cancel_request)
+        request.addWidget(self.request_label, 1)
+        request.addWidget(self.request_cancel)
+        for widget in (self.request_label, self.request_cancel):
+            widget.setVisible(False)
+        layout.addLayout(request)
+
+        # What is scheduled: one row per schedule with a countdown to its next firing and a Cancel
+        # of its own. Rows come and go with the schedules; none while nothing is scheduled.
+        self.schedules = QtWidgets.QVBoxLayout()
+        self.schedule_rows = {}                                   # name -> (row widget, label)
+        layout.addLayout(self.schedules)
+
         self.input = _Input(self)
         self.input.setPlaceholderText("Ask the microscope…")
         self.input.setObjectName("AiAssistantInput")
@@ -337,6 +387,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
     the chat is in the AssistantWindow, which Connect opens."""
 
     sig_run_turn = QtCore.pyqtSignal(str)
+    sig_run_machine_turn = QtCore.pyqtSignal(str, int)   # a schedule or a continuation, for its request
+    sig_check_continuation = QtCore.pyqtSignal()
 
     def __init__(self, parent):
         super().__init__(parent.TabWidget)
@@ -355,6 +407,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._models_folder = models_folder(getattr(self.core, "cfg", None))
         self._single_shot = QtCore.QTimer.singleShot   # injectable for tests
         self._blocks = []                       # oldest first: HTML, or a finished answer's turn dict
+        self._continuations = []                # (text, request) of waits that are over, for the next tick
         self._active = None                     # the running turn: {"tools", "reply", "error"}
         self.scheduler = Scheduler()            # the assistant's schedules; the tick below fires them
         self._tick = QtCore.QTimer(self)
@@ -391,6 +444,9 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker.moveToThread(self._thread)
         self._run_turn_slot = self._worker.run_turn
         self.sig_run_turn.connect(self._run_turn_slot, QtCore.Qt.QueuedConnection)
+        self.sig_run_machine_turn.connect(self._worker.run_machine_turn, QtCore.Qt.QueuedConnection)
+        self.sig_check_continuation.connect(self._worker.check_continuation, QtCore.Qt.QueuedConnection)
+        self._worker.sig_continue.connect(self._on_continue)
         self._worker.sig_reply.connect(self._on_reply)
         self._worker.sig_tool.connect(self._on_tool)
         self._worker.sig_confirm.connect(self._on_confirm)
@@ -399,6 +455,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker.sig_done.connect(self._on_done)
         self._apply_options()
         self._worker.scheduler = self.scheduler
+        self._worker.measured_values = bool(getattr(getattr(self.core, "cfg", None), config.MEASURED_VALUES_CONFIG_KEY,
+                                                    False))
         self._thread.start()
         return True
 
@@ -410,6 +468,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._worker is not None:
             self._worker.max_history_turns = self.history_turns.value()
             self._worker.look_image_bin = int(self.frame_bin.currentText())
+            self._worker.focus_metric = self.focus_metric.currentData()
             self._worker.axes = self.axes()
 
     def axes(self):
@@ -486,7 +545,11 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self.frame_bin = QtWidgets.QComboBox(preferences)
         self.frame_bin.addItems([str(factor) for factor in rc_config.FRAME_BINS])
         self.frame_bin.setCurrentText(str(config.LOOK_BIN))
-        for widget in (self.tools_profile, self.history_turns, self.frame_bin):
+        self.focus_metric = QtWidgets.QComboBox(preferences)
+        self.focus_metric.addItem("Laplacian", "laplacian")
+        self.focus_metric.addItem("DCT-Shannon (Auto-Focus)", "dct_shannon")
+        self.focus_metric.setCurrentIndex(self.focus_metric.findData(config.FOCUS_METRIC))
+        for widget in (self.tools_profile, self.history_turns, self.frame_bin, self.focus_metric):
             widget.setFont(font)
 
         def with_unit(spin, unit):
@@ -498,7 +561,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
             cell.addStretch(1)
             return cell
 
-        # Three pairs on one line, the leftover width after them.
+        # Three pairs on one line, the leftover width after them; the focus metric on a line of its own.
         tool_set_label = _field_label("Tool set", preferences, font, gap=0)
         memory_label = _field_label("Memory", preferences, font)
         image_label = _field_label("Bin image", preferences, font, gap=2 * PAIR_GAP)  # set apart
@@ -509,6 +572,11 @@ class AiAssistantGUI(QtWidgets.QWidget):
         options.addWidget(image_label, 0, 4)
         options.addWidget(self.frame_bin, 0, 5)
         options.setColumnStretch(6, 1)
+        focus_cell = QtWidgets.QHBoxLayout()   # as wide as its names, not stretching column 1
+        focus_cell.addWidget(self.focus_metric)
+        focus_cell.addStretch(1)
+        options.addWidget(_field_label("Focus metric", preferences, font, gap=0), 1, 0)
+        options.addLayout(focus_cell, 1, 1, 1, 6)
 
         # The coordinate system as the operator sees it: one row per axis, what a positive move
         # does to the sample in the image. "Move it up" then has one meaning for the model.
@@ -559,6 +627,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self.tools_profile.currentTextChanged.connect(self._apply_profile)
         self.history_turns.valueChanged.connect(self._apply_options)
         self.frame_bin.currentTextChanged.connect(self._apply_options)
+        self.focus_metric.currentIndexChanged.connect(self._apply_options)
         for combo in self.axis_boxes.values():
             combo.currentTextChanged.connect(self._apply_options)
         return setup
@@ -586,6 +655,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
     def _set_setup_enabled(self, enabled):
         """The setup is applied by Connect and read only after it: Disconnect first to change it."""
         for widget in (self.language, self.vision, self.tools_profile, self.history_turns, self.frame_bin,
+                       self.focus_metric,
                        *self.axis_boxes.values()):
             widget.setEnabled(enabled)
 
@@ -616,6 +686,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._running:
             self._set_running(False)
         self.scheduler.clear()                  # nothing fires into a session that is gone
+        self._show_schedules()
+        self._continuations = []
         self._blocks, self._active = [], None
         self._render()
         self._set_connect_state("idle")
@@ -634,6 +706,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker.interrupt()
         if self._run_turn_slot is not None:
             self.sig_run_turn.disconnect(self._run_turn_slot)
+            self.sig_run_machine_turn.disconnect(self._worker.run_machine_turn)
+            self.sig_check_continuation.disconnect(self._worker.check_continuation)
             self._run_turn_slot = None
         self._thread.quit()
         if not self._thread.wait(3000):         # still inside a model call: let it be, never qFatal
@@ -803,6 +877,11 @@ class AiAssistantGUI(QtWidgets.QWidget):
         # Qt drops a bottom margin before the next question's table: an empty line keeps the air.
         return f'<div style="margin:12px 0 0 8px;">{"".join(parts)}</div><p style="margin:0;">&nbsp;</p>'
 
+    def _machine_block(self, text):
+        """A turn the machine wrote, a schedule that fell due or a wait that is over: a muted line
+        where the operator's panel would be, since nobody typed it."""
+        return f'<div style="color:{_DIM};margin:14px 0 2px 0;">{_htmllib.escape(text)}</div>'
+
     def _note_block(self, text):
         return f'<div style="color:{_DIM};margin:3px 0;"><i>{_htmllib.escape(text)}</i></div>'
 
@@ -825,22 +904,109 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self.chat_window.input.clear()
         self._submit(text)
 
-    def _submit(self, text):
-        """One turn: typed, or a schedule that fell due."""
-        self._blocks.append(self._user_block(text))
+    def _submit(self, text, request=None, shown=None):
+        """One turn: typed (a new request), or written by the machine for `request`: a schedule
+        that fell due, or a wait that is over. The model gets `text`; the transcript shows a
+        machine turn as `shown`."""
+        self._blocks.append(self._user_block(text) if request is None else self._machine_block(shown or text))
         self._active = {"tools": [], "reply": None, "error": None}
         self._set_running(True)
         self._render()
-        self.sig_run_turn.emit(text)
+        if request is None:
+            self.sig_run_turn.emit(text)
+        else:
+            self.sig_run_machine_turn.emit(text, request)
 
     def fire_due_schedule(self):
-        """Every second while connected: the first schedule that is due runs as a turn of its own,
-        marked as such in the transcript, never while a turn runs (it waits for the next tick)."""
+        """Every second while connected, never while a turn runs (it waits for the next tick): a
+        continuation that came due, else the first schedule that is due, runs as a turn of its own,
+        marked as such in the transcript; while a request waits, the worker is asked whether its
+        wait is over. The schedule rows count down on the same tick."""
+        self._show_request()
+        self._show_schedules()
         if self._state != "ready" or self._running:
+            return
+        if self._continuations:
+            self._submit(*self._continuations.pop(0))
             return
         item = self.scheduler.pop_due()
         if item is not None:
-            self._submit(config.SCHEDULED_TURN.format(name=item["name"], instruction=item["instruction"]))
+            self._submit(config.SCHEDULED_TURN.format(name=item["name"], instruction=item["instruction"]),
+                         item.get("request") or 0,
+                         config.SCHEDULED_SHOWN.format(name=item["name"].replace("_", " "), instruction=item["instruction"]))
+            self._show_schedules()                  # the one that fired: its next time, or gone
+        elif self._worker is not None and self._worker.requests.waiting is not None:
+            self.sig_check_continuation.emit()
+
+    def _on_continue(self, text, request):
+        prefix = config.CONTINUATION_TURN.format(number=request, result="")
+        result = text[len(prefix):] if text.startswith(prefix) else text
+        self._continuations.append((text, request, config.CONTINUATION_SHOWN.format(number=request, result=result)))
+        self.fire_due_schedule()
+
+    def _show_schedules(self):
+        """The schedule rows: each schedule's name, how often, and the countdown to its next
+        firing, with a Cancel of its own; a row per schedule, in the order they fire."""
+        window = self.chat_window
+        listing = self.scheduler.listing()
+        names = [item["name"] for item in listing]
+        if names != list(window.schedule_rows):     # one added, cancelled or fired for good, or the order changed
+            for row, _ in window.schedule_rows.values():
+                window.schedules.removeWidget(row)
+                row.hide()                          # gone now; deleteLater waits for the event loop
+                row.deleteLater()
+            window.schedule_rows = {name: self._schedule_row(name) for name in names}
+            for row, _ in window.schedule_rows.values():
+                window.schedules.addWidget(row)
+        for item in listing:
+            window.schedule_rows[item["name"]][1].setText(_schedule_text(item, self._running))
+
+    def _schedule_row(self, name):
+        font = self.chat_window.request_label.font()
+        row = QtWidgets.QWidget(self.chat_window)
+        line = QtWidgets.QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        label = QtWidgets.QLabel(row)
+        label.setFont(font)
+        cancel = QtWidgets.QPushButton("Cancel schedule", row)
+        cancel.setFont(font)
+        cancel.clicked.connect(lambda: self.on_cancel_schedule(name))
+        line.addWidget(label, 1)
+        line.addWidget(cancel)
+        return row, label
+
+    def on_cancel_schedule(self, name):
+        """A schedule row's Cancel: that schedule only; a turn it already started runs on. The
+        model sees it gone in the next readout."""
+        if self.scheduler.cancel(name):
+            self._blocks.append(self._note_block(f"[schedule cancelled: {name.replace('_', ' ')}]"))
+            self._render()
+        self._show_schedules()
+
+    def on_cancel_request(self):
+        """The request line's Cancel: the request ends, its wait with it; a turn of it in flight is
+        cancelled as Cancel does. The microscope is not stopped."""
+        if self._running:
+            self.on_interrupt()
+        if self._worker is not None:
+            self._worker.requests.end("cancelled by the operator")
+        self._continuations = []
+        self._show_request()
+
+    def _show_request(self):
+        """The request line: the open request's number, turns, tokens, wait and plan."""
+        request = self._worker.requests.open() if self._worker is not None else None
+        window = self.chat_window
+        for widget in (window.request_label, window.request_cancel):
+            widget.setVisible(request is not None)
+        if request is None:
+            return
+        text = f"Request {request.number}: {request.turns} turns, {request.tokens:,} tokens"
+        if request.wait:
+            text += f", waiting until {request.wait['until']}"
+        if request.plan:
+            text += "\n" + "\n".join(request.plan)
+        window.request_label.setText(text)
 
     def on_interrupt(self):
         if not self._running:
@@ -861,6 +1027,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self.main_window.stop_acquisition_and_timelapse()
         self.main_window.sig_stop_movement.emit()
         self.scheduler.clear()                  # a stop is a stop: nothing scheduled fires after it
+        self._show_schedules()
+        self._continuations = []                # and no wait continues (the worker ended the request)
         self._show_confirmation(False)
         self._blocks.append(self._note_block("[stop microscope]"))
         self._render()
@@ -871,9 +1039,11 @@ class AiAssistantGUI(QtWidgets.QWidget):
             return                                  # not while a turn runs
         self._blocks = []
         self._active = None
+        self._continuations = []
         if self._worker is not None:
             self._worker.reset()
         self._render()
+        self._show_request()
 
     # --- confirm-first commands ---
     def _show_confirmation(self, visible):
@@ -930,6 +1100,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
             self._active = None
         self._set_running(False)
         self._render()
+        self._show_request()
 
     def shutdown(self):
         """Called by MainWindow on app exit: release the session as Disconnect does. The

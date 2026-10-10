@@ -14,6 +14,7 @@ Maintainer (2026):
 
 import asyncio
 import json
+import math
 import re
 import logging
 import os
@@ -27,7 +28,11 @@ from PyQt5 import QtCore
 from ..remote_control.dispatcher import COMMANDS, READ, WAIT, COMPLETED, FAILED, STOPPED, error_info
 from ..remote_control.servers import Acceptor
 from ..remote_control.commands import self_test
+from ..remote_control.frame import array_of, to_png
 from . import config
+from .frames import Calibration, FrameHistory, field_um, flag, nominal_scale, sample_map, shift
+from .measured import MeasuredValues
+from .requests import Requests
 from ..remote_control import config as rc_config
 
 logger = logging.getLogger(__name__)
@@ -39,7 +44,12 @@ _TERMINAL = {COMPLETED, FAILED, STOPPED}
 _PROMPT_ONLY = {"get_manual"}
 
 
-def dispatch_and_wait(acceptor, name, args, kind, cancel, cfg=config):
+def hms(seconds):
+    """A time on the assistant's clock (epoch seconds) as the operator reads it, HH:MM:SS."""
+    return time.strftime("%H:%M:%S", time.localtime(seconds))
+
+
+def dispatch_and_wait(acceptor, name, args, kind, cancel, cfg=config, clock=time.time):
     """Run one command and return a finished result. For WAIT commands the return always
     carries a consistent top-level `status` ('completed' / 'failed' / 'stopped' / 'still_running' /
     'cancelled'); READ/ACTION commands pass their own result through unchanged.
@@ -60,11 +70,11 @@ def dispatch_and_wait(acceptor, name, args, kind, cancel, cfg=config):
     if op.get("status") in _TERMINAL:
         return {"status": op["status"], "operation": op_id, "result": result}
 
-    deadline = time.monotonic() + cfg.WAIT_CAP_S
+    deadline = clock() + cfg.WAIT_CAP_S
     until_stopped = name in getattr(cfg, "RUNS_UNTIL_STOPPED", ())
     on_its_own = name in getattr(cfg, "RUNS_ON_ITS_OWN", ())
     runs = COMMANDS[name].running_state if until_stopped or on_its_own else None
-    while time.monotonic() < deadline:
+    while clock() < deadline:
         if cancel.is_set():
             return {"status": "cancelled", "operation": op_id}      # interrupt() halts the hardware
         time.sleep(cfg.POLL_INTERVAL_S)
@@ -80,6 +90,90 @@ def dispatch_and_wait(acceptor, name, args, kind, cancel, cfg=config):
                     "note": cfg.RUNS_ON_ITS_OWN_NOTE.format(what=runs or name)}
     return {"status": "still_running", "operation": op_id,
             "note": "operation exceeds the wait cap; call get_progress to check on it."}
+
+
+def _asked_values(name, args):
+    """The state keys a setter sets, with the values asked; empty for any other command."""
+    if name not in config.SETTERS:
+        return {}
+    values = (args or {}).get("settings") if name == "set_state" else args
+    return {key: value for key, value in values.items() if key not in config.NOT_VALUES} if isinstance(values, dict) else {}
+
+
+def _reads_as(value, asked):
+    if isinstance(value, (int, float)) and isinstance(asked, (int, float)) and not isinstance(value, bool):
+        return abs(value - asked) <= 1e-9 * max(1.0, abs(asked))
+    return value == asked
+
+
+def read_back(acceptor, asked, cancel, cfg=config, clock=time.time):
+    """What Core holds for the keys a setter set: read until every key reads as asked, or for
+    READ_BACK_S at most. None when the instrument does not know one of the keys."""
+    deadline = clock() + cfg.READ_BACK_S
+    while True:
+        try:
+            values = acceptor.dispatch("get_state_all", {"keys": list(asked)})
+        except Exception:
+            return None
+        values = {key: values.get(key) for key in asked}
+        if all(_reads_as(values[key], value) for key, value in asked.items()) or cancel.is_set() or clock() >= deadline:
+            return values
+        time.sleep(cfg.POLL_INTERVAL_S)
+
+
+def _trail_view(snapshot):
+    """The readout's TRAIL_KEYS as flat dotted keys: optics.intensity, position.x."""
+    out = {}
+    for key in config.TRAIL_KEYS:
+        group, _, leaf = key.partition(".")
+        value = (snapshot or {}).get(group)
+        if leaf:
+            out[key] = value.get(leaf) if isinstance(value, dict) else None
+        elif isinstance(value, dict):
+            out.update({f"{group}.{name}": item for name, item in value.items()})
+        else:
+            out[key] = value
+    return out
+
+
+class StateTrail:
+    """The readout keys that changed since the model last saw them: the turn's readout (from the
+    session store), then each result. A move's new position otherwise sits three levels deep in
+    its result, and a setting's effect, or anything the operator changed meanwhile, nowhere."""
+
+    def __init__(self, acceptor, store=None):
+        self._acceptor = acceptor
+        self._store = store
+        self._turn = None
+        self._seen = None
+        self._lock = threading.Lock()      # the calls of one reply run on threads of their own
+
+    def since_last(self):
+        with self._lock:
+            try:
+                now = _trail_view(self._acceptor.dispatch("get_snapshot", {}))
+            except Exception:
+                return {}
+            if self._store is not None and self._store.turns and len(self._store.turns) != self._turn:
+                self._turn = len(self._store.turns)
+                readout = self._store.turns[-1].get("readout")
+                self._seen = _trail_view(readout) if readout else None
+            seen, self._seen = self._seen, now
+            return {} if seen is None else {key: value for key, value in now.items() if seen.get(key) != value}
+
+
+def with_changes(outcome, trail, changed=None):
+    """The result with `changed` (the setter's keys as read back) and then the other readout keys
+    that changed since the last result, so that every result ends with them."""
+    if not isinstance(outcome, dict):
+        return outcome
+    if changed is not None:
+        outcome["changed"] = changed
+    moved = {key: value for key, value in trail.since_last().items()
+             if key.rpartition(".")[2] not in (changed or {})}
+    if moved:
+        outcome["state_changed"] = moved
+    return outcome
 
 
 def describe_error(error):
@@ -122,6 +216,48 @@ def _only_keys(fn, name, keys):
                                                     f"{', '.join(extra)} needs the Full tool set (the operator's choice "
                                                     "in the setup box)"}})
         return fn(**args)
+    return _call
+
+
+def _safe_keys(schema):
+    """The schema with each argument name Anthropic refuses renamed, at any depth, and the
+    renaming to undo: a property name must match ^[a-zA-Z0-9_.-]{1,64}$, so "camera_delay_%" is
+    offered as "camera_delay_pct". The commands keep their names; only the model sees these."""
+    renamed = {}
+
+    def walk(node):
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out = {}
+        for key, value in node.items():
+            if key == "properties" and isinstance(value, dict):
+                out[key] = {}
+                for name, sub in value.items():
+                    safe = name.replace("%", "pct")
+                    if safe != name:
+                        renamed[safe] = name
+                    out[key][safe] = walk(sub)
+            elif key == "required" and isinstance(value, list):
+                out[key] = [name.replace("%", "pct") for name in value]
+            else:
+                out[key] = walk(value)
+        return out
+    return walk(schema), renamed
+
+
+def _original_keys(fn, renamed):
+    """The call with the names `_safe_keys` gave back to the command's own, at any depth."""
+    def back(value):
+        if isinstance(value, dict):
+            return {renamed.get(key, key): back(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [back(item) for item in value]
+        return value
+
+    def _call(**args) -> str:
+        return fn(**back(args))
     return _call
 
 
@@ -191,40 +327,59 @@ def _named(option, words):
 
 
 class TurnGuard:
-    """Four rules of the manual, kept in code for the length of one turn, because a small model
-    reads them and does otherwise. After a move was refused for a movement limit, no other target
-    for that axis is taken: a different number is a different instruction, and the operator gives
+    """Five rules of the manual, kept in code for the length of one request, because a model can read
+    a rule and still break it. After a move was refused for a movement limit, no other target for
+    that axis is taken: a different number is a different instruction, and the operator gives
     those. After a command was refused because the operator is running something from the GUI, a
-    stop is theirs to confirm, not the model's way to make room. A look right after a snap reads
-    that frame instead of exposing the sample a second time. And a value the operator did not give
-    ("brighter" sent as 20, "change the filter" sent as the one other filter) waits for their Run.
+    stop is theirs to confirm, not the model's way to make room. The laser intensity and the
+    exposure change at most LIGHT_CHANGES_PER_WINDOW times in LIGHT_WINDOW_S without the operator's
+    Run. A look right after a snap reads that frame instead of exposing the sample a second time.
+    And a value the operator did not give ("brighter" sent as 20, "change the filter" sent as the
+    one other filter) waits for their Run.
 
-    A turn is one operator message, counted by the session store; without a store there is no turn
-    to count and the guard lets everything through."""
+    A request is what one typed message set going, over its scheduled and continued turns (see
+    requests.py); its turns are in the session store. The operator's values are the numbers and
+    options in what they typed, never in text the machine wrote (a schedule's instruction, a
+    continuation). A request's light changes are counted over LIGHT_WINDOW_S. Without a
+    store there is no request to follow and the guard lets everything through. With `requests`, a
+    turn that has asked to wait may not touch the instrument again. With `measured` (a setting,
+    off by default), a value that follows from a fresh measurement within its bounds passes as if
+    the operator had given it (see measured.py)."""
 
-    def __init__(self, store=None):
+    def __init__(self, store=None, requests=None, measured=False):
         self._store = store
-        self._turn = None
+        self._requests = requests
+        self._request = None
+        self._measured = MeasuredValues(store.frames) if measured and store is not None else None
+        self._measured_now = None        # (name, frame) of a measured value let through, until its result
         self._clear()
 
     def _clear(self):
         self.refused_axes = set()
         self.busy_from_gui = False
         self.fresh_snap = False
-        self.light_changes = {}
-        self.set_this_turn = set()       # numbers the turn has set so far: current values for its arithmetic
+        self.set_this_turn = set()       # numbers the request has set so far: current values for its arithmetic
+        self._light_times = {}           # command -> times of the request's changes, on the store's clock
 
     def _sync(self):
-        if self._store is None:
+        if self._store is None or not self._store.turns:
             return False
-        turn = len(self._store.turns)
-        if turn != self._turn:
-            self._turn = turn
+        latest = self._store.turns[-1]
+        request = latest.get("request", latest["turn"])
+        if request != self._request:
+            self._request = request
             self._clear()
+            if self._measured is not None:
+                first = next(t for t in self._store.turns if t.get("request", t["turn"]) == request)
+                self._measured.reset(((first.get("readout") or {}).get("position") or {}).get("f"))
         return True
 
     def before(self, name, args):
         """The refusal this call gets, shaped like any tool error, or None to let it through."""
+        if (self._requests is not None and self._requests.is_waiting()
+                and (name == "look" or (name in COMMANDS and COMMANDS[name].kind != READ))):
+            return {"error": {"code": "refused", "message": "this turn has asked to wait; end it with a short reply. "
+                                                            "The request continues when the wait is over."}}
         if not self._sync() or name not in config.MOVE_ARGS:
             return None
         asked = (args or {}).get(config.MOVE_ARGS[name])
@@ -244,8 +399,9 @@ class TurnGuard:
         if not self._sync() or name not in config.VALUE_COMMANDS:
             return None
         turns = self._store.turns
-        words = " ".join(t["prompt"] for t in turns).lower()
-        current = turns[-1]["prompt"].lower()
+        typed = [t for t in turns if t.get("origin", "operator") == "operator"]
+        words = " ".join(t["prompt"] for t in typed).lower()
+        current = next((t["prompt"] for t in typed if t.get("request", t["turn"]) == self._request), "").lower()
         given = _numbers_in(words)
         now = _numbers_of(turns[-1].get("readout")) | self.set_this_turn
         allowed = {n * factor for n in given for factor in config.UNIT_FACTORS}
@@ -262,20 +418,34 @@ class TurnGuard:
                 continue
             if isinstance(value, (int, float)):
                 if not any(abs(abs(value) - a) <= 1e-6 * max(1.0, abs(a)) for a in allowed):
-                    return f"{key}={value}"
+                    return self._unless_measured(name, args, f"{key}={value}")
             elif isinstance(value, str) and not _named(value, words):
                 return f"{key}={value!r}"
         return None
+
+    def _unless_measured(self, name, args, value):
+        """`value`, or None when the setting lets measured values through and this one follows."""
+        if self._measured is not None and self._measured.allows(name, args):
+            self._measured_now = (name, self._store.frames.frames[-1])
+            return None
+        return value
 
     def stop_is_the_operators(self, name):
         """True for a stop that would end what the operator is running from the GUI."""
         return self._sync() and self.busy_from_gui and name in config.STOP_COMMANDS
 
     def is_one_change_too_many(self, name):
-        """True when this turn has already changed this light setting as often as a turn may: a model
-        asked to double the intensity once can keep doubling while the next frame looks no better.
-        The light on the sample is the operator's to escalate."""
-        return self._sync() and self.light_changes.get(name, 0) >= config.LIGHT_CHANGES_PER_TURN.get(name, 1 << 30)
+        """True when this request has changed this light setting as often as LIGHT_WINDOW_S allows: a
+        model asked to double the intensity once can keep doubling while the next frame looks no
+        better, and over hours of a time lapse a count per turn would mean nothing. The light on
+        the sample is the operator's to escalate."""
+        return self._sync() and len(self._recent_light(name)) >= config.LIGHT_CHANGES_PER_WINDOW.get(name, 1 << 30)
+
+    def _recent_light(self, name):
+        since = self._store.clock() - config.LIGHT_WINDOW_S
+        recent = [t for t in self._light_times.get(name, []) if t > since]
+        self._light_times[name] = recent
+        return recent
 
     def take_fresh_snap(self):
         """True, once, when the last thing done to the instrument in this turn was a snap."""
@@ -294,8 +464,15 @@ class TurnGuard:
         if error and error.get("code") == "validation" and config.LIMIT_REFUSAL in message and name in config.MOVE_ARGS:
             asked = (args or {}).get(config.MOVE_ARGS[name])
             self.refused_axes |= set(asked) if isinstance(asked, dict) else set()
-        if name in config.LIGHT_CHANGES_PER_TURN and not error:
-            self.light_changes[name] = self.light_changes.get(name, 0) + 1
+        if name in config.LIGHT_CHANGES_PER_WINDOW and not error:
+            self._light_times.setdefault(name, []).append(self._store.clock())
+        if self._measured is not None and not error and (name in config.MOVE_ARGS or name in config.SETTERS):
+            if self._measured_now is not None and self._measured_now[0] == name:
+                self._measured.took(name, self._measured_now[1])
+            self._measured.changed()                 # any frame before it is no longer fresh
+        self._measured_now = None
+        if self._requests is not None and not error and name in COMMANDS and COMMANDS[name].kind != READ:
+            self._requests.started(_operation_id(outcome))
         if name in config.VALUE_COMMANDS and not error:
             values = (args or {}).get(config.MOVE_ARGS[name], {}) if name in config.MOVE_ARGS else (args or {})
             self.set_this_turn |= _numbers_of({k: v for k, v in values.items() if k not in config.NOT_VALUES}
@@ -304,6 +481,12 @@ class TurnGuard:
             self.fresh_snap = isinstance(outcome, dict) and outcome.get("status") == COMPLETED
         elif name == "look" or (name in COMMANDS and COMMANDS[name].kind != READ):
             self.fresh_snap = False           # the instrument changed, or the frame was read
+
+
+def _operation_id(outcome):
+    """The id of the operation a result reports, from a wait's top level or an accepted reply."""
+    operation = outcome.get("operation") if isinstance(outcome, dict) else None
+    return operation.get("id") if isinstance(operation, dict) else operation
 
 
 def _advice(name, code, message):
@@ -361,14 +544,16 @@ def shorten_result(name, result):
     return kept
 
 
-def _tool_fn(acceptor, name, kind, cancel, on_call=None, gate=None, guard=None):
+def _tool_fn(acceptor, name, kind, cancel, on_call=None, gate=None, guard=None, clock=time.time, trail=None):
     """One passthrough tool body, closing over the command it dispatches. The keyword arguments
     ARE the command's wire args, so `move_absolute(targets={"x": 5000})` dispatches verbatim.
     `on_call` (if given) is invoked the moment the command fires, so the GUI can stream the
     activity live. Dispatch errors (out-of-range, busy) are returned to the model as data so it
     can self-correct, not raised. A confirm-first command first asks the operator through `gate`,
-    and so does a stop that would end the operator's own run (see TurnGuard)."""
+    and so does a stop that would end the operator's own run (see TurnGuard). A call that reached
+    the instrument returns with the readout keys it changed (see with_changes)."""
     guard = guard or TurnGuard()
+    trail = trail or StateTrail(acceptor)
 
     def _call(**args) -> str:
         """See the tool description (the command's hint)."""
@@ -389,15 +574,16 @@ def _tool_fn(acceptor, name, kind, cancel, on_call=None, gate=None, guard=None):
             return refused                                               # nobody to ask is not a yes
         if guard.is_one_change_too_many(name) and (gate is None or not gate.ask(name, args)):
             return json.dumps({"error": {"code": "refused", "message": (
-                f"the operator did not confirm another {name} in this turn. It has been changed "
-                f"{config.LIGHT_CHANGES_PER_TURN[name]} times already; tell them what the frames showed and stop.")}})
+                f"the operator did not confirm another {name}. It has been changed "
+                f"{config.LIGHT_CHANGES_PER_WINDOW[name]} times in the last ten minutes; tell them what the frames "
+                "showed and stop.")}})
         value = guard.value_not_the_operators(name, args)
         if value is not None and (gate is None or not gate.ask(name, args)):
             return json.dumps({"error": {"code": "refused", "message": (
                 f"{value} is not a value the operator gave, and they did not confirm it. Ask them which value "
                 "they want; do not choose one.")}})
         try:
-            outcome = shorten_result(name, dispatch_and_wait(acceptor, name, args, kind, cancel))
+            outcome = shorten_result(name, dispatch_and_wait(acceptor, name, args, kind, cancel, clock=clock))
         except Exception as error:
             code, message = error_info(error)
             outcome = {"error": {"code": code, "message": message}}
@@ -410,87 +596,228 @@ def _tool_fn(acceptor, name, kind, cancel, on_call=None, gate=None, guard=None):
             running = acceptor.dispatch("get_state_all", {"keys": ["state"]}).get("state")
             if running and running != "idle":
                 outcome["note"] = config.STAGE_STOP_NOTE.format(state=running)
+        asked = _asked_values(name, args)
+        changed = None
+        if asked and isinstance(outcome, dict) and "error" not in outcome:
+            changed = read_back(acceptor, asked, cancel, clock=clock)
+        outcome = with_changes(outcome, trail, changed)
         guard.after(name, args, outcome)
         return json.dumps(outcome)
     return _call
 
 
-def look(acceptor, endpoint, question, snap, cancel, image_bin=None, eyes=None):
+def look(acceptor, endpoint, question, snap, cancel, image_bin=None, eyes=None, clock=time.time,
+         history=None, axes=None, frames=None, label=None, focus_metric=None):
     """Take a frame and describe it. The numbers come from get_frame and reach the main model
     always. The picture itself goes to a vision model in a separate call with the question, and
     only that answer comes back — the main conversation never carries images, so a text-only main
     model can still look, and a frame from three turns ago cannot mislead later. With `eyes` (a
-    VisionSession) that call is a turn in the vision model's own conversation, which has seen the
-    session's earlier frames and can compare; without, it is one stateless call."""
+    VisionSession) that call is a turn in the vision model's own conversation; without, it is one
+    stateless call.
+
+    With a frame `history`, the new frame is kept there with code's measures, `frames` chooses
+    recorded frames to show with it ("last 3", "1,7", "3-10"), and the result compares
+    them; `snap` false with nothing running shows recorded frames instead of taking one.
+    `focus_metric` overrides the operator's choice for this frame."""
     saved = None
-    if snap and _running_mode(acceptor) is not None:
+    running = _running_mode(acceptor)
+    if snap and running is not None:
         snap = False                              # live shows frames already; a snap would take the loop over
-    if snap:
-        done = dispatch_and_wait(acceptor, "snap", {"prefix": "assistant"}, WAIT, cancel)
-        if done.get("status") != COMPLETED:
-            return {"error": {"code": "execution", "message": f"snap did not complete: {done}"}}
-        saved = (((done.get("result") or {}).get("operation") or {}).get("result") or {}).get("path")
-    frame = acceptor.dispatch("get_frame", {"include_image": endpoint.vision, "bin": image_bin or config.LOOK_BIN})
-    if not frame.get("available"):
-        return {"available": False, "note": "no frame yet; take a snap first"}
-    result = {"available": True, "stats": frame["stats"]}
+    fresh_needed = snap or running is not None or history is None or not history.frames
+    frame = fresh = None
+    if fresh_needed:
+        if snap:
+            done = dispatch_and_wait(acceptor, "snap", {"prefix": "assistant"}, WAIT, cancel, clock=clock)
+            if done.get("status") != COMPLETED:
+                return {"error": {"code": "execution", "message": f"snap did not complete: {done}"}}
+            saved = (((done.get("result") or {}).get("operation") or {}).get("result") or {}).get("path")
+        request = {"include_image": endpoint.vision, "bin": image_bin or config.LOOK_BIN}
+        if history is not None:
+            request["array_side"] = config.FRAME_COPY_SIDE
+        if focus_metric:
+            request["focus_metric"] = focus_metric
+        frame = acceptor.dispatch("get_frame", request)
+        if not frame.get("available"):
+            return {"available": False, "note": "no frame yet; take a snap first"}
+        if history is not None:
+            source = running or "look"
+            fresh = history.add(array_of(frame), frame["stats"], source, _frame_readout(acceptor), axes or {}, label)
+    try:
+        shown = history.pick(_frames_wanted(frames)) if history is not None and frames is not None else []
+    except ValueError as error:
+        return {"error": {"code": "validation", "message": str(error)}}
+    if fresh is not None and all(f is not fresh for f in shown):
+        shown.append(fresh)
+    if history is not None and not shown:
+        shown = [history.frames[-1]]
+    if label and fresh is None and shown:
+        shown[-1]["label"] = str(label)
+    result = {"available": True}
+    if frame is not None:
+        result["stats"] = frame["stats"]
     if saved:
         result["file"] = saved                    # in the turn's record: the frame this look saw can be found again
-    elif snap is False and _running_mode(acceptor) is not None:
-        result["source"] = f"the latest frame of the running {_running_mode(acceptor)}, no snap taken"
-    image = frame.get("image")
-    if image is None:
+    elif running is not None:
+        result["source"] = f"the latest frame of the running {running}, no snap taken"
+    if len(shown) == 1 and frame is not None:
+        result["kept"] = {k: v for k, v in history.brief(shown[0]).items()
+                          if k not in ("time", "position", "settings", "peak", "mean", "saturated", "focus",
+                                       "focus_metric")}
+    elif shown:
+        result["frames"] = [history.brief(f) for f in shown]
+        result["changes"] = history.compare(shown)
+    if not endpoint.vision:
         result["note"] = "this model cannot see images; decide from the numbers"
     elif question:
         try:
             if eyes is not None:
-                result["answer"] = eyes.look(image, question, frame["stats"], _frame_context(acceptor))
+                pictures = [(_eyes_text(history, f), _png_of(f, frame if f is fresh else None)) for f in shown] or \
+                           [(f"Frame numbers: {json.dumps(frame['stats'])}", frame["image"]["base64"])]
+                result["answer"] = eyes.look(pictures, question, _frame_context(acceptor))
                 result["frames_seen"] = eyes.frames
             else:
-                result["answer"] = vision_answer(endpoint, image, question, frame["stats"])
+                result["answer"] = vision_answer(endpoint, frame["image"], question, frame["stats"])
         except Exception as error:
             result["vision_error"] = describe_error(error)
     return result
 
 
-def _frame_context(acceptor):
-    """What a picture depends on, from the readout: the state, the position, the optics and the
-    camera, as compact JSON; empty when the readout fails."""
+def calibrate(acceptor, cancel, history, axes, step_um=None, clock=time.time):
+    """Measure how the image moves with the stage at this zoom: snap, move x by a small step,
+    snap, move back, the same on y, and from the image shifts (phase correlation of the frames'
+    copies) keep the scale for the zoom in the history's calibration, so that centring moves are
+    measured rather than nominal. The moves are code's, one block under the operator's one Run."""
+    readout = _frame_readout(acceptor)
+    zoom, field = (readout.get("optics") or {}).get("zoom"), field_um(readout)
+    if zoom is None or field is None:
+        return {"error": {"code": "execution", "message": "the zoom or the camera's pixel size is not in the readout"}}
+    step = float(step_um or round(config.CALIBRATE_STEP_FRACTION * field[0]))
+
+    def snapped():
+        done = dispatch_and_wait(acceptor, "snap", {"prefix": "calibrate"}, WAIT, cancel, clock=clock)
+        if done.get("status") != COMPLETED:
+            raise RuntimeError(f"snap did not complete: {done.get('status')}")
+        document = acceptor.dispatch("get_frame", {"include_image": False, "array_side": config.FRAME_COPY_SIDE})
+        return history.add(array_of(document), document["stats"], "calibrate", _frame_readout(acceptor), axes)
+
+    def moved(axis, delta):
+        done = dispatch_and_wait(acceptor, "move_relative", {"deltas": {axis: delta}}, WAIT, cancel, clock=clock)
+        if done.get("status") != COMPLETED:
+            raise RuntimeError(f"the {axis} move of {delta} um did not complete: {done.get('status')}")
+
+    try:
+        start = snapped()
+        if flag(start):
+            return {"error": {"code": "refused", "message": f"frame {start['n']}: {flag(start)}; calibrate needs a "
+                                                            "visible sample that is not saturated"}}
+        rows, report, used = [], {"zoom": zoom, "step_um": step}, [start["n"]]
+        for axis in ("x", "y"):
+            moved(axis, step)
+            after = snapped()
+            moved(axis, -step)
+            used.append(after["n"])
+            found = shift(start["image"], after["image"])
+            if found is None or found["confidence"] < config.CALIBRATE_CONFIDENCE_MIN:
+                return {"error": {"code": "execution", "message": (
+                    f"the image shift for {axis} could not be measured (frames {start['n']} and {after['n']}); "
+                    "the sample may have too little detail or have left the field")}}
+            height, width = start["image"].shape
+            right, up = found["right"] / width / step, -found["down"] / height / step
+            rows.append([right, up])
+            image_um = math.hypot(found["right"] * field[0] / width, found["down"] * field[1] / height)
+            # 1 when the pixel size in the configuration is right
+            report[axis] = {"sample_moves": _direction(right, up), "image_um_per_stage_um": round(image_um / step, 3)}
+    except (RuntimeError, ValueError) as error:
+        return {"error": {"code": "execution", "message": str(error)}}
+    nominal = nominal_scale(readout, axes)
+    report["matches_the_coordinate_system"] = bool(nominal) and all(
+        _direction(*rows[i]) == _direction(*nominal[i]) for i in range(2))
+    history.calibration.store(zoom, rows, hms(clock()), step)
+    report["frames"] = used
+    report["note"] = "kept for this zoom; frame measures and the map now use it"
+    return report
+
+
+def _direction(right, up):
+    """Which way a positive move carries the sample in the image."""
+    if abs(right) >= abs(up):
+        return "right" if right > 0 else "left"
+    return "up" if up > 0 else "down"
+
+
+def _frames_wanted(frames):
+    """look's `frames` as FrameHistory.pick takes it: "last 3" a count, "4" or "1,7" frame
+    numbers, "3-10" a range of them."""
+    if isinstance(frames, str):
+        text = frames.strip().lower()
+        last = re.fullmatch(r"last\s*(\d+)", text)
+        if last:
+            return int(last.group(1))
+        if re.fullmatch(r"\d+(\s*,\s*\d+)*", text):
+            return [int(n) for n in text.split(",")]
+    return frames
+
+
+def _eyes_text(history, entry):
+    """What the eyes are told about a frame: its number, time, label, where and how it was taken,
+    and code's measures."""
+    brief = history.brief(entry)
+    head = f"Frame {brief['n']}, {brief['time']}, {brief['source']}" + (f", labelled {brief['label']!r}" if "label" in brief else "")
+    rest = {k: v for k, v in brief.items() if k not in ("n", "time", "source", "label")}
+    return f"{head}. {json.dumps(rest, separators=(',', ':'))}"
+
+
+def _png_of(entry, frame):
+    """The frame's picture for the eyes: the full one when it was just taken, else its small copy."""
+    if frame is not None and frame.get("image"):
+        return frame["image"]["base64"]
+    import base64
+    png, _ = to_png(entry["image"], max_size=config.FRAME_COPY_SIDE)
+    return base64.b64encode(png).decode("ascii")
+
+
+def _frame_readout(acceptor):
+    """The readout a frame was taken in: state, position, optics and camera; empty when it fails."""
     try:
         snapshot = acceptor.dispatch("get_snapshot", {}) or {}
     except Exception:
-        return ""
-    kept = {key: snapshot[key] for key in config.VISION_CONTEXT_KEYS if key in snapshot}
+        return {}
+    return {key: snapshot[key] for key in config.VISION_CONTEXT_KEYS if key in snapshot}
+
+
+def _frame_context(acceptor):
+    """What a picture depends on, from the readout, as compact JSON; empty when the readout fails."""
+    kept = _frame_readout(acceptor)
     return json.dumps(kept, default=str, separators=(",", ":")) if kept else ""
 
 
 class VisionSession:
     """The eyes: the vision model's own conversation for the session. Every look is a turn in it,
-    with the frame, its time, the settings and the numbers, so the eyes can compare the current
-    frame with earlier ones and be asked about the session's frames without a new frame. The last
-    VISION_FRAMES_KEPT frames stay attached as images; older turns keep their text and lose the
-    image, so the conversation stays about one frame's cost per look with a provider that caches
-    the prefix. Cleared with the transcript. `model` overrides the endpoint's, for the tests."""
+    with the frames it asks about, each with its number, time, settings and code's numbers, so the
+    eyes can compare them and be asked about the session's frames without a new one. Once answered,
+    a turn keeps its text and loses its images: the frames to compare are the ones a look attaches,
+    and a look costs the frames it shows. Cleared with the transcript. `model` overrides the
+    endpoint's, for the tests."""
 
-    def __init__(self, endpoint, frames_kept=None, model=None):
+    def __init__(self, endpoint, model=None, clock=time.time):
         self.endpoint = endpoint
-        self.frames_kept = config.VISION_FRAMES_KEPT if frames_kept is None else frames_kept
+        self.clock = clock
         self._model = model
         self._agent = None
         self._history = []
         self._loop = None                                  # the eyes' own event loop: the model's HTTP client is bound to it
         self._lock = threading.Lock()                      # one question at a time, from whichever thread asks
-        self.frames = 0                                    # frames seen this session
+        self.frames = 0                                    # looks answered this session
 
-    def look(self, image, question, stats, context=""):
+    def look(self, pictures, question, context=""):
+        """`pictures`: (what the frame is, its PNG as base64) for each frame to show, oldest first."""
         import base64
         from pydantic_ai import BinaryContent
-        number = self.frames + 1                            # counted once the eyes have seen it
-        text = (f"Frame {number}, {time.strftime('%H:%M:%S')}."
-                + (f" Instrument: {context}" if context else "")
-                + f"\nQuestion: {question}\nFrame numbers: {json.dumps(stats)}")
-        answer = self._run([text, BinaryContent(data=base64.b64decode(image["base64"]), media_type="image/png")])
-        self.frames = number
+        parts = [f"{hms(self.clock())}." + (f" Instrument now: {context}" if context else "")]
+        for text, png in pictures:
+            parts += [text, BinaryContent(data=base64.b64decode(png), media_type="image/png")]
+        answer = self._run(parts + [f"Question: {question}"])
+        self.frames += 1
         return answer
 
     def ask(self, question):
@@ -509,20 +836,22 @@ class VisionSession:
         with self._lock:
             if self._agent is None:
                 self._agent = Agent(self._model or build_model(self.endpoint),
-                                    instructions=config.EYES_INSTRUCTIONS.format(kept=self.frames_kept),
-                                    model_settings={"temperature": config.MODEL_TEMPERATURE})
+                                    instructions=config.EYES_INSTRUCTIONS,
+                                    model_settings=model_settings(self.endpoint))
             if self._loop is None:
                 self._loop = asyncio.new_event_loop()
             result = self._loop.run_until_complete(self._agent.run(prompt, message_history=self._history))
-            self._history = detach_old_frames(result.all_messages(), self.frames_kept)
+            self._history = detach_old_frames(result.all_messages(), 0)
             return result.output
 
 
 def detach_old_frames(messages, kept):
     """The messages with the image removed from every frame turn but the last `kept`: the text
-    of the turn (time, settings, numbers) and the answer stay."""
+    of the turn (time, settings, numbers) and the answer stay. The answer's thinking goes with the
+    image: Anthropic signs a thinking block for the turn it saw, and refuses the next request
+    when that turn has changed ("bound to a different conversation")."""
     import dataclasses
-    from pydantic_ai.messages import BinaryContent, UserPromptPart
+    from pydantic_ai.messages import BinaryContent, ThinkingPart, UserPromptPart
     with_image = [i for i, m in enumerate(messages)
                   if any(isinstance(p, UserPromptPart) and isinstance(p.content, list)
                          and any(isinstance(c, BinaryContent) for c in p.content) for p in getattr(m, "parts", []))]
@@ -535,10 +864,18 @@ def detach_old_frames(messages, kept):
                      if isinstance(p, UserPromptPart) and isinstance(p.content, list) else p
                      for p in message.parts]
             message = dataclasses.replace(message, parts=parts)
+        elif i - 1 in to_strip and any(isinstance(p, ThinkingPart) for p in message.parts):
+            message = dataclasses.replace(message, parts=[p for p in message.parts if not isinstance(p, ThinkingPart)])
         out.append(message)
     return out
 
 
+_CALIBRATE_SCHEMA = {
+    "type": "object",
+    "properties": {"step_um": {"type": "number", "minimum": 5, "maximum": 2000,
+                               "description": "the test move on x and on y; a tenth of the field when omitted"}},
+    "additionalProperties": False,
+}
 _ASK_EYES_SCHEMA = {
     "type": "object",
     "properties": {"question": {"type": "string", "description": "what to compare or recall across the frames seen"}},
@@ -582,7 +919,12 @@ _LOOK_SCHEMA = {
     "type": "object",
     "properties": {
         "question": {"type": "string", "description": "what to check in the image"},
-        "snap": {"type": "boolean", "description": "take a new frame first (default true); false reuses the last one"},
+        "snap": {"type": "boolean", "description": "take a new frame first (default true); false shows recorded frames"},
+        "frames": {"type": "string", "description": "recorded frames to show as well: 'last 3', '1,7', '3-10'"},
+        "label": {"type": "string", "description": "a name for the new frame, to find it again: 'before'"},
+        "focus_metric": {"type": "string", "enum": ["laplacian", "dct_shannon"],
+                         "description": "only when the operator names one: the focus measure for this frame "
+                                        "(dct_shannon is the Auto-Focus one); otherwise the operator's setting"},
     },
     "required": ["question"],
     "additionalProperties": False,
@@ -604,6 +946,35 @@ def hidden_commands(profile=None):
     return [name for name in COMMANDS if name not in offered and name not in _PROMPT_ONLY]
 
 
+class _WithFocusMetric:
+    """The acceptor, adding the operator's focus metric to every get_frame that names none: the
+    look, the kept snaps, calibrate and the model's own get_frame all measure the same way."""
+
+    def __init__(self, acceptor, metric):
+        self._acceptor, self._metric = acceptor, metric
+
+    def dispatch(self, name, args):
+        if name == "get_frame":
+            args = {"focus_metric": self._metric(), **(args or {})}
+        return self._acceptor.dispatch(name, args)
+
+    def __getattr__(self, name):
+        return getattr(self._acceptor, name)
+
+
+def _keeping_snaps(fn, acceptor, history, axes):
+    """The snap tool, keeping each frame it took in the history and naming its number."""
+    def _call(**args) -> str:
+        outcome = json.loads(fn(**args))
+        if isinstance(outcome, dict) and outcome.get("status") == COMPLETED:
+            frame = acceptor.dispatch("get_frame", {"include_image": False, "array_side": config.FRAME_COPY_SIDE})
+            if frame.get("available"):
+                entry = history.add(array_of(frame), frame["stats"], "snap", _frame_readout(acceptor), axes)
+                outcome["kept"] = {"n": entry["n"]}
+        return json.dumps(outcome)
+    return _call
+
+
 def _row_arguments(schema):
     """The argument names under which a command takes acquisition rows: a list or a single row."""
     properties = schema.get("properties", {})
@@ -614,14 +985,22 @@ class SessionStore:
     """Every turn of the session in full: the operator's words, the readout the model was given,
     the tool calls with their results, the reply. The memory the model carries keeps older turns
     compact; what compaction leaves out is here, and the recall and search tools hand it back on
-    request. Kept in memory for the session only; Clear all empties it."""
+    request. Kept in memory for the session only; Clear all empties it. The frames of the session
+    are its frame history."""
 
-    def __init__(self):
+    def __init__(self, clock=time.time, calibration=None):
         self.turns = []
+        self.clock = clock
+        self.frames = FrameHistory(clock, calibration)
 
-    def begin(self, prompt, snapshot):
-        self.turns.append({"turn": len(self.turns) + 1, "time": time.strftime("%H:%M:%S"),
-                           "prompt": prompt, "readout": snapshot, "tools": [], "reply": None})
+    def begin(self, prompt, snapshot, origin="operator", request=None):
+        """Open a turn: `origin` is "operator" for typed text, "machine" for a fired schedule or a
+        continuation; `request` the number of the request it belongs to."""
+        entry = {"turn": len(self.turns) + 1, "time": hms(self.clock()), "prompt": prompt, "origin": origin,
+                 "readout": snapshot, "tools": [], "reply": None}
+        if request is not None:
+            entry["request"] = request
+        self.turns.append(entry)
         return len(self.turns)
 
     def finish(self, messages, reply):
@@ -721,14 +1100,18 @@ class Scheduler:
     every second and submits each due instruction as an ordinary turn, so it goes through the same
     tools, gate and refusals as anything typed, one at a time and never while a turn runs. The
     model cannot keep time; this does, and the readout shows the clock and what is scheduled.
-    Thread-safe: the tools add and cancel from the worker thread, the timer pops on the GUI's."""
+    Thread-safe: the tools add and cancel from the worker thread, the timer pops on the GUI's.
+
+    Its clock (epoch seconds, time.time by default) is the assistant's one clock: every time the
+    assistant reads about the instrument, the session or the schedules goes through it, so a
+    simulator that passes its own decides when time passes."""
 
     def __init__(self, clock=time.time):
-        self._clock = clock
+        self.clock = clock
         self._lock = threading.Lock()
         self._items = {}                      # name -> {"name", "instruction", "every_seconds"|"in_seconds"|"at", "next"}
 
-    def add(self, name, instruction, every_seconds=None, in_seconds=None, at=None):
+    def add(self, name, instruction, every_seconds=None, in_seconds=None, at=None, request=None):
         name, instruction = (name or "").strip(), (instruction or "").strip()
         if not name or not instruction:
             raise ValueError("a schedule needs a name and an instruction")
@@ -737,8 +1120,8 @@ class Scheduler:
         if len(given) != 1:
             raise ValueError("give exactly one of every_seconds, in_seconds or at")
         key, value = given[0]
-        now = self._clock()
-        item = {"name": name, "instruction": instruction}
+        now = self.clock()
+        item = {"name": name, "instruction": instruction, "request": request}
         if key == "at":
             item["at"] = _clock_time(value)
             item["next"] = _next_occurrence(item["at"], now)
@@ -768,7 +1151,7 @@ class Scheduler:
     def pop_due(self):
         """The schedule that is due first, if any is due: a repeating one is set for its next time,
         a one-off is removed. One at a time, so the tab runs one turn per tick."""
-        now = self._clock()
+        now = self.clock()
         with self._lock:
             due = sorted((item for item in self._items.values() if item["next"] <= now), key=lambda i: i["next"])
             if not due:
@@ -781,7 +1164,7 @@ class Scheduler:
             return dict(item)
 
     def listing(self):
-        now = self._clock()
+        now = self.clock()
         with self._lock:
             items = sorted(self._items.values(), key=lambda i: i["next"])
         return [self._listed(item, now) for item in items]
@@ -790,7 +1173,7 @@ class Scheduler:
     def _listed(item, now):
         listed = {key: item[key] for key in ("name", "instruction", "every_seconds", "in_seconds", "at") if key in item}
         listed["due_in_s"] = int(max(0.0, item["next"] - now))
-        listed["due_at"] = time.strftime("%H:%M:%S", time.localtime(item["next"]))
+        listed["due_at"] = hms(item["next"])
         return listed
 
 
@@ -842,15 +1225,16 @@ _CANCEL_SCHEDULE_SCHEMA = {
 }
 
 
-def _schedule_tools(scheduler, on_call):
+def _schedule_tools(scheduler, on_call, requests=None):
     from pydantic_ai import Tool
 
     def schedule(name="", instruction="", every_seconds=None, in_seconds=None, at=None) -> str:
         args = {"name": name, "instruction": instruction, "every_seconds": every_seconds, "in_seconds": in_seconds, "at": at}
         if on_call is not None:
             on_call("schedule", json.dumps({k: v for k, v in args.items() if v is not None}))
+        request = requests.current.number if requests is not None and requests.current is not None else None
         try:
-            return json.dumps({"scheduled": scheduler.add(**args)})
+            return json.dumps({"scheduled": scheduler.add(**args, request=request)})
         except ValueError as error:
             return json.dumps({"error": {"code": "validation", "message": str(error)}})
 
@@ -875,6 +1259,36 @@ def _schedule_tools(scheduler, on_call):
     ]
 
 
+_WAIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "until": {"type": "string", "description": "'done' (what the request started has ended), 'idle', or seconds"},
+        "max_s": {"type": "integer", "minimum": config.SCHEDULE_MIN_SECONDS},
+    },
+    "required": ["until"],
+    "additionalProperties": False,
+}
+
+
+def _wait_tool(requests, on_call):
+    """wait: end the turn and continue the request when a condition holds (see requests.py)."""
+    from pydantic_ai import Tool
+
+    def wait(until="done", max_s=None) -> str:
+        if on_call is not None:
+            on_call("wait", json.dumps({k: v for k, v in (("until", until), ("max_s", max_s)) if v is not None}))
+        try:
+            pending = requests.wait(until, max_s)
+        except ValueError as error:
+            return json.dumps({"error": {"code": "validation", "message": str(error)}})
+        if pending is None:
+            return json.dumps({"done": True, "note": "nothing this request started is running; go on now"})
+        return json.dumps({"waiting": {"until": pending["until"], "max_s": int(pending["max_s"])},
+                           "note": config.WAIT_NOTE})
+
+    return Tool.from_schema(wait, name="wait", json_schema=_WAIT_SCHEMA, description=config.TOOL_DESCRIPTIONS["wait"])
+
+
 _ROW_UPDATE_SCHEMA = {
     "type": "object",
     "properties": {"row": {"type": "integer", "minimum": 0},
@@ -886,9 +1300,8 @@ _ROW_UPDATE_SCHEMA = {
 
 def _row_update_tool(acceptor, install, on_call):
     """Change the named keys of one row and hand the whole list to set_acquisition_list, so the
-    rest of the row is the instrument's, never retyped. On the Windows demo a rename through
-    set_acquisition_list rewrote the zoom, the focus and the planes. `install` is the tool body
-    of set_acquisition_list, so its checks, the gate and the advice all apply."""
+    rest of the row is the instrument's, never retyped. `install` is the tool body of
+    set_acquisition_list, so its checks, the gate and the advice all apply."""
     from pydantic_ai import Tool
     known = set(COMMANDS["set_acquisition_list"].schema["properties"]["acquisitions"]["items"]["properties"])
 
@@ -944,30 +1357,46 @@ def _narrowed(cmd, keys):
 
 
 def build_tools(acceptor, cancel, on_call=None, endpoint=None, gate=None, vision_endpoint=None,
-                image_bin=None, profile=None, store=None, scheduler=None, vision_session=None):
+                image_bin=None, profile=None, store=None, scheduler=None, vision_session=None, axes=None,
+                requests=None, measured=False, focus_metric=None):
     """One passthrough tool per offered command (see offered_commands). The tool list is derived
     from COMMANDS and the profile — never hand-maintained.
 
     Each tool publishes the command's own JSON schema (the one MCP tools/list serves), so the model
     sees the argument names, types and ranges. from_schema skips pydantic's validation of the call,
     which keeps accept() the single place a call can be refused, with one error vocabulary. In the
-    Regular profile a straddling command is offered with a narrowed schema and refuses the rest."""
+    Regular profile a straddling command is offered with a narrowed schema and refuses the rest.
+    `focus_metric` (a callable, read live) is the focus metric of every get_frame that names none."""
     from pydantic_ai import Tool
+    if focus_metric is not None:
+        acceptor = _WithFocusMetric(acceptor, focus_metric)
     regular = (profile or config.DEFAULT_TOOL_PROFILE) == "Regular"
     narrow = config.REGULAR_ARGS if regular else {}
-    guard = TurnGuard(store)             # one for all the tools: what one call rules out for the next
+    guard = TurnGuard(store, requests, measured)   # one for all the tools: what one call rules out for the next
+    trail = StateTrail(acceptor, store)  # and one readout they report changes against
+    clock = scheduler.clock if scheduler is not None else time.time
+    history = store.frames if store is not None else None
+    axes = axes or dict(config.DEFAULT_AXES)
     tools = []
     installs = {}
     for cmd in offered_commands(profile):
-        fn = _tool_fn(acceptor, cmd.name, cmd.kind, cancel, on_call, gate, guard)
+        fn = _tool_fn(acceptor, cmd.name, cmd.kind, cancel, on_call, gate, guard, clock, trail)
+        if cmd.name == "snap" and history is not None:
+            fn = _keeping_snaps(fn, acceptor, history, axes)
         installs[cmd.name] = fn
         schema = cmd.schema
         if cmd.name in narrow:
             keys = narrow[cmd.name]
             schema = _narrowed(cmd, keys)
             fn = _only_keys(fn, cmd.name, keys)
+        if cmd.name in config.CODE_ONLY_ARGS:
+            schema = dict(schema, properties={k: v for k, v in schema["properties"].items()
+                                              if k not in config.CODE_ONLY_ARGS[cmd.name]})
         if cmd.name in config.ROWS_BY_REFERENCE:
             schema = _rows_by_reference(schema)
+        schema, renamed = _safe_keys(schema)
+        if renamed:
+            fn = _original_keys(fn, renamed)
         description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name)
         tools.append(Tool.from_schema(fn, name=cmd.name, description=description, json_schema=schema))
     if "set_acquisition_list" in installs:
@@ -975,39 +1404,63 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, gate=None, vision
     if store is not None:
         tools += _store_tools(store, on_call)
     if scheduler is not None:
-        tools += _schedule_tools(scheduler, on_call)
+        tools += _schedule_tools(scheduler, on_call, requests)
+    if requests is not None:
+        tools.append(_wait_tool(requests, on_call))
     if endpoint is not None:
         eyes = vision_endpoint or endpoint  # a dedicated reader, or the main model when it can see
 
-        def _look_now(question, snap):
+        def _look_now(question, snap, frames, label, focus_metric):
             if on_call is not None:
-                on_call("look", json.dumps({"question": question, "snap": snap}))
+                on_call("look", json.dumps({k: v for k, v in (("question", question), ("snap", snap), ("frames", frames),
+                                                              ("label", label), ("focus_metric", focus_metric))
+                                            if v is not None}))
             size = image_bin() if callable(image_bin) else image_bin  # a callable reads a live setting
             reuse = bool(snap) and guard.take_fresh_snap()  # snapped a moment ago: no second exposure
             try:
-                outcome = look(acceptor, eyes, question, snap and not reuse, cancel, size, eyes=vision_session)
+                outcome = look(acceptor, eyes, question, snap and not reuse, cancel, size, eyes=vision_session, clock=clock,
+                               history=history, axes=axes, frames=frames, label=label, focus_metric=focus_metric)
                 if reuse and outcome.get("available"):
                     outcome["frame"] = ("the one snapped a moment ago in this turn, not a second exposure; look "
                                         "takes its own snap, so next time call look alone")
             except Exception as error:  # busy, shutting down: data for the model, like every tool
                 code, message = error_info(error)
                 outcome = {"error": {"code": code, "message": message}}
-            outcome = with_advice("look", outcome)
+            outcome = with_changes(with_advice("look", outcome), trail)
             guard.after("look", {}, outcome)
             return json.dumps(outcome)
 
-        async def _look(question="", snap=True) -> str:
+        async def _look(question="", snap=True, frames=None, label=None, focus_metric=None) -> str:
             # On a thread the turn does not wait on: Cancel ends the turn at once, and a vision
             # answer that comes later is dropped.
-            return await asyncio.to_thread(_look_now, question, snap)
+            return await asyncio.to_thread(_look_now, question, snap, frames, label, focus_metric)
 
         tools.append(Tool.from_schema(
             _look, name="look", json_schema=_LOOK_SCHEMA,
-            description="Takes a snap itself (or reuses the last frame with snap=false) and describes it: numbers about "
-                        "exposure, focus and where the signal is, plus, when the model can see, an answer to "
-                        "`question` about the image. Use it to check the sample, the field of view or the exposure. "
-                        "The eyes remember this session's earlier frames: ask them to compare.",
+            description="Takes a snap and describes it: exposure, focus, where the signal is and the move that would "
+                        "centre it, and, when the model can see, an answer to `question`. Frames are numbered and kept; "
+                        "`frames` shows recorded ones too and compares them.",
         ))
+        if history is not None and history.calibration is not None:
+            def _calibrate_now(step_um):
+                if on_call is not None:
+                    on_call("calibrate", json.dumps({"step_um": step_um} if step_um else {}))
+                if cancel.is_set():
+                    return json.dumps({"status": "cancelled"})
+                if gate is None or not gate.ask("calibrate", {"step_um": step_um} if step_um else {}):
+                    return json.dumps({"error": {"code": "refused", "message": "the operator did not confirm calibrate"}})
+                outcome = with_changes(with_advice("calibrate", calibrate(acceptor, cancel, history, axes, step_um, clock)),
+                                       trail)
+                guard.after("calibrate", {}, outcome)
+                return json.dumps(outcome)
+
+            async def calibrate_tool(step_um=None) -> str:
+                return await asyncio.to_thread(_calibrate_now, step_um)
+            tools.append(Tool.from_schema(
+                calibrate_tool, name="calibrate", json_schema=_CALIBRATE_SCHEMA,
+                description="Measures how the image moves with the stage at this zoom (small x and y moves and back) "
+                            "so centring moves are calibrated. Needs a visible sample; asks for Run.",
+            ))
         if vision_session is not None and eyes.vision:
             def _ask_now(question):
                 if on_call is not None:
@@ -1050,9 +1503,17 @@ def turn_trace(messages):
     return [dict(calls[call_id], result=returns.get(call_id)) for call_id in order]
 
 
+def tokens_of(usage):
+    """The tokens a run took, in and out; from the provider's details when pydantic-ai left the
+    totals at 0 (a model its price table does not know)."""
+    counted = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+    details = getattr(usage, "details", None) or {}
+    return counted or sum(v for k, v in details.items() if k.endswith(("_prompt_tokens", "_candidates_tokens")))
+
+
 def served_models(messages):
-    """The names of the models that answered in these messages, in order of first appearance: the
-    fallback model rolls in silently on a rate limit, and the operator is told who really answered."""
+    """The names of the models that answered in these messages, in order of first appearance: a
+    gateway may route a request to another model, and the operator is told who really answered."""
     names = []
     for message in messages:
         name = getattr(message, "model_name", None)
@@ -1076,20 +1537,28 @@ def _block_json(value):
     return json.dumps(value).replace("<", "\\u003c")
 
 
-def with_state(acceptor, text, store=None, scheduler=None):
+def with_state(acceptor, text, store=None, scheduler=None, requests=None, origin="operator"):
     """The current microscope readout, then the operator's message: data the model can rely on
     instead of calling reads first, with the operator's words last, where a model weighs text
     most, so that a note in a folder name inside the readout does not read as the request. Sent
     without the block if the readout fails. With a store, the turn is opened in it. With a
-    scheduler, the readout also carries the clock and the schedules set, the model's only clock."""
+    scheduler, the readout also carries the clock and the schedules set, the model's only clock;
+    with frames in the store, the frame history in brief and the map derived from it; with
+    `requests`, the request this turn belongs to (its words, turn, plan and wait), and the turn is
+    stored as typed by the operator or written by the machine (`origin`)."""
     try:
         snapshot = acceptor.dispatch("get_snapshot", {})
     except Exception:
         snapshot = None
     if snapshot is not None and scheduler is not None:
-        snapshot = dict(snapshot, clock=time.strftime("%H:%M:%S"), schedules=scheduler.listing())
+        snapshot = dict(snapshot, clock=hms(scheduler.clock()), schedules=scheduler.listing())
+    if snapshot is not None and store is not None and store.frames.frames:
+        snapshot = dict(snapshot, frames=store.frames.listing(), map=sample_map(store.frames))
+    request = requests.current if requests is not None else None
+    if snapshot is not None and request is not None and (origin != "operator" or request.plan or request.wait):
+        snapshot = dict(snapshot, request=request.brief(requests.clock()))   # typed: the words follow anyway
     if store is not None:
-        store.begin(text, snapshot)
+        store.begin(text, snapshot, origin, request.number if request is not None else None)
     if snapshot is None:
         return text
     return f"<microscope_state>\n{_block_json(snapshot)}\n</microscope_state>\n\n{text}"
@@ -1115,11 +1584,13 @@ def axes_section(axes):
             "see in the image: convert them to signed moves with this, and say which axis and sign you used.")
 
 
-def build_system_prompt(acceptor=None, profile=None, axes=None):
+def build_system_prompt(acceptor=None, profile=None, axes=None, measured=False):
     """The hand-written preamble (units, frames, safety) plus the offered commands grouped by
     kind. What each does and its argument shape are in its tool description and schema, which the
     model receives anyway; the prompt does not repeat them, which keeps it small enough for a local
-    model's context alongside the conversation."""
+    model's context alongside the conversation. manual.md speaks to the operator as "you" and
+    gives each rule its reason; a softened rule can make a model ask where it may correct, or clamp
+    an out-of-range value, and the manual names both exceptions."""
     preamble = (Path(__file__).parent / "manual.md").read_text(encoding="utf-8")
     offered = offered_commands(profile)
     lines = [f"- {label}: {', '.join(cmd.name for cmd in offered if cmd.kind == kind)}"
@@ -1132,7 +1603,7 @@ def build_system_prompt(acceptor=None, profile=None, axes=None):
         prompt += (f" It does not offer: {', '.join(hidden)}. The Full tool set does. When a request needs one "
                    "of them, say exactly that, and stop: never call another command in its place and never "
                    "report a result you did not get.")
-    return prompt + axes_section(axes)
+    return prompt + axes_section(axes) + (config.MEASURED_SECTION if measured else "")
 
 
 def trim_history(messages, max_turns):
@@ -1141,7 +1612,7 @@ def trim_history(messages, max_turns):
     starts = _turn_starts(messages)
     if len(starts) <= max_turns:
         return list(messages)
-    return list(messages[starts[-max_turns]:])
+    return _without_thinking(list(messages[starts[-max_turns]:]))   # all of it comes after a change
 
 
 def _turn_starts(messages):
@@ -1195,14 +1666,16 @@ def compact_history(messages, full_turns=None):
     """The history with its older turns made small: the last `full_turns` operator turns stay as
     they are; before them, each operator message keeps a one-line readout instead of the whole
     state block, and a tool result longer than HISTORY_RESULT_CHARS is shortened. Tool calls, their
-    pairing with results and the replies are untouched, so nothing the model said is lost."""
+    pairing with results and the replies are untouched, so nothing the model said is lost. What a
+    change costs is the thinking after it (see _without_thinking_after_a_change)."""
     from dataclasses import replace
     full_turns = config.HISTORY_FULL_TURNS if full_turns is None else full_turns
+    before = list(messages)
     messages = _without_answered_challenges(messages)
     starts = _turn_starts(messages)
     cutoff = starts[-full_turns] if len(starts) > full_turns else 0
     if cutoff == 0:
-        return list(messages)
+        return _without_thinking_after_a_change(before, list(messages))
     out = []
     for index, message in enumerate(messages):
         if index >= cutoff or not getattr(message, "parts", None):
@@ -1221,7 +1694,29 @@ def compact_history(messages, full_turns=None):
             parts.append(part)
         changed = any(new is not old for new, old in zip(parts, message.parts))
         out.append(replace(message, parts=parts) if changed else message)
-    return out
+    return _without_thinking_after_a_change(before, out)
+
+
+def _without_thinking_after_a_change(before, after):
+    """`after` without the thinking of every reply from the first message compaction changed on.
+    Anthropic signs a thinking block for all that came before it and refuses the request when any
+    of that has changed ("bound to a different conversation"): with Haiku 5.5 a session died on
+    the fourth message. A change happens only as a turn starts, so the turn in progress keeps
+    the thinking its tool calls need."""
+    changed = next((i for i, (old, new) in enumerate(zip(before, after)) if old != new), min(len(before), len(after)))
+    return _without_thinking(after, changed)
+
+
+def _without_thinking(messages, start=0):
+    """The messages with the replies' thinking gone from `start` on; their text and calls stay."""
+    from dataclasses import replace
+
+    from pydantic_ai.messages import ModelResponse, ThinkingPart
+    for i in range(start, len(messages)):
+        message = messages[i]
+        if isinstance(message, ModelResponse) and any(isinstance(p, ThinkingPart) for p in message.parts):
+            messages[i] = replace(message, parts=[p for p in message.parts if not isinstance(p, ThinkingPart)])
+    return messages
 
 
 @dataclass(frozen=True)
@@ -1233,7 +1728,6 @@ class Endpoint:
     model: str
     api_key: str = field(default="", repr=False)
     base_url: str = ""
-    fallback_model: str = ""
     vision: bool = False  # may be shown a camera frame (the `look` side call)
     request_interval_s: float = 0.0  # at least this long between requests; 0 is no spacing
 
@@ -1252,7 +1746,6 @@ class Endpoint:
             model=model.strip() or preset["model"],
             api_key=key,
             base_url=base_url.strip() or preset.get("base_url", ""),
-            fallback_model=preset.get("fallback_model", ""),
             vision=bool(preset.get("vision", False)) if vision is None else bool(vision),
             request_interval_s=float(preset.get("request_interval_s", 0) or 0),
         )
@@ -1293,6 +1786,7 @@ def throttled(model, interval_s):
         _last = 0.0
 
         async def request(self, messages, model_settings, model_request_parameters):
+            # Real time, not the assistant's clock: the host counts its limit in real seconds.
             # asyncio may wake a sleep up to one clock tick early (15.6 ms on Windows): sleep again.
             while (wait := Throttled._last + interval_s - time.monotonic()) > 0:
                 await asyncio.sleep(wait)
@@ -1301,24 +1795,27 @@ def throttled(model, interval_s):
     return Throttled(model)
 
 
+def model_settings(endpoint):
+    """Temperature 0 for the most likely call, unless the endpoint's model refuses it."""
+    name = endpoint.model if endpoint else ""
+    if any(refusing in name for refusing in config.MODELS_WITHOUT_TEMPERATURE):
+        return {}
+    return {"temperature": config.MODEL_TEMPERATURE}
+
+
 def build_model(endpoint):
-    """The endpoint's model, wrapped with its fallback (if the preset names one) so a rate-limited
-    or unavailable primary rolls over transparently, and throttled when the endpoint asks for it."""
-    primary = _build_one(endpoint, endpoint.model)
-    if endpoint.fallback_model:
-        from pydantic_ai.models.fallback import FallbackModel
-        primary = FallbackModel(primary, _build_one(endpoint, endpoint.fallback_model))
+    """The endpoint's model, throttled when the endpoint asks for it."""
+    model = _build_one(endpoint, endpoint.model)
     if endpoint.request_interval_s > 0:
-        primary = throttled(primary, endpoint.request_interval_s)
-    return primary
+        model = throttled(model, endpoint.request_interval_s)
+    return model
 
 
 def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None, gate=None,
                 vision_endpoint=None, image_bin=None, profile=None, store=None, scheduler=None,
-                vision_session=None, axes=None):
-    """`endpoint` is what the tab chose (the default preset when None). `model` overrides it — the
-    GUI never passes it; the offline eval harness uses it to drive the very same agent against a
-    scripted model."""
+                vision_session=None, axes=None, requests=None, measured=False, focus_metric=None):
+    """`endpoint` is what the tab chose (the default preset when None). `model` overrides it: the
+    GUI never passes it; the offline evaluation drives this same agent with a scripted model."""
     from pydantic_ai import Agent
     from pydantic_ai.capabilities import ProcessHistory
     if model is None:
@@ -1327,12 +1824,13 @@ def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None, gate=
     # message history we carry across turns. ProcessHistory compacts the older turns before
     # every model request, mid-turn ones included, and the compacted history is what the run
     # keeps, so an old turn is compacted once and stays so.
-    agent = Agent(model, instructions=build_system_prompt(profile=profile, axes=axes),
+    agent = Agent(model, instructions=build_system_prompt(profile=profile, axes=axes, measured=measured),
                   tools=build_tools(acceptor, cancel, on_call, endpoint=endpoint, gate=gate,
                                     vision_endpoint=vision_endpoint, image_bin=image_bin, profile=profile,
-                                    store=store, scheduler=scheduler, vision_session=vision_session),
+                                    store=store, scheduler=scheduler, vision_session=vision_session, axes=axes,
+                                    requests=requests, measured=measured, focus_metric=focus_metric),
                   capabilities=[ProcessHistory(compact_history)],
-                  model_settings={"temperature": config.MODEL_TEMPERATURE},   # the most likely call, not a creative one
+                  model_settings=model_settings(endpoint),                     # the most likely call, not a creative one
                   retries=config.TOOL_CALL_RETRIES)                            # a malformed call goes back to the model
     agent.output_validator(_hand_back_an_empty_reply())
     if config.CALLED_NOTHING_CHALLENGE:
@@ -1425,9 +1923,10 @@ class AssistantWorker(QtCore.QObject):
     sig_reply = QtCore.pyqtSignal(str)
     sig_tool = QtCore.pyqtSignal(str, str)   # tool name, args-json
     sig_confirm = QtCore.pyqtSignal(str, str)  # a confirm-first command waits for Run / Cancel
-    sig_served = QtCore.pyqtSignal(str)      # another model than the chosen one answered (the fallback)
+    sig_served = QtCore.pyqtSignal(str)      # another model than the chosen one answered (a gateway's substitute)
     sig_error = QtCore.pyqtSignal(str)
     sig_done = QtCore.pyqtSignal()
+    sig_continue = QtCore.pyqtSignal(str, int)   # a wait is over: the continuation turn of this request
 
     def __init__(self, acceptor):
         super().__init__()
@@ -1437,7 +1936,8 @@ class AssistantWorker(QtCore.QObject):
         self._profile = config.DEFAULT_TOOL_PROFILE
         self._agent = None
         self._history = []
-        self.store = SessionStore()      # every turn in full, for recall_turn and search_history
+        self.store = SessionStore(self.now, Calibration())   # every turn in full, and the frames
+        self.requests = Requests(self.now)    # what each typed message set going
         self.scheduler = None            # set by the tab, which owns the timer that fires the schedules
         self.eyes = None                 # the vision model's own conversation, made by configure()
         self.cancel = threading.Event()
@@ -1446,8 +1946,10 @@ class AssistantWorker(QtCore.QObject):
         self.gate = ConfirmationGate(on_ask=self.sig_confirm.emit, cancel=self.cancel)
         self.max_history_turns = config.MAX_HISTORY_TURNS  # the tab sets these
         self.look_image_bin = config.LOOK_BIN
+        self.focus_metric = config.FOCUS_METRIC
         self.axes = dict(config.DEFAULT_AXES)            # what a positive move does to the sample in the image
         self._agent_axes = None                          # the axes the agent was built with
+        self.measured_values = False                     # the tab reads it from the microscope config
 
     def configure(self, endpoint, vision_endpoint=None, profile=None):
         """Use another endpoint (and reader for frames, and tool profile) from the next turn on;
@@ -1457,7 +1959,11 @@ class AssistantWorker(QtCore.QObject):
         self._profile = profile or config.DEFAULT_TOOL_PROFILE
         self._agent = None
         reader = vision_endpoint or endpoint
-        self.eyes = VisionSession(reader) if reader is not None and reader.vision else None
+        self.eyes = VisionSession(reader, clock=self.now) if reader is not None and reader.vision else None
+
+    def now(self):
+        """The scheduler's clock, which the tab sets after the worker is made."""
+        return self.scheduler.clock() if self.scheduler is not None else time.time()
 
     def set_profile(self, profile):
         """Switch tool sets between turns; the agent is rebuilt with the next message."""
@@ -1467,13 +1973,34 @@ class AssistantWorker(QtCore.QObject):
     def reset(self):
         """Forget the conversation (Clear all). Called between turns, like configure."""
         self._history = []
-        self.store = SessionStore()
+        self.store = SessionStore(self.now, Calibration())
+        self.requests.end("cleared")
+        self.requests = Requests(self.now)
         if self.eyes is not None:
             self.eyes.reset()            # the eyes forget the frames with the transcript
         self._agent = None               # the tools close over the store
 
     @QtCore.pyqtSlot(str)
     def run_turn(self, text):
+        """A typed message: a new request."""
+        self.requests.typed(text)
+        self._run_one(text, "operator")
+
+    @QtCore.pyqtSlot(str, int)
+    def run_machine_turn(self, text, request):
+        """A turn the machine wrote for a request: a schedule that fell due, or a continuation."""
+        self.requests.machine(request)
+        self._run_one(text, "machine")
+
+    @QtCore.pyqtSlot()
+    def check_continuation(self):
+        """The tab's tick, between turns: when the pending wait is over, ask for its turn."""
+        due = self.requests.due(self._acceptor.dispatch)
+        if due is not None:
+            request, result = due
+            self.sig_continue.emit(config.CONTINUATION_TURN.format(number=request.number, result=result), request.number)
+
+    def _run_one(self, text, origin):
         try:
             self.cancel.clear()
             if self._agent is None or self._agent_axes != self.axes:      # the axes are in the prompt
@@ -1482,14 +2009,16 @@ class AssistantWorker(QtCore.QObject):
                                           endpoint=self._endpoint, gate=self.gate,
                                           vision_endpoint=self._vision_endpoint,
                                           image_bin=lambda: self.look_image_bin, profile=self._profile,
+                                          focus_metric=lambda: self.focus_metric,
                                           store=self.store, scheduler=self.scheduler, vision_session=self.eyes,
-                                          axes=self._agent_axes)
-            # No whole-turn retry: FallbackModel already rolls a rate-limited/unavailable primary
-            # over to the fallback within one run, and retrying the turn would re-stream (and re-run)
-            # every tool call the first attempt already made.
-            result = self._run_cancellable(self._agent.run(with_state(self._acceptor, text, self.store, self.scheduler),
-                                                           message_history=self._history))
+                                          axes=self._agent_axes, requests=self.requests,
+                                          measured=self.measured_values)
+            # No whole-turn retry: it would re-run every tool call the first attempt already made.
+            # A rate limit or outage reaches the operator as an error they can see and retry.
+            prompt = with_state(self._acceptor, text, self.store, self.scheduler, self.requests, origin)
+            result = self._run_cancellable(self._agent.run(prompt, message_history=self._history))
             self.store.finish(result.new_messages(), result.output)
+            self.requests.finish_turn(result.output, tokens_of(result.usage))
             self._history = trim_history(result.all_messages(), self.max_history_turns)
             chosen = self._endpoint.model if self._endpoint else None
             others = [name for name in served_models(result.new_messages()) if name != chosen]
@@ -1533,6 +2062,7 @@ class AssistantWorker(QtCore.QObject):
         already started keeps running; stopping the instrument is stop_microscope, a separate decision."""
         self.cancel.set()
         self.gate.answer(False)
+        self.requests.end("cancelled")
         turn = self._turn
         if turn is not None:
             loop, task = turn

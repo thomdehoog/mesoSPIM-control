@@ -22,6 +22,9 @@ import numpy as np
 # stays cheap.
 _STRETCH = (1.0, 99.5)
 _MAX_SAMPLES = 1_000_000
+_FOCUS_SIDE = 512   # the focus measure bins the frame to about this many pixels on its longer side
+# get_frame's focus_metric: the Laplacian energy below, or the Auto-Focus Optimizer's DCT-Shannon
+FOCUS_METRICS = ("laplacian", "dct_shannon")
 
 
 def _sample(frame):
@@ -29,9 +32,9 @@ def _sample(frame):
     return frame[::step, ::step]
 
 
-def frame_stats(frame):
-    """Numbers a model can act on: exposure (saturation, background, dynamic range), focus, and
-    where the signal sits in the field."""
+def frame_stats(frame, focus_metric="laplacian"):
+    """Numbers a model can act on: exposure (saturation, background, dynamic range), focus by
+    ``focus_metric`` (one of FOCUS_METRICS), and where the signal sits in the field."""
     sample = _sample(frame).astype(np.float32)
     p1, p10, p50, p90, p99, p999 = np.percentile(sample, (1, 10, 50, 90, 99, 99.9))
     if np.issubdtype(frame.dtype, np.integer):
@@ -58,20 +61,38 @@ def frame_stats(frame):
         "saturated_fraction": float(np.mean(sample >= full_scale)),
         "bright_fraction": float(bright.mean()),
         "signal_centroid": centroid,  # 0..1 of height and width, None when the frame is flat
-        "focus_measure": focus_measure(sample),
+        "focus_measure": focus_measure(frame) if focus_metric == "laplacian" else dct_shannon(frame),
+        "focus_metric": focus_metric,
     }
 
 
-def focus_measure(sample):
-    """Variance of a Laplacian: higher is sharper. Only comparable between frames of the same scene
-    at the same zoom, which is what a focus search does."""
-    if sample.shape[0] < 3 or sample.shape[1] < 3:
+def focus_measure(frame):
+    """Laplacian energy over the squared signal: higher is sharper, and the same at any intensity
+    or exposure. The second derivative answers to detail, not to a smooth body or a gradient in the
+    background. The brightest 0.1% is clipped and the frame binned to about _FOCUS_SIDE pixels, so a
+    hot pixel or a saturated patch does not decide it; the camera noise's share, estimated from the
+    pixel-to-pixel differences, is taken off, so a dim frame far from focus does not read sharp.
+    Only comparable between frames of the same scene at the same zoom, which is what a focus search
+    does."""
+    frame = np.minimum(frame, np.percentile(_sample(frame), 99.9))
+    binned = bin_frame(frame, max(2, int(np.ceil(max(frame.shape) / _FOCUS_SIDE))))
+    if binned.shape[0] < 3 or binned.shape[1] < 3:
         return 0.0
-    laplacian = (
-        sample[:-2, 1:-1] + sample[2:, 1:-1] + sample[1:-1, :-2] + sample[1:-1, 2:] - 4 * sample[1:-1, 1:-1]
-    )
-    scale = float(sample.max() - sample.min()) or 1.0
-    return float(laplacian.var() / (scale * scale))
+    laplacian = (binned[:-2, 1:-1] + binned[2:, 1:-1] + binned[1:-1, :-2] + binned[1:-1, 2:]
+                 - 4 * binned[1:-1, 1:-1])
+    across = np.diff(binned, axis=1)
+    noise = 1.4826 * float(np.median(np.abs(across - np.median(across)))) / np.sqrt(2)   # one pixel's noise
+    energy = float(np.mean(laplacian ** 2)) - 20 * noise ** 2                         # a Laplacian of noise: 20 times
+    signal = float(np.mean(np.clip(binned - np.percentile(binned, 10), 0, None)))
+    return max(energy, 0.0) / signal ** 2 if signal > 0 else 0.0
+
+
+def dct_shannon(frame):
+    """The Auto-Focus Optimizer's measure: the Shannon entropy of the frame's DCT, higher is sharper.
+    Like the Optimizer it reads the raw frame, not a binned copy."""
+    from ..utils.optimization import shannon_dct
+
+    return float(shannon_dct(frame))
 
 
 def bin_frame(frame, factor):
@@ -105,13 +126,15 @@ def to_png(frame, max_size=None, bin_factor=None):
     return buffer.getvalue(), image.size
 
 
-def describe_frame(frame, max_size=1024, include_image=True, bin_factor=None):
+def describe_frame(frame, max_size=1024, include_image=True, bin_factor=None, array_side=None,
+                   focus_metric="laplacian"):
     """The `get_frame` document: stats always (from the full frame), the PNG (base64) when asked
-    for, binned by ``bin_factor`` or bounded by ``max_size``."""
+    for, binned by ``bin_factor`` or bounded by ``max_size``, and with ``array_side`` the frame
+    itself as 16-bit values, binned so its longer side is at most that (a small copy to keep)."""
     frame = np.asarray(frame)
     if frame.ndim != 2 or frame.size == 0:
         raise ValueError(f"expected a 2-D frame, got shape {frame.shape}")
-    document = {"available": True, "stats": frame_stats(frame)}
+    document = {"available": True, "stats": frame_stats(frame, focus_metric)}
     if include_image:
         png, (width, height) = to_png(frame, max_size, bin_factor)
         document["image"] = {
@@ -121,4 +144,15 @@ def describe_frame(frame, max_size=1024, include_image=True, bin_factor=None):
             "stretch_percentiles": list(_STRETCH),
             "base64": base64.b64encode(png).decode("ascii"),
         }
+    if array_side:
+        factor = int(np.ceil(max(frame.shape) / array_side))
+        small = np.clip(np.rint(bin_frame(frame, factor)), 0, 65535).astype("<u2")
+        document["array"] = {"shape": list(small.shape), "bin": factor,
+                             "base64": base64.b64encode(small.tobytes()).decode("ascii")}
     return document
+
+
+def array_of(document):
+    """The 16-bit frame in a get_frame document's "array"."""
+    array = document["array"]
+    return np.frombuffer(base64.b64decode(array["base64"]), dtype="<u2").reshape(array["shape"])

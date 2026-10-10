@@ -43,6 +43,8 @@ class FakeCollection:
         return ch
 
     def add_co_pulse_chan_freq(self, line, **kw):
+        if FakeNI.refuse_freq:
+            raise FakeDaqError('Desired finite pulse train generation is not possible (-200305)')
         ch = FakeChannel('freq', line=line, **kw)
         ch.co_pulse_freq = FakeNI.coerce_freq(kw['freq'])
         self.task.channels.append(ch)
@@ -51,12 +53,18 @@ class FakeCollection:
 
 class FakeTiming:
     def __init__(self, task):
-        self.task, self.samp_clk_rate, self.samp_clk_term, self.cfg = task, None, None, {}
+        self.task, self.samp_clk_rate, self._term, self.cfg = task, None, None, {}
+
+    @property
+    def samp_clk_term(self):
+        if FakeNI.refuse_clock_term:
+            raise FakeDaqError('Specified property is not supported by the device (-200452)')
+        return self._term
 
     def cfg_samp_clk_timing(self, rate, **kw):
         self.cfg = dict(rate=rate, **kw)
         self.samp_clk_rate = FakeNI.coerce_rate(rate)
-        self.samp_clk_term = '/Dev1/ao/SampleClock'
+        self._term = '/Dev1/ao/SampleClock'
 
     def cfg_implicit_timing(self, **kw):
         self.cfg = kw
@@ -97,6 +105,8 @@ class FakeTask:
 class FakeNI:
     tasks = []
     refuse_tick_source = False
+    refuse_clock_term = False  # PXI-6733: DAQmx_SampClk_Term not readable
+    refuse_freq = False  # PXI-6733: no free paired counter for a finite time-based train
     coerce_rate = staticmethod(lambda r: r)
     coerce_freq = staticmethod(lambda f: f)
     Task = FakeTask
@@ -106,6 +116,8 @@ class FakeNI:
 def ni(monkeypatch):
     FakeNI.tasks = []
     FakeNI.refuse_tick_source = False
+    FakeNI.refuse_clock_term = False
+    FakeNI.refuse_freq = False
     FakeNI.coerce_rate = staticmethod(lambda r: r)
     FakeNI.coerce_freq = staticmethod(lambda f: f)
     monkeypatch.setattr(W, 'nidaqmx', FakeNI)
@@ -196,6 +208,14 @@ def test_counters_count_ao_sample_clock_ticks(ni, rig, samplerate, sweeptime):
     assert wf.continuous_plane_period == pytest.approx(wf.samples / samplerate)
 
 
+def test_names_the_ao_clock_when_the_device_cannot_report_it(ni):
+    ni.refuse_clock_term = True
+    wf = make_waveformer(PXI_6733, 100000, 0.08333)
+    wf.create_tasks_continuous(601)
+    assert wf.continuous_timing_mode == 'ao_sample_clock_ticks'
+    assert {ch.kw['source_terminal'] for ch in counters(ni)} == {'/PXI1Slot4/ao/SampleClock'}
+
+
 def test_falls_back_to_time_matched_counters(ni):
     ni.refuse_tick_source = True
     wf = make_waveformer(PXI_6733, 100000, 0.08333)
@@ -206,6 +226,14 @@ def test_falls_back_to_time_matched_counters(ni):
     assert 1.0 / cam.kw['freq'] == pytest.approx(8333 / 100000)  # the AO's period, not 1/sweeptime
     assert wf.camera_trigger_task.trigger == '/PXI1Slot4/PFI0'
     assert not any(t.closed for t in (wf.camera_trigger_task, wf.stage_trigger_task, wf.galvo_etl_laser_task))
+
+
+def test_two_counter_device_is_refused_with_a_clear_message(ni):
+    ni.refuse_tick_source = ni.refuse_freq = True  # what the PXI-6733 did on 2026-10-05
+    wf = make_waveformer(PXI_6733, 100000, 0.08333)
+    with pytest.raises(RuntimeError, match="waveform_mode'] = 'stepped'"):
+        wf.create_tasks_continuous(601)
+    assert ni.tasks and all(t.closed for t in ni.tasks)
 
 
 def test_fallback_uses_the_coerced_ao_rate(ni):

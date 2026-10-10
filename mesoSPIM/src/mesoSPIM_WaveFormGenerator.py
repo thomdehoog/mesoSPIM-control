@@ -641,6 +641,8 @@ class mesoSPIM_WaveFormGenerator(QtCore.QObject):
         try:
             self._create_tasks_continuous(n_planes)
         except Exception:
+            # Raised in a Qt slot this would only reach the console, not the log
+            logger.exception("[continuous] DAQ task setup failed")
             for attr in self._CONTINUOUS_TASK_ATTRS:
                 task = getattr(self, attr, None)
                 if task is not None:
@@ -700,11 +702,11 @@ class mesoSPIM_WaveFormGenerator(QtCore.QObject):
             ref_task = self.galvo_etl_task
             # Lock the laser card to the galvo/ETL card's sample clock, otherwise two
             # independent oscillators drift apart over the stack as well.
+            ref_clock = self._ao_sample_clock(ref_task, ah['galvo_etl_task_line'])
             try:
                 self.laser_task = make_ao_task(ah['laser_task_line'], self.state['max_laser_voltage'],
-                                               ah['laser_task_trigger_source'],
-                                               clock_source=ref_task.timing.samp_clk_term)
-                logger.info(f"[continuous] laser AO clocked from {ref_task.timing.samp_clk_term}")
+                                               ah['laser_task_trigger_source'], clock_source=ref_clock)
+                logger.info(f"[continuous] laser AO clocked from {ref_clock}")
             except DaqError as e:
                 logger.warning(f"[continuous] laser AO cannot use the galvo/ETL sample clock ({e}); "
                                f"using its own clock, so lasers may drift against the galvos over long stacks.")
@@ -712,7 +714,7 @@ class mesoSPIM_WaveFormGenerator(QtCore.QObject):
                                                ah['laser_task_trigger_source'])
 
         ao_rate = ref_task.timing.samp_clk_rate  # actual (coerced) rate, may differ from the requested one
-        ao_clock = ref_task.timing.samp_clk_term
+        ao_clock = self._ao_sample_clock(ref_task, ah['galvo_etl_task_line'])
         self.continuous_plane_period = samples / ao_rate
         if abs(ao_rate - samplerate) > 1e-6 * samplerate:
             logger.warning(f"[continuous] AO sample clock coerced from {samplerate} to {ao_rate} S/s")
@@ -744,9 +746,26 @@ class mesoSPIM_WaveFormGenerator(QtCore.QObject):
                     except Exception:
                         pass
                     setattr(self, attr, None)
-            for attr, line, trig, delay_pct, pulse_pct, count in pulses:
-                setattr(self, attr, self._make_time_counter(line, trig, ao_rate, samples, delay_pct, pulse_pct, count, n_planes))
+            try:
+                for attr, line, trig, delay_pct, pulse_pct, count in pulses:
+                    setattr(self, attr, self._make_time_counter(line, trig, ao_rate, samples, delay_pct, pulse_pct, count, n_planes))
+            except DaqError as e2:
+                # Seen on the PXI-6733 (2026-10-05): DAQ-STC devices pair two counters for every
+                # finite pulse train, so their two counters cannot make both the camera and stage trains.
+                raise RuntimeError(f"[continuous] the DAQ device cannot generate the camera and stage pulse "
+                                   f"trains for {n_planes} planes ({e2}). Devices with only two counters that "
+                                   f"pair them for finite pulse trains, such as the PXI-6733, cannot run "
+                                   f"continuous mode: set acquisition_hardware['waveform_mode'] = 'stepped'.") from e2
             self.continuous_timing_mode = 'time_matched'
+
+    @staticmethod
+    def _ao_sample_clock(task, lines):
+        '''Sample clock terminal of an AO task, e.g. /PXI1Slot4/ao/SampleClock.'''
+        try:
+            return task.timing.samp_clk_term
+        except DaqError:
+            # The PXI-6733 cannot report DAQmx_SampClk_Term (-200452, 2026-10-05): name the terminal directly
+            return f"/{lines.strip('/').split('/')[0]}/ao/SampleClock"
 
     def _make_tick_counter(self, line, ao_clock, samples, delay_pct, pulse_pct, count):
         '''Pulse train counting AO sample-clock ticks: rising edges at delay + k*samples.'''

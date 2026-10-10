@@ -12,6 +12,8 @@ Maintainer (2026):
     thomdehoog@gmail.com
 """
 
+from pathlib import Path
+
 # vision: the model can be shown a camera frame; the `look` tool sends it one in a side call.
 # kind: which Pydantic AI model class is built. "OpenAI-style" is any server speaking the OpenAI
 # chat API (Ollama >= 0.22, vLLM, LM Studio, a company gateway) and needs a base URL; a key only
@@ -19,7 +21,7 @@ Maintainer (2026):
 PROVIDERS = {
     "Gemini": {
         "kind": "google",
-        "model": "gemini-3.5-flash-lite",  # 250K input tokens/min free tier, native tool calling
+        "model": "gemini-3.5-flash-lite",  # native tool calling and vision
         # No fallback model: a stand-in can obey a note planted in the state readout that the chosen
         # model ignores. A model the operator did not choose is worse than a rate-limit error they
         # can see and retry.
@@ -60,6 +62,9 @@ LOCAL_FLASH_ATTENTION = True   # smaller KV cache and faster attention where the
 # wants the most likely tool call, not a creative one, and a small model's malformed call is
 # handed back to it a couple of times before the turn fails.
 MODEL_TEMPERATURE = 0.0
+# Models that refuse a temperature of 0 ("`temperature` is deprecated for this model"): they get
+# their own default instead. Matched anywhere in the model name.
+MODELS_WITHOUT_TEMPERATURE = ("claude-haiku-5-5",)
 TOOL_CALL_RETRIES = 2
 # A reply at the end of a turn that called no tool goes back to the model once with this text
 # (see _challenge_a_reply_that_called_nothing); empty switches the check off.
@@ -77,6 +82,10 @@ LOCAL_SERVER_TIMEOUT_S = 300  # a 12B file can take minutes to load from a slow 
 # The frame handed to a vision model, binned n x n (one of the Remote Control's FRAME_BINS): 2 keeps
 # a 2048-pixel camera frame at 1024 pixels, enough for "is it centred" or "is it saturated".
 LOOK_BIN = 2
+
+# The focus measure of every frame the assistant takes: "laplacian" or "dct_shannon" (the Auto-Focus
+# Optimizer's). The Configure box switches it; a request may name the other for its own frames.
+FOCUS_METRIC = "laplacian"
 
 # Whether the chat lists the commands each answer ran; the Configure box switches it.
 SHOW_TOOL_CALLS = False
@@ -116,6 +125,7 @@ TOOL_DESCRIPTIONS = {
     # the stage and leaves live running.
     "stop": "Stops the stage only; live or an acquisition runs on (stop_activity ends it).",
     "stop_activity": "Ends live, an acquisition or a time lapse.",
+    "wait": "End this turn; the request goes on in a new turn when the wait is over, with the result.",
     "update_acquisition_row": "Change named keys of one acquisition row; the rest stays. To rename or edit "
                               "a row use this, never set_acquisition_list.",
     "snap": "Save one frame to the snap folder, without looking at it. To see the sample, call look, "
@@ -129,6 +139,8 @@ TOOL_DESCRIPTIONS = {
 ROWS_BY_REFERENCE = ("get_disk_space", "check_motion_limits", "acquire_start")
 # In Regular, the ETL is set by its voltages only; its delay and ramps are the machine's timing.
 REGULAR_ARGS = {"set_etl": ("etl_l_amplitude", "etl_l_offset", "etl_r_amplitude", "etl_r_offset")}
+# Arguments the assistant's own code uses and the model never needs, withheld in every tool set.
+CODE_ONLY_ARGS = {"get_frame": ("array_side",)}
 DEFAULT_TOOL_PROFILE = "Regular"
 TOOLS_CONFIG_KEY = "ai_assistant_tools"  # optional attribute of the microscope config: "Regular" or "Full"
 
@@ -136,7 +148,7 @@ TOOLS_CONFIG_KEY = "ai_assistant_tools"  # optional attribute of the microscope 
 # told: the stage moves that cross the full range and can collide faster than anyone can react.
 # Long runs are not gated in code; the model summarises and asks only when something looks off
 # (see manual.md), and Stop microscope ends them.
-CONFIRM_FIRST = ("load_sample", "unload_sample", "preview_acquisition")
+CONFIRM_FIRST = ("load_sample", "unload_sample", "preview_acquisition", "calibrate")
 
 # What TurnGuard holds a turn to (see assistant.py). The moves and the argument that maps
 # axis to number; the commands that end a running activity; and the words by which the dispatcher's
@@ -144,9 +156,10 @@ CONFIRM_FIRST = ("load_sample", "unload_sample", "preview_acquisition")
 # wording there silently disarms the guard.
 MOVE_ARGS = {"move_absolute": "targets", "move_relative": "deltas"}
 STOP_COMMANDS = ("stop", "stop_activity", "time_lapse_stop")
-# How often one turn may change the light on the sample before the next change waits for the
-# operator's Run: twice covers "set it to 30, snap, put it back"; a third is an escalation.
-LIGHT_CHANGES_PER_TURN = {"set_intensity": 2, "set_camera": 2}
+# How often the light on the sample may change within LIGHT_WINDOW_S before the next change waits
+# for the operator's Run: twice covers "set it to 30, snap, put it back"; a third is an escalation.
+LIGHT_CHANGES_PER_WINDOW = {"set_intensity": 2, "set_camera": 2}
+LIGHT_WINDOW_S = 600
 LIMIT_REFUSAL = "outside the allowed range"
 # The fourth rule: a value a turn sends is the operator's. It counts as theirs when it is in their
 # words (this turn or an earlier one, in um or mm, s or ms or us, digits or number words), or made
@@ -179,6 +192,16 @@ OPTIONS_ADVICE = ("configured_options lists the instrument's own values. Correct
 BUSY_FROM_GUI = "from the GUI"
 
 POLL_INTERVAL_S = 0.15
+# A setter answers {} as soon as Core accepts it, and Core applies the value later, on other threads.
+# So the assistant reads the keys a setter set until they read as asked or READ_BACK_S passes, and
+# the result carries what they read as "changed".
+SETTERS = ("set_laser", "set_intensity", "set_filter", "set_zoom", "set_shutterconfig", "set_camera", "set_etl",
+           "set_galvo", "set_laser_timing", "set_state")
+READ_BACK_S = 3.0
+# Every result of an instrument tool ends with the readout keys that changed since the model last
+# saw them (the turn's readout, then each result), as "state_changed"; these parts are compared.
+TRAIL_KEYS = ("state", "position", "optics", "camera", "etl", "zeroed_axes", "time_lapse",
+              "acquisition_list.rows", "acquisition_list.selected_row")
 # Nothing of the chat is written to disk: the conversation lives in memory until Clear all or
 # Disconnect. A tool result kept for recall_turn is cut to this many characters, an image's base64
 # replaced by its size.
@@ -216,10 +239,37 @@ RUNS_ON_ITS_OWN_NOTE = ("{what} is under way and ends by itself; get_progress re
 SCHEDULE_MIN_SECONDS = 5
 SCHEDULES_MAX = 10
 SCHEDULED_TURN = "[scheduled '{name}'] {instruction}"
+# What the transcript shows for a turn the machine wrote: the model reads the bracketed text above,
+# the operator a muted line that does not look typed.
+SCHEDULED_SHOWN = "⏱ Scheduled: {name} · {instruction}"
+CONTINUATION_SHOWN = "↻ Request {number} continues: {result}"
+# A request (requests.py): a wait leaves one continuation pending, at most WAIT_MAX_S, at most
+# CONTINUATIONS_MAX per request; its turn starts with CONTINUATION_TURN. A plan keeps PLAN_STEPS_MAX.
+WAIT_MAX_S = 4 * 3600
+CONTINUATIONS_MAX = 30
+CONTINUATION_TURN = "[continuation of request {number}] {result}"
+WAIT_NOTE = "End this turn now with one short sentence; the request continues when the wait is over."
+PLAN_STEPS_MAX = 12
 # At least this many seconds between requests to the model, for a host with a tight per-minute
 # limit; 0 is no spacing. The microscope config may set it with the attribute named here, and a
 # provider preset may carry "request_interval_s".
 REQUEST_INTERVAL_CONFIG_KEY = "ai_assistant_request_interval_s"
+# Measured values through the turn guard (measured.py): off unless the microscope config sets the
+# attribute named here to True, after a check on the instrument with an operator present.
+MEASURED_VALUES_CONFIG_KEY = "ai_assistant_measured_values"
+MEASURED_TOLERANCE = 0.2
+MEASURED_SLACK_UM = 5.0     # how much one image direction's offset may grow while the whole shrinks
+MEASURED_MOVES_MAX = 8
+MEASURED_FOCUS_STEP_UM = 100
+MEASURED_FOCUS_RANGE_UM = 300
+MEASURED_LIGHT_FACTOR = 2
+MEASURED_SECTION = (
+    "\n\n# Measured values\n\nOn this microscope a value that follows from a fresh measurement goes "
+    "through without the operator's Run: a centring move equal to the newest frame's centre_move_um, while "
+    "each next offset is smaller; a focus move to the map's best focus, or a search step of at most 100 um "
+    "within 300 um of where the request began; an intensity or exposure within a factor of two of the "
+    "frame's. Fresh means the frame was taken after the last move or setting, so look after each one. "
+    "Anything else still waits for Run.")
 # The coordinate system, as the operator sees it: what a positive move on each axis does to the
 # sample in the image, so that "up", "left" and "closer" mean one thing. Chosen in the tab's
 # Coordinate system box; the microscope config may set the start-up choice with the attribute
@@ -227,20 +277,39 @@ REQUEST_INTERVAL_CONFIG_KEY = "ai_assistant_request_interval_s"
 AXIS_CHOICES = {"x": ("right", "left"), "y": ("up", "down"), "z": ("toward the camera", "away from the camera")}
 DEFAULT_AXES = {"x": "right", "y": "up", "z": "toward the camera"}
 AXES_CONFIG_KEY = "ai_assistant_axes"
-# The eyes: the vision model's own conversation for the session, which sees every frame a look
-# takes, in order, so it can compare with earlier ones. The newest frames stay attached as images;
-# older turns keep their text (time, settings, numbers, and what the eyes said) and lose the image.
-VISION_FRAMES_KEPT = 8
+# The frame history (frames.py): a small copy of every frame a look, a snap or live delivered, its
+# longer side at most FRAME_COPY_SIDE pixels, the oldest dropped past FRAME_HISTORY_BYTES (about a
+# hundred 256-pixel copies). A look shows the eyes at most LOOK_FRAMES_MAX of them.
+FRAME_COPY_SIDE = 256
+FRAME_HISTORY_BYTES = 100 * 256 * 256 * 2
+LOOK_FRAMES_MAX = 16
+# The map, derived from the history: frames whose brightest pixel is less than MAP_SIGNAL_MIN of
+# full scale above the background, or more than MAP_SATURATED_MAX saturated, are left out; frames within MAP_SAME_PLACE_UM on x, y and z share
+# a focus curve; the place is the median of the last MAP_PLACE_FRAMES; MAP_GROUPS settings at most.
+MAP_SIGNAL_MIN = 0.003
+MAP_SATURATED_MAX = 0.01
+MAP_PEAK_GOOD_MAX = 0.9
+MAP_SAME_PLACE_UM = 25.0
+MAP_PLACE_FRAMES = 5
+MAP_GROUPS = 2
+# Where `calibrate` keeps the measured scale per zoom: beside the microscope's configuration. Its test
+# move is CALIBRATE_STEP_FRACTION of the field; a phase correlation peak below CALIBRATE_CONFIDENCE_MIN
+# is no measurement.
+CALIBRATION_FILE = Path(__file__).resolve().parents[2] / "config" / "ai_assistant_calibration.json"
+CALIBRATE_STEP_FRACTION = 0.1
+CALIBRATE_CONFIDENCE_MIN = 0.05
+# The eyes: the vision model's own conversation for the session. A look attaches the frames it asks
+# about, each with its number, time, settings and code's measures; once answered, a turn keeps its
+# text and loses its images.
 VISION_CONTEXT_KEYS = ("state", "position", "optics", "camera")   # what a picture depends on, from the readout
 EYES_INSTRUCTIONS = (
-    "You are the eyes of an assistant at a light-sheet microscope: you see every frame it looks at in "
-    "this session, in order, each with its time, the instrument's settings and the frame's numbers. "
-    "Answer the question about the current frame in a few sentences. Judge from the picture what is "
-    "in it: shapes, counts, positions, focus, artefacts, and which parts are brighter or darker than "
-    "others. Only whether the exposure is right comes from the numbers, since each picture is scaled "
-    "to its own range: a saturated_fraction above a few percent is saturated; a max below about a "
-    "tenth of full_scale is underexposed. Compare with earlier frames when asked, or when a change "
-    "matters (focus, position, brightness, a new artefact), and say which frame you compare with, by "
-    "its number and time. With one frame seen, say there is no earlier frame to compare with; never "
-    "say it has not moved or not changed. Frames older than the last {kept} are no longer attached; "
-    "their numbers and your earlier answers remain, and a comparison with them rests on those.")
+    "You are the eyes of an assistant at a light-sheet microscope. Each look shows you one or more "
+    "frames, oldest first, each with its number, time, position, settings and measures, and asks a "
+    "question. Answer it in a few sentences. Judge from the pictures what is in them: shapes, counts, "
+    "positions, focus, artefacts, and which parts are brighter or darker than others. Only whether "
+    "the exposure is right comes from the measures, since each picture is scaled to its own range: a "
+    "saturated fraction above a few percent (0.03) is saturated; a peak below about 0.1 of full scale "
+    "is underexposed. With several frames, compare them and name each by its number. With one frame "
+    "and no earlier one shown, say there is no earlier frame to compare with; never say it has not "
+    "moved or not changed. Earlier turns keep your answers but not their pictures: a comparison with "
+    "a frame not shown now rests on those answers.")
