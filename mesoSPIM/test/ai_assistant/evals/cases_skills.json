@@ -429,12 +429,9 @@
     },
     "prompt": "Run the acquisition list.",
     "expect": {
-      "calls_any": [
-        "run_acquisition_list",
-        "run_selected_acquisition"
-      ],
       "skill": null
-    }
+    },
+    "note": "The setup's list has an empty row, which the model rightly refuses to run; only the skill is scored."
   },
   {
     "id": "no-skill-start-live",
