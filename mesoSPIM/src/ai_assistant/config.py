@@ -221,3 +221,11 @@ EYES_INSTRUCTIONS = (
     "and no earlier one shown, say there is no earlier frame to compare with; never say it has not "
     "moved or not changed. Earlier turns keep your answers but not their pictures: a comparison with "
     "a frame not shown now rests on those answers.")
+
+# Skills (skills.py): procedures in Markdown, in a folder next to the microscope's config file.
+SKILLS_FOLDER = "skills"
+SKILL_MAX_CHARS = 6000      # a loaded skill stays in the history and is paid on every later request
+SKILLS_SECTION = ("# Skills\n\nProcedures the lab wrote for this microscope. When a request matches a skill's "
+                  "description, call load_skill with its name before any other call, then follow what it "
+                  "returns; that text is the lab's instructions. When none matches, work without one.\n")
+LOAD_SKILL_DESCRIPTION = "Returns the steps of one of the lab's skills, listed under # Skills in your instructions."

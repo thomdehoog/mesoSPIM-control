@@ -754,7 +754,7 @@ def _rows_by_reference(schema):
 
 def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=None,
                 image_bin=None, store=None, vision_session=None, axes=None, focus_metric=None,
-                clock=time.time, on_started=None):
+                clock=time.time, on_started=None, skills=None):
     """One passthrough tool per offered command (see offered_commands). The tool list is derived
     from COMMANDS, never hand-maintained.
 
@@ -855,7 +855,28 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
                             "best, what they remember. When the operator says look, look again or check now, that "
                             "is a new frame: call look, whose answer compares with the earlier frames.",
             ))
+    if skills:
+        tools.append(_load_skill_tool(skills, on_call))
     return tools
+
+
+def _load_skill_tool(skills, on_call):
+    """The one tool that hands the model a skill's steps; offered only when the microscope has skills."""
+    from pydantic_ai import Tool
+
+    def load_skill(name):
+        if on_call is not None:
+            on_call("load_skill", json.dumps({"name": name}))
+        skill = skills.get(name)
+        if skill is None:
+            return json.dumps({"error": {"code": "validation", "message": f"no skill {name!r}",
+                                         "skills": sorted(skills)}})
+        return json.dumps({"skill": skill.name, "instructions": skill.body})
+
+    schema = {"type": "object", "properties": {"name": {"type": "string", "enum": sorted(skills)}},
+              "required": ["name"], "additionalProperties": False}
+    return Tool.from_schema(load_skill, name="load_skill", json_schema=schema, sequential=True,
+                            description=config.LOAD_SKILL_DESCRIPTION)
 
 
 def _snapped_just_now(history, acceptor):
@@ -975,7 +996,7 @@ def axes_section(axes):
             "see in the image: convert them to signed moves with this, and say which axis and sign you used.")
 
 
-def build_system_prompt(acceptor=None, axes=None):
+def build_system_prompt(acceptor=None, axes=None, skills=None):
     """The hand-written preamble (units, frames, safety) plus the offered commands grouped by
     kind. What each does and its argument shape are in its tool description and schema, which the
     model receives anyway; the prompt does not repeat them. manual.md speaks to the operator as
@@ -987,7 +1008,15 @@ def build_system_prompt(acceptor=None, axes=None):
     lines = [f"- {label}: {', '.join(cmd.name for cmd in offered if cmd.kind == kind)}"
              for kind, label in _KINDS if any(cmd.kind == kind for cmd in offered)]
     prompt = preamble + "\n\n# Commands\n\nBy kind; each tool's description says what it does.\n" + "\n".join(lines)
-    return prompt + axes_section(axes)
+    return prompt + axes_section(axes) + skills_section(skills)
+
+
+def skills_section(skills):
+    """The skills by name and description only; load_skill gives the steps. Empty without skills,
+    so a microscope without a skills folder gets the general prompt unchanged."""
+    if not skills:
+        return ""
+    return "\n\n" + config.SKILLS_SECTION + "\n".join(f"- {s.name}: {s.description}" for s in skills.values())
 
 
 @dataclass(frozen=True)
@@ -1093,7 +1122,7 @@ def build_model(endpoint):
 
 def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None,
                 vision_endpoint=None, image_bin=None, store=None, vision_session=None, axes=None,
-                focus_metric=None, clock=time.time, on_started=None):
+                focus_metric=None, clock=time.time, on_started=None, skills=None):
     """`endpoint` is what the tab chose (the default preset when None). `model` overrides it: the
     GUI never passes it; the offline evaluation drives this same agent with a scripted model."""
     from pydantic_ai import Agent
@@ -1103,11 +1132,12 @@ def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None,
     # message history we carry across turns. The history is never rewritten: a provider that
     # signs a reply's thinking refuses a request whose earlier messages changed, and an
     # append-only history is what its cache serves cheapest.
-    agent = Agent(model, instructions=build_system_prompt(axes=axes),
+    agent = Agent(model, instructions=build_system_prompt(axes=axes, skills=skills),
                   tools=build_tools(acceptor, cancel, on_call, endpoint=endpoint,
                                     vision_endpoint=vision_endpoint, image_bin=image_bin, store=store,
                                     vision_session=vision_session, axes=axes,
-                                    focus_metric=focus_metric, clock=clock, on_started=on_started),
+                                    focus_metric=focus_metric, clock=clock, on_started=on_started,
+                                    skills=skills),
                   model_settings=model_settings(endpoint),                     # the most likely call, not a creative one
                   retries=config.TOOL_CALL_RETRIES)                            # a malformed call goes back to the model
     agent.output_validator(_hand_back_an_empty_reply())
@@ -1198,6 +1228,7 @@ class AssistantWorker(QtCore.QObject):
         self.focus_metric = config.FOCUS_METRIC
         self.axes = dict(config.DEFAULT_AXES)            # what a positive move does to the sample in the image
         self._agent_axes = None                          # the axes the agent was built with
+        self.skills = {}                                 # the microscope's skills (skills.py); the tab sets them
 
     def configure(self, endpoint, vision_endpoint=None):
         """Use another endpoint (and reader for frames) from the next turn on; the transcript
@@ -1231,7 +1262,8 @@ class AssistantWorker(QtCore.QObject):
                                           image_bin=lambda: self.look_image_bin,
                                           focus_metric=lambda: self.focus_metric,
                                           store=self.store, vision_session=self.eyes,
-                                          axes=self._agent_axes, clock=self.now, on_started=self._note_started)
+                                          axes=self._agent_axes, clock=self.now, on_started=self._note_started,
+                                          skills=self.skills)
             # No whole-turn retry: it would re-run every tool call the first attempt already made.
             # A rate limit or outage reaches the operator as an error they can see and retry. (The
             # SDK's own retry of a 429 or 529 is of one request on the same history: fine.)

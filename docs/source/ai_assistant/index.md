@@ -19,6 +19,7 @@ The AI Assistant tab: language and vision model, preferences, coordinate system,
 :maxdepth: 1
 
 architecture
+skills
 ```
 
 ## Requirements
