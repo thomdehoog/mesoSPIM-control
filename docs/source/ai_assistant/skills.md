@@ -66,6 +66,8 @@ say what offset remained.
 
 Good skills:
 
+- **Cover a short request with a long procedure.** "Focus" needs a skill; "look, and run the
+  list only if it is sharp" does not, because the request already says every step.
 - **Do one job.** Keep each under half a page; the hard limit is 6,000 characters. A loaded skill
   stays in the conversation and is paid for on every later request.
 - **Use the real tool names and fields** (`centre_move_um`, `focus_measure`, `saturated_fraction`).
