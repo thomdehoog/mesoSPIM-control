@@ -66,8 +66,8 @@ from this package.
 
 ## Results
 
-Recorded on gemini-3.5-flash-lite in the fork's evaluation, each failing case run up to three
-times. Before: the committed recording from before this package. First: after the lean and no-timer
+Recorded on gemini-3.5-flash-lite in the fork's evaluation. A recording runs a failing case up to
+three times and keeps a pass, so these counts are best of three. Before: the committed recording from before this package. First: after the lean and no-timer
 step, the guard still in. Second: the final code, no guard and the short manual. Passing runs:
 
 | Case file | Before | First | Second |
@@ -95,7 +95,8 @@ Per group, multi-step and generated, first to second recording:
 | Must stop partway | 3 to 3 of 6 | 15 to 17 of 20 |
 
 Claude Haiku 5.5, run once on the final code (not recorded; the flash-lite recordings stay the
-replay baseline), against flash-lite's second recording:
+replay baseline), against flash-lite's second recording. Haiku's counts are single runs and
+flash-lite's best of three, so the comparison favours flash-lite:
 
 | Case file | flash-lite | Haiku |
 |---|---|---|
@@ -107,7 +108,8 @@ replay baseline), against flash-lite's second recording:
 Haiku asks on unclear requests far more often (ambiguity 11 of 14 against 6; vague requests 4 of
 6 and 16 of 20 against 0 and 5) and does better at focusing, live tuning and recovery from
 refusals. It is weaker on single looks: on vision questions it often answers or acts without
-taking a frame (vision 22 of 29 against 28). Neither model completes acquisition with checks.
+taking a frame (vision 22 of 29 against 28). Acquisition with checks scores 0 for both, for the
+test's reason above.
 
 What moved, and why:
 
@@ -117,8 +119,9 @@ What moved, and why:
 - **A misspelled option is offered, not corrected.** Given "515 long-pass", the refusal lists
   `515LP` and the model asks whether to set it. The two cases that expect a silent correction fail.
 - **Look-and-adjust work improves.** Focusing, exposure and live tuning gain with the shorter manual.
-- **Acquisition with checks stays at 0** in both recordings: a weakness of this model on that
-  workflow, left to a skill.
+- **Acquisition with checks stays at 0**, and that is the test, not the model: the simulated
+  microscope starts with one blank row in its list, and a model that centres and focuses then
+  rightly refuses to run a blank row and asks what to acquire. The cases need a real list.
 
 The evaluation measures the general manual out of the box; it was not tuned against. Running the
 same set once on the microscope shows what breaks on a real instrument; only failures tied to real
