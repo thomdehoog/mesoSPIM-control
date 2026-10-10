@@ -146,6 +146,38 @@ def test_a_tiling_list_is_the_wizard_s_grid_named_and_checked(tmp_path):
                                                        overlap_percent=90))
 
 
+@pytest.mark.parametrize("key, value, says", [
+    ("laser", {"name": "488 nm", "wavelength_nm": 488}, "'laser' must be a string"),   # as get_config lists it
+    ("laser", 488, "'laser' must be a string"),
+    ("filter", 3, "'filter' must be a string"),
+    ("intensity", "high", "intensity"),
+])
+def test_a_tiling_channel_of_the_wrong_type_is_refused_by_name(tmp_path, key, value, says):
+    """Found on the Windows demo: a laser given as get_config's object passed the channel check and
+    failed while the rows were named, as "slice(None, -3, None)"."""
+    writer = use_tiff_writer()
+    core = table("a.tif")
+    channel = dict({"laser": "488 nm", "intensity": 10, "filter": "Empty"}, **{key: value})
+    args = {"x_start": 0, "x_end": 1000, "y_start": 0, "y_end": 0, "z_start": 0, "z_end": 20, "z_step": 10,
+            "channels": [{"laser": "561 nm", "intensity": 20, "filter": "515LP"}, channel], "folder": str(tmp_path),
+            "writer": writer}
+    with pytest.raises(dispatcher.ValidationError) as refused:
+        dispatcher.run(core, "build_tiling_list", args)
+    assert "channels[1]" in str(refused.value) and says in str(refused.value)
+    assert names(core) == ["a.tif"]
+
+
+@pytest.mark.parametrize("name, args", [
+    ("update_acquisition_row", {"row": 0, "changes": {"laser": {"name": "488 nm", "wavelength_nm": 488}}}),
+    ("add_acquisition_rows", {"rows": [{"laser": 488}]}),
+])
+def test_a_row_of_the_wrong_type_is_refused_by_name(name, args):
+    core = table("a.tif")
+    with pytest.raises(dispatcher.ValidationError, match="'laser' must be a string"):
+        dispatcher.run(core, name, args)
+    assert names(core) == ["a.tif"]
+
+
 def test_the_snap_folder_is_set_and_the_window_shows_it(tmp_path):
     core = table("a.tif")
     dispatcher.run(core, "set_snap_folder", {"folder": str(tmp_path)})
