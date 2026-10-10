@@ -1,0 +1,557 @@
+[
+  {
+    "id": "skill-centring-1",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "The sample is drifting out at the edge of the picture; put it back where it belongs.",
+    "expect": {
+      "skill": "centring"
+    }
+  },
+  {
+    "id": "skill-centring-2",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "I can only see half of the specimen, the rest is cut off at the border.",
+    "expect": {
+      "skill": "centring"
+    }
+  },
+  {
+    "id": "skill-centring-3",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Get the specimen into the middle of the view, please.",
+    "expect": {
+      "skill": "centring"
+    }
+  },
+  {
+    "id": "skill-focusing-1",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "f": 5180.0,
+        "seed": 6635
+      }
+    },
+    "prompt": "Everything looks soft and fuzzy, sharpen it up.",
+    "expect": {
+      "skill": "focusing"
+    }
+  },
+  {
+    "id": "skill-focusing-2",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "f": 5180.0,
+        "seed": 6635
+      }
+    },
+    "prompt": "The detail is washed out, I think we are not at the right focal plane.",
+    "expect": {
+      "skill": "focusing"
+    }
+  },
+  {
+    "id": "skill-focusing-3",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "f": 5180.0,
+        "seed": 6635
+      }
+    },
+    "prompt": "Make the structures crisp.",
+    "expect": {
+      "skill": "focusing"
+    }
+  },
+  {
+    "id": "skill-exposure-1",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "brightness": 20000,
+        "seed": 8269
+      },
+      "intensity": 5
+    },
+    "prompt": "The picture is way too dark, I can hardly see anything.",
+    "expect": {
+      "skill": "exposure"
+    }
+  },
+  {
+    "id": "skill-exposure-2",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "brightness": 20000,
+        "seed": 8269
+      },
+      "intensity": 5
+    },
+    "prompt": "Parts of the sample are clipping at white; sort out the brightness.",
+    "expect": {
+      "skill": "exposure"
+    }
+  },
+  {
+    "id": "skill-exposure-3",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "brightness": 20000,
+        "seed": 8269
+      },
+      "intensity": 5
+    },
+    "prompt": "Turn on live and get the brightness right, then leave it on.",
+    "expect": {
+      "skill": "exposure"
+    }
+  },
+  {
+    "id": "skill-acquisition-with-checks-1",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": 300,
+        "y": 250,
+        "f": 4850.0,
+        "seed": 5410
+      }
+    },
+    "prompt": "Get the sample ready, centred and sharp, and then start acquiring the list.",
+    "expect": {
+      "skill": "acquisition-with-checks"
+    }
+  },
+  {
+    "id": "skill-acquisition-with-checks-2",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": 300,
+        "y": 250,
+        "f": 4850.0,
+        "seed": 5410
+      }
+    },
+    "prompt": "Prepare the specimen properly and acquire.",
+    "expect": {
+      "skill": "acquisition-with-checks"
+    }
+  },
+  {
+    "id": "skill-acquisition-with-checks-3",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": 300,
+        "y": 250,
+        "f": 4850.0,
+        "seed": 5410
+      }
+    },
+    "prompt": "Line up the sample and fix the focus before you start the stack.",
+    "expect": {
+      "skill": "acquisition-with-checks"
+    }
+  },
+  {
+    "id": "skill-check-before-run-1",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "seed": 19,
+        "x": 6000,
+        "y": 0
+      },
+      "intensity": 10
+    },
+    "prompt": "Only if the image is not clipping, start the acquisition list; otherwise leave everything and tell me.",
+    "expect": {
+      "skill": "check-before-run"
+    }
+  },
+  {
+    "id": "skill-check-before-run-2",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "seed": 19,
+        "x": 6000,
+        "y": 0
+      },
+      "intensity": 10
+    },
+    "prompt": "See whether the sample is even there. If not, do nothing and report; if yes, acquire the list.",
+    "expect": {
+      "skill": "check-before-run"
+    }
+  },
+  {
+    "id": "skill-check-before-run-3",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "seed": 19,
+        "x": 6000,
+        "y": 0
+      },
+      "intensity": 10
+    },
+    "prompt": "Is it sharp? If it isn't, don't touch anything and just tell me. If it is, start the list.",
+    "expect": {
+      "skill": "check-before-run"
+    }
+  },
+  {
+    "id": "no-skill-move-x",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Move x by 100 µm.",
+    "expect": {
+      "calls": [
+        "move_relative"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-intensity",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Set the laser intensity to 30 %.",
+    "expect": {
+      "calls": [
+        "set_intensity"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-snap",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Take a snap and save it.",
+    "expect": {
+      "calls": [
+        "snap"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-focus-position",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "What is the focus position right now?",
+    "expect": {
+      "no_mutations": true,
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-run-list",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Run the acquisition list.",
+    "expect": {
+      "calls_any": [
+        "run_acquisition_list",
+        "run_selected_acquisition"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-start-live",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Start live.",
+    "expect": {
+      "calls": [
+        "start_live"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-zero-focus",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Zero the focus axis.",
+    "expect": {
+      "calls": [
+        "zero"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-filter",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Put in the Empty filter.",
+    "expect": {
+      "calls": [
+        "set_filter"
+      ],
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-what-skills",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Which procedures do you know for this microscope?",
+    "expect": {
+      "max_tool_calls": 0,
+      "skill": null
+    }
+  },
+  {
+    "id": "no-skill-move-f",
+    "category": "skill picking",
+    "setup": {
+      "position": {
+        "x_pos": 0.0,
+        "y_pos": 0.0,
+        "z_pos": 0.0,
+        "f_pos": 5000.0
+      },
+      "sample": {
+        "x": -450,
+        "y": 300,
+        "seed": 6312
+      }
+    },
+    "prompt": "Move the focus by 20 µm.",
+    "expect": {
+      "calls": [
+        "move_relative"
+      ],
+      "skill": null
+    }
+  }
+]

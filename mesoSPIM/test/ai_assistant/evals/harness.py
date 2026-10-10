@@ -35,6 +35,9 @@ Expectations:
     reply_mentions_none none of these strings appears in a reply (no leaked manual text)
     truth          {name_max|name_min: bound}: the simulator's truth afterwards (sim.py), by size:
                    off_centre_um_max, focus_error_um_max, saturated_fraction_max, peak_fraction_min
+    skill          the skill load_skill must load first, before any other call; null: none loaded
+                   (run with skills: run.py --skills <folder>)
+    calls_in_order tool names that must appear in this order among the calls (others may come between)
 Every case also fails when a reply quotes the <microscope_state> block, which the manual forbids.
 The trace counts the look-and-adjust rounds of
 a multi-step case (rounds: a look followed by a setting or a move), for reading, not scoring.
@@ -348,16 +351,16 @@ def _state_snapshot(core, extra=()):
 throttled = ai.throttled     # the tab's own request spacing, for a host with a tight per-minute limit
 
 
-def run_case(case, model, endpoint, retries=2, retry_wait=None, vision_model=None):
+def run_case(case, model, endpoint, retries=2, retry_wait=None, vision_model=None, skills=None):
     """Run one case through a fresh agent on a fresh simulated instrument. Returns the trace. A
     provider error (a rate limit, an outage) is retried from scratch after a wait: the evaluation
     is about the model's behaviour, not the provider's uptime. `vision_model` stands in for the
     eyes' model, as `model` does for the main one, in the offline tests."""
-    trace = _run_once(case, model, endpoint, vision_model)
+    trace = _run_once(case, model, endpoint, vision_model, skills)
     attempts = 1
     while trace["error"] and attempts <= retries:
         time.sleep(RETRY_WAIT_S if retry_wait is None else retry_wait)
-        trace = _run_once(case, model, endpoint, vision_model)
+        trace = _run_once(case, model, endpoint, vision_model, skills)
         attempts += 1
     trace["attempts"] = attempts
     return trace
@@ -370,7 +373,7 @@ def _describe(problem):
     return " | ".join(parts)
 
 
-def _run_once(case, model, endpoint, vision_model=None):
+def _run_once(case, model, endpoint, vision_model=None, skills=None):
     setup = case.get("setup") or {}
     axes = dict(ai.config.DEFAULT_AXES, **(setup.get("axes") or {}))
     if "sample" in setup:                             # the simulator over time (sim.py)
@@ -402,7 +405,7 @@ def _run_once(case, model, endpoint, vision_model=None):
     store = ai.SessionStore(clock)
     eyes = ai.VisionSession(endpoint, model=vision_model, clock=clock) if endpoint is not None and endpoint.vision else None
     agent = ai.build_agent(acceptor, threading.Event(), model=model, endpoint=endpoint, store=store,
-                           vision_session=eyes, axes=axes, clock=clock)
+                           vision_session=eyes, axes=axes, clock=clock, skills=skills)
     frames = setup.get("frames") or []                            # one frame per turn: the sample changes between them
     history, tools, replies, served, error, prompts_run = [], [], [], [], None, []
     started = time.monotonic()
@@ -482,6 +485,21 @@ def score(case, trace):
     for name in expect.get("calls", []):
         if name not in names:
             failures.append(f"expected a call to {name}")
+    if "skill" in expect:
+        loaded = [t["args"].get("name") for t in trace["tools"] if t["tool"] == "load_skill"]
+        wanted = expect["skill"]
+        if wanted is None and loaded:
+            failures.append(f"loaded skill {loaded[0]} for a request that needs none")
+        elif wanted is not None and not loaded:
+            failures.append(f"expected load_skill {wanted}")
+        elif wanted is not None and loaded[0] != wanted:
+            failures.append(f"loaded skill {loaded[0]}, expected {wanted}")
+        elif wanted is not None and names[0] != "load_skill":
+            failures.append(f"load_skill came after {names[0]}")
+    order = expect.get("calls_in_order", [])
+    remaining = iter(names)
+    if order and not all(name in remaining for name in order):     # a subsequence, in order
+        failures.append(f"expected the calls in this order: {order}")
     if expect.get("calls_any") and not any(name in names for name in expect["calls_any"]):
         failures.append(f"expected a call to one of {expect['calls_any']}")
     for name in expect.get("not_calls", []):
@@ -549,8 +567,8 @@ def check_cases(cases):
     """Problems in the case file itself: duplicate ids, unknown tools, unknown expectation keys."""
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
              "core_calls_not", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
-             "truth", "core_call_counts"}
-    tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate"}
+             "truth", "core_call_counts", "skill", "calls_in_order"}
+    tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate", "load_skill"}
     problems, seen = [], set()
     for case in cases:
         if case["id"] in seen:

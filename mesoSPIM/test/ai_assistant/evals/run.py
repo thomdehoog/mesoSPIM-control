@@ -40,7 +40,7 @@ def file_name_part(model):
     return re.sub(r'[<>:"/\\|?*]+', "-", model)
 
 
-def run_suite(cases, model, endpoint, sink, repeat=1, pause=0.0, log=print, retries=2, retry_wait=None):
+def run_suite(cases, model, endpoint, sink, repeat=1, pause=0.0, log=print, retries=2, retry_wait=None, skills=None):
     """Run every case `repeat` times, appending each trace (with its score) to `sink`. Returns
     the (case, trace, failures) triples in order."""
     results = []
@@ -48,7 +48,7 @@ def run_suite(cases, model, endpoint, sink, repeat=1, pause=0.0, log=print, retr
         for index, case in enumerate(cases):
             if results:
                 time.sleep(pause)
-            trace = harness.run_case(case, model, endpoint, retries=retries, retry_wait=retry_wait)
+            trace = harness.run_case(case, model, endpoint, retries=retries, retry_wait=retry_wait, skills=skills)
             failures = harness.score(case, trace)
             trace["failures"] = failures
             trace["provider"], trace["model"], trace["repeat"] = endpoint.provider, endpoint.model, round_number
@@ -107,6 +107,7 @@ def main(argv=None):
                         help="trace file; {date}, {provider} and {model} are filled in")
     parser.add_argument("--record", action="store_true", help="keep each case's run in recorded/ for replay.py")
     parser.add_argument("--attempts", type=int, default=3, help="with --record: runs of a failing case")
+    parser.add_argument("--skills", default="", help="a folder of skills to offer (skills.py); not with --record")
     parser.add_argument("--rescore", default="", help="score these recorded traces instead of running")
     parser.add_argument("--pause", type=float, default=2.0, help="seconds between cases, for per-minute rate limits")
     parser.add_argument("--retries", type=int, default=2, help="retries of a case after a provider error")
@@ -130,6 +131,16 @@ def main(argv=None):
         results = [(by_id[t["id"]], t, harness.score(by_id[t["id"]], t)) for t in traces if t["id"] in by_id]
         return report(results)
 
+    skills = None
+    if arguments.skills:
+        from mesoSPIM.src.ai_assistant import skills as skill_files
+        if arguments.record:
+            print("--skills is for plain runs: the recordings replay without skills", file=sys.stderr)
+            return 2
+        skills, problems = skill_files.load(arguments.skills)
+        if problems or not skills:
+            print("\n".join(problems) or f"no skills in {arguments.skills}", file=sys.stderr)
+            return 2
     endpoints = []
     for name in [m.strip() for m in arguments.model.split(",")]:
         endpoint = ai.Endpoint.from_preset(arguments.provider, name, api_key=arguments.api_key, base_url=arguments.base_url)
@@ -156,7 +167,7 @@ def main(argv=None):
             model = model_factory()
             results += run_suite(cases, model, endpoint, sink,
                                  repeat=arguments.repeat, pause=arguments.pause,
-                                 retries=arguments.retries, retry_wait=arguments.retry_wait)
+                                 retries=arguments.retries, retry_wait=arguments.retry_wait, skills=skills)
     return report(results)
 
 

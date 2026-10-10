@@ -26,8 +26,9 @@ import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import config
+from . import skills as skill_files
 from ..remote_control import config as rc_config
-from .assistant import AssistantWorker, Endpoint
+from .assistant import AssistantWorker, Endpoint, offered_commands
 
 CLOUD_MODE = "Cloud AI"
 SAME_AS_LANGUAGE = "Same as language model"
@@ -607,6 +608,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if interval > 0:                        # the microscope config spaces the requests, for a tight host limit
             language = dataclasses.replace(language, request_interval_s=interval)
             vision = dataclasses.replace(vision, request_interval_s=interval) if vision else None
+        self._load_skills()
         self._worker.configure(language, vision)
         detail = _describe(language) + (f"; vision: {_describe(vision)}" if vision else "")
         if interval > 0:
@@ -614,6 +616,18 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if vision is None and not language.vision:
             detail += "; no vision: look gives the numbers only"   # the box above says how to change that
         self._set_connect_state("ready", detail)
+
+    def _load_skills(self):
+        """The microscope's skills, from the folder next to its config; the transcript says which were
+        found and why a file was left out, so a lab sees at connect what the assistant will use."""
+        found, problems = skill_files.load(skill_files.folder_of(getattr(self.core, "cfg", None)))
+        offered = [cmd.name for cmd in offered_commands()] + ["look", "ask_eyes", "calibrate"]
+        self._worker.skills = found
+        lines = problems + skill_files.unknown_tools(found, offered)
+        if found:
+            lines.insert(0, "Skills: " + ", ".join(found))
+        for line in lines:
+            self._blocks.append(self._note_block(line))
 
     def _note(self, text):
         """What a Connect needs: on the status line, where the setup is, and in the transcript,
