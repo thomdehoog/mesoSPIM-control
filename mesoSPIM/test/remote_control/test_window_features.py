@@ -165,3 +165,30 @@ def test_auto_illumination_lights_each_tile_from_the_side_its_x_says(core, flip,
     core.cfg.ui_options = {"flip_auto_LR_illumination": flip}
     dispatcher.run(core, "auto_illumination", {})
     assert [r["shutterconfig"] for r in core.state["acq_list"]] == sides
+
+
+
+# --- the Utils menu's analyses ----------------------------------------------------------------
+@pytest.mark.parametrize("name, args, says", [
+    ("analyse_psf", {"path": "beads.png"}, "TIFF z-stack"),
+    ("analyse_psf", {"path": "Z:/no/such/beads.tif"}, "not an existing file"),
+    ("analyse_field_curvature", {"channels": []}, "one or more"),
+    ("analyse_field_curvature", {"channels": [{"path": "a.png"}]}, "TIFF z-stack"),
+])
+def test_an_analysis_of_a_file_it_cannot_read_is_refused_at_once(core, name, args, says):
+    with pytest.raises(dispatcher.ValidationError, match=says):
+        dispatcher.run(core, name, args)
+    assert core._remote_control_gui_handles.requests == []
+
+
+def test_an_analysis_is_never_busy_and_names_its_tilt_reference(core, tmp_path):
+    stack = tmp_path / "stack.tif"
+    stack.write_bytes(b"II*" + bytes(1))
+    core.state["state"] = "run_acquisition_list"
+    assert dispatcher.run(core, "analyse_psf", {"path": str(stack)}) == {"request": 1}
+    with pytest.raises(dispatcher.ValidationError, match="z_step_um=0.0 is outside the allowed range"):
+        dispatcher.run(core, "analyse_psf", {"path": str(stack), "z_step_um": 0})
+    with pytest.raises(dispatcher.ValidationError, match="tilt_reference"):
+        dispatcher.run(core, "analyse_field_curvature", {"channels": [{"path": str(stack)}], "tilt_reference": "other.tif"})
+    accepted = core._remote_control_gui_handles.requests[0][1]
+    assert accepted["magnification"] == 5.0 and accepted["pixel_pitch_um"] == 4.25 and accepted["z_step_um"] == 1.0

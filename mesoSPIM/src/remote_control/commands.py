@@ -3185,6 +3185,100 @@ command(
 )
 
 
+# --- The Utils menu's analyses of image files (gui_handles) --------------------------------------
+# mesoSPIM runs these tools as programs of their own: they read files and never touch the
+# instrument, so the calls are never gated. They run in a thread of their own; get_display {request}
+# carries the result, as for the display calls.
+
+def _tif(path, label):
+    if os.path.splitext(path)[1].lower() not in (".tif", ".tiff"):
+        raise ValidationError(f"{label} must be a TIFF z-stack (.tif or .tiff)")
+    if not os.path.isfile(path):
+        raise ValidationError(f"{label} {path!r} is not an existing file")
+    return path
+
+
+def _optics(args, z_step_default):
+    """The tools' System Parameters, with their windows' defaults."""
+    return {"magnification": number(args, "magnification", (0.01, 1000), required=False, default=5.0),
+            "pixel_pitch_um": number(args, "pixel_pitch_um", (0.01, 1000), required=False, default=4.25),
+            "z_step_um": number(args, "z_step_um", (0.001, 10000), required=False, default=z_step_default)}
+
+
+def _accept_analyse_psf(core, args):
+    only(args, ("path", "magnification", "pixel_pitch_um", "z_step_um", "min_intensity", "min_bead_distance_um",
+                "z_fit_window_um", "z_min", "z_max"))
+    gui_handles(core)
+    out = {"path": _tif(text(args, "path"), "path"), **_optics(args, 1.0),
+           "min_intensity": number(args, "min_intensity", (0, 1e9), required=False, default=700.0),
+           "min_bead_distance_um": number(args, "min_bead_distance_um", (0.01, 10000), required=False, default=15.0),
+           "z_fit_window_um": number(args, "z_fit_window_um", (0.01, 10000), required=False, default=30.0)}
+    for key in ("z_min", "z_max"):
+        if key in args:
+            out[key] = integer(args, key, minimum=0)
+    return out
+
+
+def _accept_analyse_field_curvature(core, args):
+    only(args, ("channels", "magnification", "pixel_pitch_um", "z_step_um", "n_rois_x", "n_rois_y", "tilt_reference"))
+    gui_handles(core)
+    channels = args.get("channels")
+    if not isinstance(channels, list) or not channels:
+        raise ValidationError("channels must be one or more {path, label?, wavelength_nm?}, one TIFF z-stack each")
+    clean = []
+    for i, channel in enumerate(channels):
+        if not isinstance(channel, dict):
+            raise ValidationError(f"channels[{i}] must be {{path, label?, wavelength_nm?}}")
+        only(channel, ("path", "label", "wavelength_nm"))
+        entry = {"path": _tif(text(channel, "path"), f"channels[{i}].path"),
+                 "label": text(channel, "label", required=False, default=os.path.basename(channel["path"]))}
+        if "wavelength_nm" in channel:
+            entry["wavelength_nm"] = number(channel, "wavelength_nm", (200, 2000))
+        clean.append(entry)
+    out = {"channels": clean, **_optics(args, 10.0),
+           "n_rois_x": integer(args, "n_rois_x", 2, 64, required=False, default=16),
+           "n_rois_y": integer(args, "n_rois_y", 2, 64, required=False, default=16)}
+    if "tilt_reference" in args:
+        reference = text(args, "tilt_reference")
+        if reference not in [c["path"] for c in clean]:
+            raise ValidationError("tilt_reference must be the path of one of the channels")
+        out["tilt_reference"] = reference
+    return out
+
+
+command(
+    "analyse_psf",
+    DISPLAY,
+    _on_the_gui_thread("analyse_psf"),
+    accept=_accept_analyse_psf,
+    schema=_schema({"path": _STRING, "magnification": _NUMBER, "pixel_pitch_um": _NUMBER,
+                    "z_step_um": {**_NUMBER, "description": "the axial pixel; 1.0 when omitted"},
+                    "min_intensity": _NUMBER, "min_bead_distance_um": _NUMBER, "z_fit_window_um": _NUMBER,
+                    "z_min": {"type": "integer", "minimum": 0}, "z_max": {"type": "integer", "minimum": 0}},
+                   required=("path",)),
+    hint="in: {path, magnification?, pixel_pitch_um?, z_step_um?, min_intensity?, min_bead_distance_um?, "
+         "z_fit_window_um?, z_min?, z_max?}: Utils > PSF (beads) analysis of a TIFF z-stack: each bead's lateral and "
+         "axial FWHM and their median and spread. out: {request}; the result in get_display {request}",
+)
+
+command(
+    "analyse_field_curvature",
+    DISPLAY,
+    _on_the_gui_thread("analyse_field_curvature"),
+    accept=_accept_analyse_field_curvature,
+    schema=_schema({"channels": {"type": "array", "minItems": 1, "items": _schema(
+        {"path": _STRING, "label": _STRING, "wavelength_nm": _NUMBER}, required=("path",))},
+        "magnification": _NUMBER, "pixel_pitch_um": _NUMBER,
+        "z_step_um": {**_NUMBER, "description": "10.0 when omitted"},
+        "n_rois_x": {"type": "integer", "minimum": 2, "maximum": 64}, "n_rois_y": {"type": "integer", "minimum": 2, "maximum": 64},
+        "tilt_reference": {**_STRING, "description": "a channel's path: its tilt is subtracted from the sections"}},
+        required=("channels",)),
+    hint="in: {channels: [{path, label?, wavelength_nm?}], magnification?, pixel_pitch_um?, z_step_um?, n_rois_x?, "
+         "n_rois_y?, tilt_reference?}: Utils > Field curvature / chromatic shift of TIFF z-stacks: per channel the depth "
+         "of field, sag, best plane and best-focus map. out: {request}; the result in get_display {request}",
+)
+
+
 def _enter_and_start(core, run_state, row):
     """Run upstream's synchronous acquisition entry point with a truthful state transition.
 

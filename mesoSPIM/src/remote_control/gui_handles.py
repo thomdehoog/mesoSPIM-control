@@ -130,6 +130,90 @@ def illumination_by_x(x_positions, flip=False):
     return sides
 
 
+ANALYSES = ("analyse_psf", "analyse_field_curvature")
+LISTED_BEADS = 500
+
+
+def finite(value):
+    """A number for JSON: NaN (a fit that failed) as None."""
+    value = float(value)
+    return None if not np.isfinite(value) else value
+
+
+def psf_analysis(args):
+    """Utils > PSF (beads) analysis's Run analysis (utils.psf_gui_qt), without its window: the same
+    options from the same parameters (lateral pixel = pixel pitch / magnification, axial = the Z
+    step), saturated beads left out when the stack has saturated pixels, the same compute() and the
+    same per-bead table; the medians and spreads the window plots, as numbers."""
+    from tifffile import imread
+    from ..utils import psf_gui_qt as psf
+
+    stack = np.asarray(imread(args["path"]))
+    if stack.ndim != 3:
+        raise ValidationError(f"expected a 3D (z, y, x) stack, got shape {list(stack.shape)}")
+    saturation = None
+    if np.issubdtype(stack.dtype, np.integer) and np.any(stack == np.iinfo(stack.dtype).max):
+        saturation = int(np.iinfo(stack.dtype).max)
+    z_min, z_max = args.get("z_min", 0), args.get("z_max", stack.shape[0] - 1)
+    if not 0 <= z_min < z_max <= stack.shape[0] - 1:
+        raise ValidationError(f"z_min and z_max must satisfy 0 <= z_min < z_max <= {stack.shape[0] - 1}")
+    lateral = args["pixel_pitch_um"] / args["magnification"]
+    options = {"pxPerUmAx": 1.0 / args["z_step_um"], "pxPerUmLat": 1.0 / lateral,
+               "windowUm": [args["z_fit_window_um"], args["min_bead_distance_um"], args["min_bead_distance_um"]],
+               "thresh": args["min_intensity"], "saturationValue": saturation}
+    psf_list, beads, maxima, centers, _ = psf.compute(stack.astype(np.float32)[z_min:z_max + 1], options)
+    rows = []
+    for i, ((_, lateral_fit, axial_fit), maximum, centre) in enumerate(zip(psf_list, maxima, centers)):
+        rows.append({"bead_id": i + 1, "z": finite(centre[0] + z_min), "y": finite(centre[1]), "x": finite(centre[2]),
+                     "max_intensity": finite(maximum),
+                     "fwhm_lateral_um": finite(lateral_fit[3]) if lateral_fit is not None else None,
+                     "fwhm_axial_um": finite(axial_fit[3]) if axial_fit is not None else None})
+
+    def spread(key):
+        values = np.array([r[key] for r in rows if r[key] is not None], dtype=float)
+        if not len(values):
+            return {"median": None, "std": None, "count": 0}
+        return {"median": finite(np.median(values)), "std": finite(np.std(values, ddof=0)), "count": int(len(values))}
+
+    return {"path": args["path"], "shape": list(stack.shape), "z_range": [z_min, z_max], "pixel_um": {"lateral": lateral,
+            "axial": args["z_step_um"]}, "saturation_value": saturation, "beads_found": len(rows),
+            "fwhm_lateral_um": spread("fwhm_lateral_um"), "fwhm_axial_um": spread("fwhm_axial_um"),
+            "beads": rows[:LISTED_BEADS]}
+
+
+def field_curvature_analysis(args):
+    """Utils > Field curvature / chromatic shift's Run analysis (utils.field_curvature_gui_qt),
+    without its window: per channel the same contrast table, z-profile (best-focus depth of each ROI)
+    and summary metrics (depth of field, sag, best plane), and the central X and Y sections with the
+    reference channel's tilt subtracted when asked, as the window plots them."""
+    from tifffile import TiffFile
+    from ..utils import field_curvature_gui_qt as curvature
+
+    n_x, n_y, z_step = args["n_rois_x"], args["n_rois_y"], args["z_step_um"]
+    pixel_mm = args["pixel_pitch_um"] / args["magnification"] / 1000.0
+    profiles, channels = {}, []
+    for channel in args["channels"]:
+        table, saturated = curvature.contrast_table_from_stack(channel["path"], n_y, n_x)
+        profile = curvature.z_profile_from_table(table, z_step)
+        with TiffFile(channel["path"]) as tif:
+            frame = tif.pages[0].shape
+        metrics = curvature.summary_metrics(table, z_step, frame[1] * pixel_mm, frame[0] * pixel_mm)
+        profiles[channel["path"]] = profile
+        channels.append({**channel, "saturated_planes": int(saturated), "planes": int(table.shape[0]),
+                         "metrics": {key: finite(value) for key, value in metrics.items()},
+                         "best_focus_um": [[finite(v) for v in row] for row in profile]})
+    reference = profiles.get(args.get("tilt_reference"))
+    for channel in channels:
+        profile = profiles[channel["path"]]
+        section_y, section_x = profile[:, n_x // 2], profile[n_y // 2, :]
+        if reference is not None:
+            section_y = section_y - curvature.linear_trend(reference[:, n_x // 2])
+            section_x = section_x - curvature.linear_trend(reference[n_y // 2, :])
+        channel["sections_um"] = {"x": [finite(v) for v in section_x], "y": [finite(v) for v in section_y],
+                                  "tilt_subtracted": reference is not None}
+    return {"field_of_view_mm": [frame[1] * pixel_mm, frame[0] * pixel_mm], "channels": channels}
+
+
 def ticks_of(state):
     return sorted([round(float(position), 6), [int(c) for c in color]] for position, color in state["ticks"])
 
@@ -535,7 +619,31 @@ class GuiHandles(QtCore.QObject):
         if name == "get_picture" and (args or {}).get("window") == "webcam":
             self.capture_webcam(number, args)                          # completes when the picture arrives
             return
+        if name in ANALYSES:
+            threading.Thread(target=self.analyse, args=(number, name, args), daemon=True,
+                             name=f"Remote Control {name}").start()   # minutes on big stacks: off the GUI thread
+            return
         self.record(number, self.apply(name, args))
+
+    def analyse(self, number, name, args):
+        """One analysis, in its own thread, as the Utils tools run in a process of their own: it never
+        touches the instrument or a window; its outcome is kept for get_display {request}."""
+        try:
+            result = {"analyse_psf": psf_analysis, "analyse_field_curvature": field_curvature_analysis}[name](args)
+            outcome = {"status": "applied", "result": result}
+        except ValidationError as error:
+            outcome = {"status": "failed", "error": str(error)}
+        except Exception as error:
+            logger.exception("Remote Control: %s failed", name)
+            outcome = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
+        self.keep(number, outcome)
+
+    def keep(self, number, outcome):
+        """Keep one request's outcome (from any thread)."""
+        with self.lock:
+            self.outcomes[number] = outcome
+            for old in sorted(self.outcomes)[:-KEPT_OUTCOMES]:
+                del self.outcomes[old]
 
     @QtCore.pyqtSlot(object, str, str, object)
     def operate(self, core, operation_id, name, args):
@@ -611,10 +719,8 @@ class GuiHandles(QtCore.QObject):
         return {"accepted": args["accept"], "value": new if args["accept"] else None}
 
     def record(self, number, outcome):
-        with self.lock:
-            self.outcomes[number] = outcome
-            for old in sorted(self.outcomes)[:-KEPT_OUTCOMES]:
-                del self.outcomes[old]
+        """Keep one request's outcome and renew the copy of the windows (on the GUI thread)."""
+        self.keep(number, outcome)
         self.refresh()
 
     def capture_webcam(self, number, args):

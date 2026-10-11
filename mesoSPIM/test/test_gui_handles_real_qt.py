@@ -307,3 +307,72 @@ def test_auto_illumination_lights_the_tiles_exactly_as_the_window_s_own_button(f
                              display_information=lambda *a: None)       # the confirmation box, answered OK
     mesoSPIM_AcquisitionManagerWindow.auto_illumination(window)
     assert gui_handles.illumination_by_x(xs, flip) == [window.model.sides[row] for row in range(len(xs))]
+
+
+# --- the Utils menu's analyses: the same numbers as the tools' own windows ---------------------
+def quiet_dialogs(monkeypatch):
+    from PyQt5 import QtWidgets as W
+    for name in ("warning", "critical", "information"):
+        monkeypatch.setattr(W.QMessageBox, name, staticmethod(lambda *a, **k: None))
+
+
+def test_the_psf_analysis_is_the_psf_tool_s_own(app, tmp_path, monkeypatch):
+    """The tool's own 3-bead simulation (lateral FWHM 1.0 um, axial 2.0 um), analysed by its window and
+    by the call: the same beads, the same widths, and the widths it was built with."""
+    import tifffile
+    from mesoSPIM.src.utils.psf_gui_qt import PSFMainWindow
+    quiet_dialogs(monkeypatch)
+    window = PSFMainWindow()
+    window.simulate_demo()                                           # loads the stack and runs the window's analysis
+    path = tmp_path / "beads.tif"
+    tifffile.imwrite(path, window.im.astype(np.uint16))
+    result = gui_handles.psf_analysis({"path": str(path), "magnification": window.mag, "pixel_pitch_um": window.pixel_pitch_micron,
+                                       "z_step_um": window.px_axial_micron, "min_intensity": window.thresh_edit.value(),
+                                       "min_bead_distance_um": window.min_bead_distance_um, "z_fit_window_um": window.z_fit_window_um})
+    by_window = window.stats_df
+    assert result["beads_found"] == len(by_window) == 3
+    assert [b["fwhm_lateral_um"] for b in result["beads"]] == pytest.approx(list(by_window["FWHMlat"]))
+    assert [b["fwhm_axial_um"] for b in result["beads"]] == pytest.approx(list(by_window["FWHMax"]))
+    assert result["fwhm_lateral_um"]["median"] == pytest.approx(1.0, rel=0.1)
+    assert result["fwhm_axial_um"]["median"] == pytest.approx(2.0, rel=0.1)
+    window.close()
+
+
+def focus_tilted_stack(path, tilt):
+    """A textured z-stack whose sharpest plane moves across X by `tilt` planes."""
+    import tifffile
+    from scipy.ndimage import gaussian_filter
+    texture = np.random.default_rng(1).random((128, 256)) * 3000 + 200
+    planes = []
+    for z in range(21):
+        plane = np.empty_like(texture)
+        for block in range(8):
+            columns = slice(block * 32, (block + 1) * 32)
+            best = 10 + tilt * (block - 3.5) / 3.5
+            plane[:, columns] = gaussian_filter(texture, sigma=0.4 + 0.6 * abs(z - best))[:, columns]
+        planes.append(plane)
+    tifffile.imwrite(path, np.array(planes).astype(np.uint16))
+    return str(path)
+
+
+def test_the_field_curvature_analysis_is_the_tool_s_own(app, tmp_path, monkeypatch):
+    from mesoSPIM.src.utils.field_curvature_gui_qt import FieldCurvatureMainWindow
+    quiet_dialogs(monkeypatch)
+    paths = [focus_tilted_stack(tmp_path / "flat.tif", 0), focus_tilted_stack(tmp_path / "tilted.tif", 4)]
+    window = FieldCurvatureMainWindow(filenames=paths)
+    window.run_analysis()
+    result = gui_handles.field_curvature_analysis({"channels": [{"path": p} for p in paths], "magnification": window.mag,
+                                                   "pixel_pitch_um": window.pixel_pitch_micron, "z_step_um": window.z_step_micron,
+                                                   "n_rois_x": int(window.n_rois_x_edit.value()), "n_rois_y": int(window.n_rois_y_edit.value())})
+    for channel in result["channels"]:
+        by_window = window.metrics[channel["path"]]
+        assert channel["metrics"] == pytest.approx({k: float(v) for k, v in by_window.items()})
+        assert np.allclose(channel["best_focus_um"], window.z_profiles[channel["path"]])
+    flat, tilted = result["channels"]
+    assert np.ptp(tilted["sections_um"]["x"]) > np.ptp(flat["sections_um"]["x"])      # the tilt is in the sections
+    detrended = gui_handles.field_curvature_analysis({"channels": [{"path": p} for p in paths], "z_step_um": window.z_step_micron,
+                                                      "magnification": window.mag, "pixel_pitch_um": window.pixel_pitch_micron,
+                                                      "n_rois_x": 16, "n_rois_y": 16, "tilt_reference": paths[1]})
+    assert detrended["channels"][1]["sections_um"]["tilt_subtracted"] is True
+    assert np.ptp(detrended["channels"][1]["sections_um"]["x"]) < np.ptp(tilted["sections_um"]["x"])
+    window.close()

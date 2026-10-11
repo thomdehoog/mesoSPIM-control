@@ -125,13 +125,17 @@ VALID_CASES = {
     "finish_optimization": {"accept": False},
     "save_parameters_to_config": {"path": os.path.join(FOLDER, "saved_config.py"), "overwrite": True},
     "auto_illumination": {},
+    # the Utils menu's analyses of files
+    "analyse_psf": {"path": IMAGE_FILE},
+    "analyse_field_curvature": {"channels": [{"path": IMAGE_FILE}]},
 }
 
 # What a call's valid example needs installed first: delete keeps at least one row.
 SETUP = {"delete_acquisition_rows": lambda core: core.state.__setitem__("acq_list", [{}, {}])}
 
 # The calls on mesoSPIM's windows (gui_handles): no Core call, a request to the GUI thread's handles.
-WINDOW_CALLS = {"get_display", "set_display", "set_windows", "get_picture", "open_image_file", "set_table_view"}
+WINDOW_CALLS = {"get_display", "set_display", "set_windows", "get_picture", "open_image_file", "set_table_view",
+                "analyse_psf", "analyse_field_curvature"}
 for _name in WINDOW_CALLS:
     SETUP[_name] = lambda core: setattr(core, "_remote_control_gui_handles", RecordingHandles())
 
@@ -229,7 +233,7 @@ OPERATIONAL_COMMANDS = set(EXPECTED_CORE_CALL) | {
     "stop_activity",
 } | TABLE_CALLS
 
-CALL_COUNT = 82
+CALL_COUNT = 84
 assert len(VALID_CASES) == CALL_COUNT
 assert len(OPERATIONAL_COMMANDS) == 49
 

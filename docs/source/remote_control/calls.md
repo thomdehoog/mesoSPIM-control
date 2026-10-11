@@ -1,6 +1,6 @@
 # Remote Control call list
 
-TCP and MCP provide the same 82 calls. The call names and behavior are identical on both
+TCP and MCP provide the same 84 calls. The call names and behavior are identical on both
 transports.
 
 Before changing the microscope, call `get_manual` and `get_limits`. Ordinary changes return an
@@ -142,3 +142,14 @@ under the busy gate; the toggles and the optimizer are carried out by the window
 | `finish_optimization` | Accept or discard the optimizer's result. |
 | `save_parameters_to_config` | Save the Parameters tab into the config file, as Save config file does. |
 | `auto_illumination` | Light each tile from the left or right by its X position, as Auto L/R illumination does. |
+
+## Analyse image files
+
+The Utils menu's tools, as calls. mesoSPIM runs these tools as programs of their own; they read
+files and never touch the instrument, so the calls are never refused as busy. Each returns a
+request number at once and runs in the background; `get_display` with that number gives the result.
+
+| Call | What it does |
+| --- | --- |
+| `analyse_psf` | PSF (beads) analysis of a TIFF z-stack: each bead's lateral and axial FWHM, and their median and spread. |
+| `analyse_field_curvature` | Field curvature / chromatic shift of one or more TIFF z-stacks: depth of field, sag, best plane and a best-focus map per channel, with a reference channel's tilt subtracted if asked. |
