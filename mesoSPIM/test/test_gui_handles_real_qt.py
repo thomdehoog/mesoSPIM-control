@@ -154,9 +154,9 @@ def test_a_failing_read_is_reported_and_never_stops_mesospim(main):
     """The copy of what the windows show is a convenience: if reading a window fails, get_display says
     why and mesoSPIM carries on (the handles are built while mesoSPIM starts)."""
     handles = gui_handles.GuiHandles(main)
-    main.camera_window.histogram = None                      # a window in a state the handles cannot read
+    main.camera_window.image_view = None                     # a window in a state the handles cannot read
     handles.refresh()
-    assert "getLevels" in handles.display()["error"]
+    assert handles.display()["error"].startswith("reading the windows failed: AttributeError")
 
 
 def test_before_the_first_frame_the_display_is_read_from_the_configured_camera(app):
@@ -180,3 +180,81 @@ def test_before_the_first_frame_the_display_is_read_from_the_configured_camera(a
         assert (window.camera_window.x_image_width, window.camera_window.y_image_width) == (5056, 2960)   # as the window has it
     finally:
         window.camera_window.close()
+
+
+def test_a_lookup_table_of_one_s_own_and_its_colour_mode(main):
+    ticks = [[0.0, [0, 0, 0, 255]], [0.5, [255, 0, 0, 255]], [1.0, [255, 255, 0, 255]]]
+    outcome, display = apply(main, "set_display", {"colormap_ticks": ticks, "colormap_mode": "hsv"})
+    assert outcome["status"] == "applied"
+    state = main.camera_window.histogram.gradient.saveState()
+    assert state["mode"] == "hsv" and sorted([p, list(c)] for p, c in state["ticks"]) == ticks
+    camera = display["camera_window"]
+    assert camera["colormap"] == "custom" and camera["colormap_ticks"] == ticks and camera["colormap_mode"] == "hsv"
+
+
+def test_the_histogram_s_range_and_the_inverted_axes(main):
+    outcome, display = apply(main, "set_display", {"histogram_range": [0, 5000], "invert_x": True, "invert_y": False})
+    assert outcome["status"] == "applied"
+    low, high = main.camera_window.histogram.item.vb.viewRange()[1]
+    assert (low, high) == pytest.approx((0, 5000), abs=1)
+    assert main.camera_window.image_view.getView().xInverted() is True
+    camera = display["camera_window"]
+    assert camera["invert_x"] is True and camera["invert_y"] is False and camera["histogram_range"] == pytest.approx([0, 5000], abs=1)
+
+
+def test_the_image_view_s_own_roi_shows_its_profile(main):
+    main.camera_window.show()
+    outcome, display = apply(main, "set_display", {"profile_roi": {"shown": True, "x": 200, "y": 400, "width": 600, "height": 100}})
+    assert outcome["status"] == "applied"
+    view = main.camera_window.image_view
+    assert view.ui.roiBtn.isChecked() and tuple(view.roi.pos()) == pytest.approx((100, 200))
+    profile = display["camera_window"]["profile_roi"]
+    assert profile["shown"] and (profile["x"], profile["y"], profile["width"]) == pytest.approx((200, 400, 600))
+    assert len(profile["profile"]["mean"]) > 1
+    _, display = apply(main, "set_display", {"profile_roi": {"shown": False}})
+    assert not view.ui.roiBtn.isChecked() and display["camera_window"]["profile_roi"] == {"shown": False}
+
+
+def test_normalization_as_the_image_view_s_menu_sets_it(main):
+    outcome, display = apply(main, "set_display", {"normalization": {"mode": "divide", "frame": True}})
+    assert outcome["status"] == "applied"
+    ui = main.camera_window.image_view.ui
+    assert ui.normDivideRadio.isChecked() and ui.normFrameCheck.isChecked()
+    assert display["camera_window"]["normalization"] == {"mode": "divide", "roi": False, "frame": True, "time_range": False}
+    apply(main, "set_display", {"normalization": {"mode": "off", "frame": False}})
+    assert ui.normOffRadio.isChecked()
+
+
+def test_a_stack_opened_in_the_camera_window_steps_through_its_frames(main, tmp_path):
+    import tifffile
+    stack = (np.arange(6 * 64 * 64) % 3000).astype(np.uint16).reshape(6, 64, 64)
+    path = tmp_path / "stack.tif"
+    tifffile.imwrite(path, stack)
+    handles = gui_handles.GuiHandles(main)
+    outcome = handles.apply("open_image_file", {"path": str(path)})
+    assert outcome["status"] == "applied" and outcome["result"]["shape"] == [6, 64, 64]
+    frames = main.camera_window.image_view.image
+    count = frames.shape[0]                                    # the window subsamples a stack along its first axis too
+    outcome = handles.apply("set_display", {"frame_index": count - 1})
+    assert outcome["status"] == "applied" and main.camera_window.image_view.currentIndex == count - 1
+    assert handles.read()["camera_window"]["frames"] == {"count": count, "index": count - 1}
+    outcome = handles.apply("set_display", {"frame_index": count})
+    assert outcome["status"] == "failed" and f"0..{count - 1}" in outcome["error"]
+
+
+def test_frame_index_without_a_stack_says_what_it_is_for(main):
+    outcome, _ = apply(main, "set_display", {"frame_index": 0})
+    assert outcome["status"] == "failed" and "open_image_file" in outcome["error"]
+
+
+def test_a_picture_of_the_camera_window_comes_back_as_png_or_as_a_file(main, tmp_path):
+    import base64
+    main.camera_window.show()
+    handles = gui_handles.GuiHandles(main)
+    outcome = handles.apply("get_picture", {"window": "camera", "max_size": 256})
+    assert outcome["status"] == "applied"
+    picture = outcome["result"]
+    assert base64.b64decode(picture["base64"])[:8] == b"\x89PNG\r\n\x1a\n" and max(picture["width"], picture["height"]) <= 256
+    path = tmp_path / "camera.png"
+    outcome = handles.apply("get_picture", {"window": "camera", "path": str(path), "max_size": 4096})
+    assert outcome["status"] == "applied" and path.stat().st_size > 1000

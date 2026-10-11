@@ -28,7 +28,7 @@ import os
 import time
 
 from . import config
-from .gui_handles import OVERLAYS, colormaps, frame_size
+from .gui_handles import GROUPINGS, NORMALIZATIONS, OVERLAYS, PICTURE_MAX, WINDOWS, colormaps, frame_size
 from .dispatcher import (
     command,
     complete,
@@ -2481,12 +2481,23 @@ command(
 )
 
 
-# --- The windows: what the operator sees and sets there (gui_handles works the windows) ----------
-# A display call changes only what a window shows; it is never gated (dispatcher.DISPLAY) and the GUI
-# thread applies it a moment later. Positions are in the camera frame's own pixels (x the column, y
-# the row, as get_frame gives the frame), whatever subsampling the window shows the frame at.
 
-DISPLAY_SETTINGS = ("levels", "adjust_levels", "colormap", "view", "overlay", "box_roi", "line_roi")
+# --- The windows: what the operator sees and sets there (gui_handles works the windows) ----------
+# A display call changes only what a window shows, never the instrument: it is never gated
+# (dispatcher.DISPLAY), returns a request number at once, and the GUI thread carries it out a moment
+# later; get_display {request} says when. Positions in the camera window are in the camera frame's own
+# pixels (x the column, y the row, as get_frame gives the frame), whatever subsampling it shows at.
+
+IMAGE_VIEW_SETTINGS = ("levels", "colormap", "colormap_ticks", "colormap_mode", "histogram_range", "view",
+                       "invert_x", "invert_y", "profile_roi", "normalization")
+DISPLAY_SETTINGS = {
+    "camera": IMAGE_VIEW_SETTINGS + ("adjust_levels", "overlay", "box_roi", "line_roi", "frame_index"),
+    "contrast": IMAGE_VIEW_SETTINGS,
+    "tile_overview": ("scale", "scroll"),
+    "main": ("tab",),
+}
+TILE_SCALE = (0.005, 1.0)                      # the tile overview's own scale box
+PICTURE_FORMATS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp")
 
 
 def _region(value, label, keys, frame=None):
@@ -2509,19 +2520,85 @@ def _region(value, label, keys, frame=None):
     return region
 
 
+def _pair(args, key):
+    """[low, high], two finite numbers with low < high."""
+    pair = args[key]
+    if not isinstance(pair, list) or len(pair) != 2:
+        raise ValidationError(f"{key} must be [low, high] with low < high")
+    low, high = _finite(pair[0], f"{key}[0]"), _finite(pair[1], f"{key}[1]")
+    if not low < high:
+        raise ValidationError(f"{key} must be [low, high] with low < high")
+    return [low, high]
+
+
+def _ticks(args):
+    """A lookup table as the histogram's gradient holds it: [[position 0..1, [r, g, b, a] 0..255], ...]."""
+    ticks = args["colormap_ticks"]
+    if not isinstance(ticks, list) or len(ticks) < 2:
+        raise ValidationError("colormap_ticks must be two or more [position, [r, g, b, a]]")
+    clean = []
+    for i, tick in enumerate(ticks):
+        if not (isinstance(tick, list) and len(tick) == 2 and isinstance(tick[1], list) and len(tick[1]) in (3, 4)):
+            raise ValidationError(f"colormap_ticks[{i}] must be [position, [r, g, b, a]]")
+        position = _finite(tick[0], f"colormap_ticks[{i}] position")
+        if not 0 <= position <= 1:
+            raise ValidationError(f"colormap_ticks[{i}] position must be between 0 and 1")
+        color = list(tick[1]) + ([255] if len(tick[1]) == 3 else [])
+        if any(isinstance(c, bool) or not isinstance(c, int) or not 0 <= c <= 255 for c in color):
+            raise ValidationError(f"colormap_ticks[{i}] colour must be integers 0..255")
+        clean.append([position, color])
+    return clean
+
+
 def check_display(frame, args):
-    """set_display's arguments against the frame (width, height). Run when the call arrives, and again
-    on the GUI thread before it is applied (the frame may have changed size since)."""
-    only(args, DISPLAY_SETTINGS)
-    out = {}
-    if "levels" in args:
-        levels = args["levels"]
-        if not isinstance(levels, list) or len(levels) != 2:
-            raise ValidationError("levels must be [low, high] with low < high")
-        low, high = _finite(levels[0], "levels[0]"), _finite(levels[1], "levels[1]")
-        if not low < high:
-            raise ValidationError("levels must be [low, high] with low < high")
-        out["levels"] = [low, high]
+    """set_display's arguments, for the window they name (the camera window when none), against the
+    camera frame (width, height). Run when the call arrives, and again on the GUI thread before it is
+    carried out (the frame may have changed size since)."""
+    window = args.get("window", "camera")
+    if window not in DISPLAY_SETTINGS:
+        raise ValidationError(f"window {window!r} is not one of {list(DISPLAY_SETTINGS)}")
+    only(args, ("window",) + DISPLAY_SETTINGS[window])
+    camera = window == "camera"
+    out = {"window": window} if "window" in args else {}
+    for key in ("levels", "histogram_range"):
+        if key in args:
+            out[key] = _pair(args, key)
+    if "colormap" in args:
+        name = text(args, "colormap")
+        if name not in colormaps():
+            raise ValidationError(f"colormap {name!r} is not one of {colormaps()}")
+        out["colormap"] = name
+    if "colormap_ticks" in args:
+        out["colormap_ticks"] = _ticks(args)
+    if "colormap_mode" in args:
+        mode = text(args, "colormap_mode")
+        if mode not in ("rgb", "hsv"):
+            raise ValidationError("colormap_mode is 'rgb' or 'hsv'")
+        out["colormap_mode"] = mode
+    for key in ("invert_x", "invert_y"):
+        if key in args:
+            out[key] = flag(args, key)
+    if "view" in args:
+        out["view"] = "fit" if args["view"] == "fit" else _region(args["view"], "view", ("x", "y", "width", "height"))
+    if "profile_roi" in args:
+        profile = args["profile_roi"]
+        if not isinstance(profile, dict) or "shown" not in profile:
+            raise ValidationError("profile_roi must be {shown, x?, y?, width?, height?}")
+        only(profile, ("shown", "x", "y", "width", "height"))
+        out["profile_roi"] = {"shown": flag(profile, "shown")}
+        if set(profile) - {"shown"}:
+            out["profile_roi"].update(_region({k: v for k, v in profile.items() if k != "shown"}, "profile_roi",
+                                              ("x", "y", "width", "height"), frame if camera else None))
+    if "normalization" in args:
+        norm = args["normalization"]
+        if not isinstance(norm, dict):
+            raise ValidationError("normalization must be {mode?, roi?, frame?, time_range?}")
+        only(norm, ("mode", "roi", "frame", "time_range"))
+        out["normalization"] = {key: flag(norm, key) for key in ("roi", "frame", "time_range") if key in norm}
+        if "mode" in norm:
+            if norm["mode"] not in NORMALIZATIONS:
+                raise ValidationError(f"normalization mode is one of {list(NORMALIZATIONS)}")
+            out["normalization"]["mode"] = norm["mode"]
     if "adjust_levels" in args:
         adjust = args["adjust_levels"]
         if adjust is True:
@@ -2531,22 +2608,27 @@ def check_display(frame, args):
             out["adjust_levels"] = {key: number(adjust, key, (0, 100)) for key in adjust}
         else:
             raise ValidationError("adjust_levels is true, or {low_percentile, high_percentile} between 0 and 100")
-    if "colormap" in args:
-        name = text(args, "colormap")
-        if name not in colormaps():
-            raise ValidationError(f"colormap {name!r} is not one of {colormaps()}")
-        out["colormap"] = name
     if "overlay" in args:
         overlay = text(args, "overlay")
         if overlay not in OVERLAYS:
             raise ValidationError(f"overlay {overlay!r} is not one of {list(OVERLAYS)}")
         out["overlay"] = overlay
-    if "view" in args:
-        out["view"] = "fit" if args["view"] == "fit" else _region(args["view"], "view", ("x", "y", "width", "height"))
     if "box_roi" in args:
         out["box_roi"] = _region(args["box_roi"], "box_roi", ("x", "y", "width", "height"), frame)
     if "line_roi" in args:
         out["line_roi"] = _region(args["line_roi"], "line_roi", ("x1", "y1", "x2", "y2"), frame)
+    if "frame_index" in args:
+        out["frame_index"] = integer(args, "frame_index", minimum=0)
+    if "scale" in args:
+        out["scale"] = number(args, "scale", TILE_SCALE)
+    if "scroll" in args:
+        scroll = args["scroll"]
+        if not isinstance(scroll, dict) or not scroll:
+            raise ValidationError("scroll must be {x?, y?}, each 0..1 of the scroll bar")
+        only(scroll, ("x", "y"))
+        out["scroll"] = {key: number(scroll, key, (0, 1)) for key in scroll}
+    if "tab" in args:
+        out["tab"] = text(args, "tab")
     return out
 
 
@@ -2559,11 +2641,8 @@ def gui_handles(core):
 
 
 def _accept_set_display(core, args):
+    gui_handles(core)
     return check_display(frame_size(core, core.cfg), args)
-
-
-def _run_set_display(core, args):
-    return {"request": gui_handles(core).request("set_display", args)}
 
 
 def _accept_get_display(core, args):
@@ -2574,6 +2653,78 @@ def _accept_get_display(core, args):
     return args
 
 
+def _window_list(args, key):
+    names = args.get(key, [])
+    if not isinstance(names, list) or any(name not in WINDOWS for name in names):
+        raise ValidationError(f"{key} must be a list of windows from {list(WINDOWS)}")
+    return names
+
+
+def _accept_set_windows(core, args):
+    only(args, ("show", "hide", "cascade"))
+    gui_handles(core)
+    out = {"show": _window_list(args, "show"), "hide": _window_list(args, "hide"), "cascade": flag(args, "cascade")}
+    if set(out["show"]) & set(out["hide"]):
+        raise ValidationError("a window cannot be shown and hidden at once")
+    if not (out["show"] or out["hide"] or out["cascade"]):
+        raise ValidationError("name windows to show or hide, or cascade")
+    return out
+
+
+def _accept_get_picture(core, args):
+    only(args, ("window", "path", "max_size"))
+    gui_handles(core)
+    window = text(args, "window")
+    if window not in WINDOWS:
+        raise ValidationError(f"window {window!r} is not one of {list(WINDOWS)}")
+    out = {"window": window, "max_size": integer(args, "max_size", 64, PICTURE_MAX, required=False, default=PICTURE_MAX)}
+    if "path" in args:
+        path = text(args, "path")
+        if os.path.splitext(path)[1].lower() not in PICTURE_FORMATS:
+            raise ValidationError(f"path must end in one of {list(PICTURE_FORMATS)}")
+        if not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+            raise ValidationError(f"the folder of {path!r} does not exist")
+        out["path"] = path
+    return out
+
+
+def _accept_open_image_file(core, args):
+    only(args, ("path",))
+    gui_handles(core)
+    path = text(args, "path")
+    if os.path.splitext(path)[1].lower() not in (".tif", ".tiff"):
+        raise ValidationError("open_image_file opens a TIFF file (.tif or .tiff), as File > Open TIFF does")
+    if not os.path.isfile(path):
+        raise ValidationError(f"{path!r} is not an existing file")
+    return {"path": path}
+
+
+def _accept_set_table_view(core, args):
+    only(args, ("group", "select_rows"))
+    gui_handles(core)
+    out = {}
+    if "select_rows" in args:
+        rows = args["select_rows"]
+        if not isinstance(rows, list) or any(isinstance(r, bool) or not isinstance(r, int) or r < 0 for r in rows):
+            raise ValidationError("select_rows must be a list of row indices")
+        out["select_rows"] = rows
+    if "group" in args:
+        group = text(args, "group")
+        if group not in GROUPINGS:
+            raise ValidationError(f"group is one of {list(GROUPINGS)}")
+        out["group"] = group
+    if not out:
+        raise ValidationError("name a group or rows to select")
+    return out
+
+
+def _on_the_gui_thread(name):
+    """A display call's body: hand the accepted request to the GUI thread, return its number."""
+    def execute(core, args):
+        return {"request": gui_handles(core).request(name, args)}
+    return execute
+
+
 def _run_get_display(core, args):
     return gui_handles(core).display(args.get("request"))
 
@@ -2581,6 +2732,8 @@ def _run_get_display(core, args):
 _FRAME_PIXELS = "numbers in the camera frame's pixels (x the column, y the row, as get_frame gives the frame)"
 _BOX = _schema({key: _NUMBER for key in ("x", "y", "width", "height")}, required=("x", "y", "width", "height"),
                description=_FRAME_PIXELS)
+_PAIR = {"type": "array", "items": _NUMBER, "minItems": 2, "maxItems": 2}
+_WINDOW_LIST = {"type": "array", "items": {"type": "string", "enum": list(WINDOWS)}}
 
 command(
     "get_display",
@@ -2588,31 +2741,90 @@ command(
     _run_get_display,
     accept=_accept_get_display,
     schema=_schema({"request": {"type": "integer", "minimum": 1}}),
-    hint="in: {request?}. out: what the windows show: the camera window's levels, colormap, overlay, view and "
-         "regions of interest in frame pixels and um (with their offset from the frame's centre), and a display "
+    hint="in: {request?}. out: what the windows show: the camera window's levels, lookup table, overlay, view and "
+         "regions of interest in frame pixels and um (with their offset from the frame's centre); the contrast map; "
+         "the tile overview; the main window's tab, status message, progress bars and time-lapse estimate; the "
+         "acquisition table's grouping, selection and time and size estimates; which windows are open; and a display "
          "request's outcome",
 )
 
 command(
     "set_display",
     DISPLAY,
-    _run_set_display,
+    _on_the_gui_thread("set_display"),
     accept=_accept_set_display,
     schema=_schema({
-        "levels": {"type": "array", "items": _NUMBER, "minItems": 2, "maxItems": 2, "description": "[low, high] counts"},
-        "adjust_levels": {"description": "true, or {low_percentile, high_percentile}: the Adjust levels button (25, 99.99)",
+        "window": {"type": "string", "enum": list(DISPLAY_SETTINGS), "description": "camera when omitted"},
+        "levels": {**_PAIR, "description": "[low, high] counts"},
+        "adjust_levels": {"description": "camera: true, or {low_percentile, high_percentile}: the Adjust levels button (25, 99.99)",
                           "anyOf": [{"type": "boolean", "const": True},
                                     _schema({"low_percentile": _NUMBER, "high_percentile": _NUMBER})]},
         "colormap": {"type": "string", "enum": colormaps(), "description": "a lookup table of the histogram"},
-        "view": {"description": "the region to show, kept at square pixels, or 'fit' for the whole frame",
+        "colormap_ticks": {"type": "array", "minItems": 2, "description": "a lookup table of your own: [[position 0..1, [r, g, b, a]], ...]",
+                           "items": {"type": "array", "minItems": 2, "maxItems": 2}},
+        "colormap_mode": {"type": "string", "enum": ["rgb", "hsv"]},
+        "histogram_range": {**_PAIR, "description": "the histogram's own axis, [low, high]"},
+        "view": {"description": "the region to show, kept at square pixels, or 'fit' for the whole image",
                  "anyOf": [{"type": "string", "const": "fit"}, _BOX]},
-        "overlay": {"type": "string", "enum": list(OVERLAYS)},
+        "invert_x": _BOOLEAN, "invert_y": _BOOLEAN,
+        "profile_roi": _schema({"shown": _BOOLEAN, **{k: _NUMBER for k in ("x", "y", "width", "height")}}, required=("shown",),
+                               description="the image view's own ROI button and the mean-intensity profile under it"),
+        "normalization": _schema({"mode": {"type": "string", "enum": list(NORMALIZATIONS)}, "roi": _BOOLEAN,
+                                  "frame": _BOOLEAN, "time_range": _BOOLEAN}),
+        "overlay": {"type": "string", "enum": list(OVERLAYS), "description": "camera"},
         "box_roi": _BOX,
         "line_roi": _schema({key: _NUMBER for key in ("x1", "y1", "x2", "y2")}, required=("x1", "y1", "x2", "y2"),
                             description=_FRAME_PIXELS),
+        "frame_index": {"type": "integer", "minimum": 0, "description": "camera: the frame of a stack opened with open_image_file"},
+        "scale": {"type": "number", "minimum": TILE_SCALE[0], "maximum": TILE_SCALE[1], "description": "tile_overview"},
+        "scroll": _schema({"x": _NUMBER, "y": _NUMBER}, description="tile_overview: 0..1 of each scroll bar"),
+        "tab": {"type": "string", "description": "main: a tab's name, as get_display lists them"},
     }),
-    hint="in: {levels?, adjust_levels?, colormap?, view?, overlay?, box_roi?, line_roi?}: the camera window's live view "
-         "as the operator sets it; a box_roi or line_roi shows that overlay. out: {request}",
+    hint="in: {window?: camera|contrast|tile_overview|main, ...what that window offers}: camera and contrast: levels, "
+         "colormap or colormap_ticks and colormap_mode, histogram_range, view, invert_x/y, profile_roi, normalization; "
+         "camera also adjust_levels, overlay, box_roi, line_roi (a box_roi or line_roi shows that overlay), frame_index; "
+         "tile_overview: scale, scroll; main: tab. out: {request}",
+)
+
+command(
+    "set_windows",
+    DISPLAY,
+    _on_the_gui_thread("set_windows"),
+    accept=_accept_set_windows,
+    schema=_schema({"show": _WINDOW_LIST, "hide": _WINDOW_LIST, "cascade": _BOOLEAN}),
+    hint="in: {show?, hide?, cascade?}: open and close windows as the View menu and their close buttons do, and "
+         "cascade them. out: {request}",
+)
+
+command(
+    "get_picture",
+    DISPLAY,
+    _on_the_gui_thread("get_picture"),
+    accept=_accept_get_picture,
+    schema=_schema({"window": {"type": "string", "enum": list(WINDOWS)}, "path": _STRING,
+                    "max_size": {"type": "integer", "minimum": 64, "maximum": PICTURE_MAX}}, required=("window",)),
+    hint="in: {window, path?, max_size?}: a picture of a window as it is on screen, as PNG in the request's outcome, "
+         "or saved to path (.png, .jpg, .tif, .bmp). out: {request}",
+)
+
+command(
+    "open_image_file",
+    DISPLAY,
+    _on_the_gui_thread("open_image_file"),
+    accept=_accept_open_image_file,
+    schema=_schema({"path": _STRING}, required=("path",)),
+    hint="in: {path}: a TIFF image or stack into the camera window, as File > Open TIFF. out: {request}",
+)
+
+command(
+    "set_table_view",
+    DISPLAY,
+    _on_the_gui_thread("set_table_view"),
+    accept=_accept_set_table_view,
+    schema=_schema({"group": {"type": "string", "enum": list(GROUPINGS)},
+                    "select_rows": {"type": "array", "items": {"type": "integer", "minimum": 0}}}),
+    hint="in: {group?: none|laser|illumination|selected, select_rows?}: the acquisition table's selection and grouping "
+         "(an edit to a group's first row then goes to the whole group). out: {request}",
 )
 
 

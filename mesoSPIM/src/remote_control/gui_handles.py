@@ -1,16 +1,21 @@
-"""The Remote Control's handles on mesoSPIM's windows: what an operator can do there, by call.
+"""The Remote Control's handles on mesoSPIM's windows: what an operator can do and see there, by call.
 
-Calls over TCP, MCP and the AI Assistant reach the instrument through Core. Some of what the operator
+Calls over TCP, MCP and the AI Assistant reach the instrument through Core. Much of what the operator
 does lives only in the windows, though: the camera window's levels, lookup table, view and regions of
-interest. This module reaches those windows from outside and works them with their own controls and
-methods (the overlay drop-down, set_roi, the histogram's gradient), so the window behaves exactly as
-when the operator does the same, and nothing in mesoSPIM's own files changes for it.
+interest, the contrast map, the tile overview, the main window's tabs and readouts, the acquisition
+table's grouping, which windows are open. This module reaches those windows from outside and works
+them with their own controls and methods (the overlay drop-down, set_roi, the histogram's gradient,
+the image view's ROI button, the grouping buttons, the menu's actions), so a window behaves exactly as
+when the operator does the same, and nothing in mesoSPIM's own files changes for it. What the calls
+accept is decided in commands.py, with the same validators as every other call; this module only
+carries out what was accepted.
 
 Window work happens on the GUI thread, and Core must never wait for that thread (it may itself be
 waiting for Core). So a display call is handed to the GUI thread and returns at once with a request
-number; the GUI thread applies it and keeps a copy of what the windows show, which get_display reads
-without waiting. Positions are spoken in the camera frame's own pixels (x the column, y the row, as
-get_frame gives the frame) and in micrometres, whatever subsampling the window shows the frame at.
+number; the GUI thread carries it out and keeps a copy of what the windows show, which get_display
+reads without waiting. Positions in the camera window are spoken in the camera frame's own pixels
+(x the column, y the row, as get_frame gives the frame) and in micrometres, whatever subsampling the
+window shows the frame at.
 
 Maintainer (2026):
     Thom de Hoog
@@ -18,30 +23,39 @@ Maintainer (2026):
     thom.dehoog@zmb.uzh.ch
     thomdehoog@gmail.com
 """
+import base64
 import importlib.util
 import itertools
 import logging
+import os
 import threading
 from pathlib import Path
 
 import numpy as np
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtWidgets
 
 from .dispatcher import ValidationError
+
+logger = logging.getLogger(__name__)
 
 # The camera window's overlay drop-down, by the names the calls use.
 OVERLAYS = {"none": "Overlay: none", "box": "Box roi", "line": "Line roi", "light_sheet_marker": "LS marker"}
 OVERLAY_OF_WINDOW = {None: "none", "box": "box", "line": "line", "LS marker": "light_sheet_marker"}
+NORMALIZATIONS = ("off", "subtract", "divide")
+GROUPINGS = ("none", "laser", "illumination", "selected")
+# The windows a call can show, hide or picture, by the names the calls use.
+WINDOWS = ("main", "camera", "acquisition_manager", "tile_overview", "webcam", "contrast", "processor_chain", "optimizer")
+PICTURE_MAX = 4096
+PROFILE_POINTS = 256
 KEPT_OUTCOMES = 50
-
-logger = logging.getLogger(__name__)
 REFRESH_MS = 250
+WEBCAM_TIMEOUT_MS = 5000
 
 
 def presets():
-    """The lookup tables the camera window's histogram offers: pyqtgraph's gradient presets. Read from
-    pyqtgraph's own table of them without importing pyqtgraph, which needs a running Qt; the calls
-    check names on Core's thread too."""
+    """The lookup tables the histograms offer: pyqtgraph's gradient presets. Read from pyqtgraph's own
+    table of them without importing pyqtgraph, which needs a running Qt; the calls check names on
+    Core's thread too."""
     spec = importlib.util.find_spec("pyqtgraph")
     path = Path(spec.origin).parent / "graphicsItems" / "GradientPresets.py"
     module = importlib.util.module_from_spec(importlib.util.spec_from_file_location("gradient_presets", path))
@@ -53,19 +67,148 @@ def colormaps():
     return list(presets())
 
 
-class CameraWindowHandle:
-    """The camera window as a remote caller sees it: everything in frame pixels and um."""
+def frame_size(core, cfg):
+    """(width, height) of the camera frame as the windows show it: the frame on display, else the
+    camera's configured size, turned as the camera window turns it (its x_image_width is the
+    configured y_pixels: "flipped to account for image rotation")."""
+    queue = getattr(core, "frame_queue_display", None)
+    if queue:
+        height, width = queue[0].shape[-2:]
+    else:
+        camera = cfg.camera_parameters
+        width, height = camera["y_pixels"], camera["x_pixels"]
+    return int(width), int(height)
 
-    def __init__(self, main_window):
-        self.main_window = main_window
+
+def ticks_of(state):
+    return sorted([round(float(position), 6), [int(c) for c in color]] for position, color in state["ticks"])
+
+
+class ImageViewHandle:
+    """A pyqtgraph ImageView as the operator works it: its histogram (levels, lookup table, the
+    gradient's ticks and colour mode, the histogram's range), the view (region, inverted axes), its
+    own ROI button with the profile under the image, and the Menu's normalisation. The camera and
+    contrast windows each have one. Positions are in `every` image pixels per view pixel."""
+
+    def __init__(self):
         self.colormap = None
         self.colormap_ticks = None
+
+    def image_view(self):
+        raise NotImplementedError
+
+    def every(self):
+        return 1
+
+    def read(self):
+        view, every = self.image_view(), self.every()
+        histogram = view.getHistogramWidget()
+        (x0, x1), (y0, y1) = view.getView().viewRange()
+        low, high = histogram.getLevels()
+        gradient = histogram.gradient.saveState()
+        box = view.getView()
+        stack = view.image                                             # the whole image or stack the view holds
+        shown = {
+            "levels": [float(low), float(high)],
+            "colormap": self.current_colormap(),
+            "colormap_ticks": ticks_of(gradient),
+            "colormap_mode": gradient["mode"],
+            "histogram_range": [float(v) for v in histogram.item.vb.viewRange()[1]],
+            "view": {"x": x0 * every, "y": y0 * every, "width": (x1 - x0) * every, "height": (y1 - y0) * every},
+            "invert_x": bool(box.xInverted()), "invert_y": bool(box.yInverted()),
+            "normalization": self.normalization(),
+        }
+        if view.ui.roiBtn.isChecked():
+            (x, y), (w, h) = tuple(view.roi.pos()), tuple(view.roi.size())
+            profile = {"shown": True, "x": x * every, "y": y * every, "width": w * every, "height": h * every}
+            if view.roiCurves:
+                xs, ys = view.roiCurves[0].getData()
+                if ys is not None and len(ys):
+                    step = max(1, int(np.ceil(len(ys) / PROFILE_POINTS)))
+                    profile["profile"] = {"x": [float(v) for v in xs[::step]], "mean": [float(v) for v in ys[::step]]}
+            shown["profile_roi"] = profile
+        else:
+            shown["profile_roi"] = {"shown": False}
+        if stack is not None and stack.ndim == 3:
+            shown["frames"] = {"count": int(stack.shape[0]), "index": int(view.currentIndex)}
+        return shown
+
+    def normalization(self):
+        ui = self.image_view().ui
+        mode = "subtract" if ui.normSubtractRadio.isChecked() else "divide" if ui.normDivideRadio.isChecked() else "off"
+        return {"mode": mode, "roi": ui.normROICheck.isChecked(), "frame": ui.normFrameCheck.isChecked(),
+                "time_range": ui.normTimeRangeCheck.isChecked()}
+
+    def current_colormap(self):
+        """The name of the lookup table the histogram holds: the one set here, else the preset its
+        ticks match, else "custom" (the gradient was edited, by hand or with colormap_ticks)."""
+        state = self.image_view().getHistogramWidget().gradient.saveState()
+        ticks = ticks_of(state)
+        if self.colormap is not None and ticks == self.colormap_ticks:
+            return self.colormap
+        for name, preset in presets().items():
+            if ticks_of(preset) == ticks and preset.get("mode", "rgb") == state["mode"]:
+                return name
+        return "custom"
+
+    def apply(self, args):
+        view, every = self.image_view(), self.every()
+        histogram = view.getHistogramWidget()
+        if "colormap" in args:
+            histogram.gradient.loadPreset(args["colormap"])
+            self.colormap, self.colormap_ticks = args["colormap"], ticks_of(histogram.gradient.saveState())
+        if "colormap_ticks" in args or "colormap_mode" in args:
+            state = histogram.gradient.saveState()
+            if "colormap_ticks" in args:
+                state["ticks"] = [(position, tuple(color)) for position, color in args["colormap_ticks"]]
+            state["mode"] = args.get("colormap_mode", state["mode"])
+            histogram.gradient.restoreState(state)
+        if "levels" in args:
+            view.setLevels(*args["levels"])
+        if "histogram_range" in args:
+            histogram.setHistogramRange(*args["histogram_range"], padding=0)
+        if "invert_x" in args:
+            view.getView().invertX(args["invert_x"])
+        if "invert_y" in args:
+            view.getView().invertY(args["invert_y"])
+        if "view" in args:
+            box = view.getView()
+            if args["view"] == "fit":
+                box.autoRange(padding=0)
+            else:
+                region = args["view"]
+                box.setRange(xRange=(region["x"] / every, (region["x"] + region["width"]) / every),
+                             yRange=(region["y"] / every, (region["y"] + region["height"]) / every), padding=0)
+        if "profile_roi" in args:
+            profile = args["profile_roi"]
+            view.ui.roiBtn.setChecked(profile["shown"])               # the image view's own ROI button
+            if profile["shown"] and "x" in profile:
+                view.roi.setPos((profile["x"] / every, profile["y"] / every), finish=False)
+                view.roi.setSize((profile["width"] / every, profile["height"] / every))
+        if "normalization" in args:
+            norm, ui = args["normalization"], view.ui
+            radio = {"off": ui.normOffRadio, "subtract": ui.normSubtractRadio, "divide": ui.normDivideRadio}
+            radio[norm.get("mode", self.normalization()["mode"])].setChecked(True)
+            for key, check in (("roi", ui.normROICheck), ("frame", ui.normFrameCheck), ("time_range", ui.normTimeRangeCheck)):
+                if key in norm:
+                    check.setChecked(norm[key])
+
+
+class CameraWindowHandle(ImageViewHandle):
+    """The camera window: the live view, its overlays and regions of interest, in frame pixels and um."""
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window
 
     @property
     def window(self):
         return self.main_window.camera_window
 
-    def shown_every(self):
+    def image_view(self):
+        return self.window.image_view
+
+    def every(self):
         """How many frame pixels one window pixel stands for: the window shows every n-th pixel."""
         shown = self.window.image_view.getImageItem().image
         queue = getattr(self.main_window.core, "frame_queue_display", None)
@@ -79,21 +222,14 @@ class CameraWindowHandle:
     def pixel_um(self):
         return float(self.main_window.cfg.pixelsize[self.main_window.state["zoom"]])
 
-    # --- what the window shows -------------------------------------------------------------
     def read(self):
-        window, every, um = self.window, self.shown_every(), self.pixel_um()
+        window, every, um = self.window, self.every(), self.pixel_um()
         width, height = self.frame_size()
-        (x0, x1), (y0, y1) = window.image_view.getView().viewRange()
-        low, high = window.histogram.getLevels()
-        shown = {
-            "visible": window.isVisible(),
-            "frame": {"width": width, "height": height, "shown_every": every, "pixel_um": um},
-            "levels": [float(low), float(high)],
-            "colormap": self.current_colormap(),
-            "overlay": OVERLAY_OF_WINDOW.get(window.overlay, str(window.overlay)),
-            "view": {"x": x0 * every, "y": y0 * every, "width": (x1 - x0) * every, "height": (y1 - y0) * every},
-            "status": window.status_label.text(),
-        }
+        shown = {"visible": window.isVisible(),
+                 "frame": {"width": width, "height": height, "shown_every": every, "pixel_um": um}}
+        shown.update(super().read())
+        shown["overlay"] = OVERLAY_OF_WINDOW.get(window.overlay, str(window.overlay))
+        shown["status"] = window.status_label.text()
         if window.overlay == "box":
             (x, y), (w, h) = tuple(window.roi_box.pos()), tuple(window.roi_box.size())
             box = {"x": x * every, "y": y * every, "width": w * every, "height": h * every}
@@ -102,8 +238,8 @@ class CameraWindowHandle:
             box.update(offset_x_um=box["offset_x"] * um, offset_y_um=box["offset_y"] * um)
             shown["box_roi"] = box
         if window.overlay == "line":
-            (x1_, y1_), (x2_, y2_) = self.line_ends()
-            line = {"x1": x1_ * every, "y1": y1_ * every, "x2": x2_ * every, "y2": y2_ * every}
+            (x1, y1), (x2, y2) = self.line_ends()
+            line = {"x1": x1 * every, "y1": y1 * every, "x2": x2 * every, "y2": y2 * every}
             line["length"] = float(np.hypot(line["x2"] - line["x1"], line["y2"] - line["y1"]))
             line["length_um"] = line["length"] * um
             shown["line_roi"] = line
@@ -117,28 +253,8 @@ class CameraWindowHandle:
             ends.append((point.x(), point.y()))
         return ends
 
-    def current_colormap(self):
-        """The name of the lookup table the histogram holds: the one set here, else the preset its
-        ticks match, else "custom" (the operator edited the gradient by hand)."""
-        ticks = self.window.histogram.gradient.saveState()["ticks"]
-        if self.colormap is not None and ticks == self.colormap_ticks:
-            return self.colormap
-        for name, preset in presets().items():
-            if [list(map(float, (t[0],))) + list(t[1]) for t in sorted(preset["ticks"])] == \
-                    [list(map(float, (t[0],))) + list(t[1]) for t in sorted(ticks)]:
-                return name
-        return "custom"
-
-    # --- what a caller asks of it ----------------------------------------------------------
-    def check(self, args):
-        """The call's own check (commands.check_display), again on the GUI thread: the frame may have
-        changed size (binning) since the call was accepted."""
-        from .commands import check_display
-        return check_display(self.frame_size(), args)
-
     def apply(self, args):
-        args = self.check(args)
-        window, every = self.window, self.shown_every()
+        window, every = self.window, self.every()
         overlay = args.get("overlay") or ("box" if "box_roi" in args else "line" if "line_roi" in args else None)
         if overlay is not None:
             window.overlayCombo.setCurrentText(OVERLAYS[overlay])      # the window's own choice of overlay
@@ -151,23 +267,159 @@ class CameraWindowHandle:
                 point = window.roi_line.mapFromItem(image, QtCore.QPointF(x / every, y / every))
                 window.roi_line.movePoint(handle, window.roi_line.mapToParent(point), finish=False)
             window.roi_line.sigRegionChangeFinished.emit(window.roi_line)
-        if "colormap" in args:
-            window.histogram.gradient.loadPreset(args["colormap"])
-            self.colormap = args["colormap"]
-            self.colormap_ticks = window.histogram.gradient.saveState()["ticks"]
-        if "levels" in args:
-            window.image_view.setLevels(*args["levels"])
+        super().apply(args)
         if "adjust_levels" in args:
             adjust = args["adjust_levels"] if isinstance(args["adjust_levels"], dict) else {}
             window.adjust_levels(adjust.get("low_percentile", 25), adjust.get("high_percentile", 99.99))
-        if "view" in args:
-            box = window.image_view.getView()
-            if args["view"] == "fit":
-                box.autoRange(padding=0)
-            else:
-                view = args["view"]
-                box.setRange(xRange=(view["x"] / every, (view["x"] + view["width"]) / every),
-                             yRange=(view["y"] / every, (view["y"] + view["height"]) / every), padding=0)
+        if "frame_index" in args:
+            frames = window.image_view.image
+            if frames is None or frames.ndim != 3:
+                raise ValidationError("the camera window shows a single frame; frame_index is for a stack opened with open_image_file")
+            if not 0 <= args["frame_index"] < frames.shape[0]:
+                raise ValidationError(f"frame_index must be 0..{frames.shape[0] - 1}")
+            window.image_view.setCurrentIndex(args["frame_index"])
+
+
+class ContrastWindowHandle(ImageViewHandle):
+    """The contrast window: an 8 x 8 map of the live frame's contrast, (max - min) / (max + min) of
+    each cell, in its own image view. Positions are in map cells."""
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window
+
+    @property
+    def window(self):
+        return getattr(self.main_window, "contrast_window", None)
+
+    def image_view(self):
+        if self.window is None:
+            raise ValidationError("the contrast window is not open: set_windows {show: ['contrast']} opens it")
+        return self.window.image_view
+
+    def read(self):
+        window = self.window
+        if window is None:
+            return {"visible": False}
+        shown = {"visible": window.isVisible(), "active": bool(getattr(window, "active", False))}
+        shown.update(super().read())
+        image = window.image_view.getImageItem().image
+        if image is not None and image.ndim == 2:
+            shown["map"] = [[round(float(v), 4) for v in row] for row in image]
+            width, height = frame_size(self.main_window.core, self.main_window.cfg)
+            shown["cell"] = {"width": width / image.shape[1], "height": height / image.shape[0]}
+        return shown
+
+
+class TileOverviewHandle:
+    """The tile overview: its scale and where its view is scrolled to (0..1 of each scroll bar)."""
+
+    def __init__(self, main_window):
+        self.main_window = main_window
+
+    @property
+    def window(self):
+        return self.main_window.tile_view_window
+
+    def read(self):
+        window = self.window
+        return {"visible": window.isVisible(), "scale": window.doubleSpinBox_scale.value(),
+                "scroll": {"x": fraction(window.tile_overview.horizontalScrollBar()),
+                           "y": fraction(window.tile_overview.verticalScrollBar())}}
+
+    def apply(self, args):
+        window = self.window
+        if "scale" in args:
+            window.doubleSpinBox_scale.setValue(args["scale"])            # its own box: on_scale_changed redraws
+        if "scroll" in args:
+            for key, bar in (("x", window.tile_overview.horizontalScrollBar()), ("y", window.tile_overview.verticalScrollBar())):
+                if key in args["scroll"]:
+                    bar.setValue(int(round(bar.minimum() + args["scroll"][key] * (bar.maximum() - bar.minimum()))))
+
+
+class MainWindowHandle:
+    """The main window: its tab, and the readouts the operator reads there (the status bar, the three
+    progress bars, the time-lapse estimate)."""
+
+    def __init__(self, main_window):
+        self.main_window = main_window
+
+    def tabs(self):
+        widget = self.main_window.TabWidget
+        return [widget.tabText(i) for i in range(widget.count())]
+
+    def read(self):
+        window = self.main_window
+        bars = {"acquisition": window.AcquisitionProgressBar, "time_point": window.TimePointProgressBar,
+                "total": window.TotalProgressBar}
+        return {
+            "visible": window.isVisible(),
+            "tab": window.TabWidget.tabText(window.TabWidget.currentIndex()),
+            "tabs": self.tabs(),
+            "status_message": window.statusBar().currentMessage(),
+            "progress": {name: {"percent": bar.value(), "text": bar.text()} for name, bar in bars.items()},
+            "time_lapse_estimate": window.TimelapseEstimateLabel.text(),
+        }
+
+    def apply(self, args):
+        if "tab" in args:
+            tabs = self.tabs()
+            if args["tab"] not in tabs:
+                raise ValidationError(f"tab {args['tab']!r} is not one of {tabs}")
+            self.main_window.TabWidget.setCurrentIndex(tabs.index(args["tab"]))
+
+
+class AcquisitionManagerHandle:
+    """The acquisition manager's table as the operator arranges it: which rows are selected, how the
+    rows are grouped (an edit to a group's first row then goes to every row of the group), and its
+    estimates of the list's time and size."""
+
+    def __init__(self, main_window):
+        self.main_window = main_window
+
+    @property
+    def window(self):
+        return self.main_window.acquisition_manager_window
+
+    def grouping(self):
+        window = self.window
+        for name, button in (("laser", window.GroupByChannelButton), ("illumination", window.GroupByIlluminationButton),
+                             ("selected", window.GroupSelectedButton)):
+            if button.isChecked():
+                return name
+        return "none"
+
+    def selected_rows(self):
+        return sorted({index.row() for index in self.window.table.selectionModel().selectedRows()})
+
+    def read(self):
+        window = self.window
+        return {"visible": window.isVisible(), "grouping": self.grouping(), "selected_rows": self.selected_rows(),
+                "time_estimate": window.AcquisitionTimeLabel.text(), "size_estimate": window.PredictedSizeLabel.text()}
+
+    def apply(self, args):
+        window = self.window
+        if "select_rows" in args:
+            rows = args["select_rows"]
+            count = window.model.rowCount()
+            if any(not 0 <= row < count for row in rows):
+                raise ValidationError(f"select_rows must be rows 0..{count - 1}")
+            # Whole rows, as a click and Ctrl-clicks on the row headers select them (the window's own
+            # set_selected_row selects one cell, which Qt does not count as a selected row).
+            selection = window.table.selectionModel()
+            selection.clearSelection()
+            for row in rows:
+                selection.select(window.model.index(row, 0), QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+        if "group" in args:
+            buttons = {"laser": window.GroupByChannelButton, "illumination": window.GroupByIlluminationButton,
+                       "selected": window.GroupSelectedButton}
+            current = self.grouping()
+            if current != "none" and current != args["group"]:
+                buttons[current].setChecked(False)                     # its own ungroup
+            if args["group"] != "none":
+                if args["group"] == "selected" and len(self.selected_rows()) < 2:
+                    raise ValidationError("grouping selected rows needs two or more selected rows: select_rows first")
+                buttons[args["group"]].setChecked(True)
 
 
 class GuiHandles(QtCore.QObject):
@@ -181,12 +433,18 @@ class GuiHandles(QtCore.QObject):
         super().__init__(parent)
         self.main_window = main_window
         self.camera = CameraWindowHandle(main_window)
+        self.contrast = ContrastWindowHandle(main_window)
+        self.tile_overview = TileOverviewHandle(main_window)
+        self.main = MainWindowHandle(main_window)
+        self.acquisition_manager = AcquisitionManagerHandle(main_window)
         self.numbers = itertools.count(1)
         self.lock = threading.Lock()
         self.outcomes = {}
         self.shown = {}
         self.sig_request.connect(self.perform, type=QtCore.Qt.QueuedConnection)
         self.timer = None
+        self.webcam_capture = None
+        self.webcam_pending = {}                                       # capture id -> (request number, args)
 
     def start(self):
         """Keep the copy fresh while mesoSPIM runs (not in tests, which call read() themselves)."""
@@ -216,28 +474,184 @@ class GuiHandles(QtCore.QObject):
     # --- on the GUI thread --------------------------------------------------------------------
     @QtCore.pyqtSlot(int, str, object)
     def perform(self, number, name, args):
-        outcome = self.apply(name, args)
+        if name == "get_picture" and (args or {}).get("window") == "webcam":
+            self.capture_webcam(number, args)                          # completes when the picture arrives
+            return
+        self.record(number, self.apply(name, args))
+
+    def record(self, number, outcome):
         with self.lock:
             self.outcomes[number] = outcome
             for old in sorted(self.outcomes)[:-KEPT_OUTCOMES]:
                 del self.outcomes[old]
         self.refresh()
 
+    def capture_webcam(self, number, args):
+        """The webcam's picture is drawn by the video system, which neither a window grab nor (on
+        Windows) a video probe sees: it is a still capture from the window's own QCamera, to memory.
+        The request stays queued until the picture arrives, or fails after WEBCAM_TIMEOUT_MS."""
+        from PyQt5 import QtMultimedia
+        window = getattr(self.main_window, "webcam_window", None)
+        camera = getattr(window, "webcam", None)
+        if window is None or not window.isVisible() or camera is None:
+            self.record(number, {"status": "failed",
+                                 "error": "the webcam window is not open: set_windows {show: ['webcam']} opens it"})
+            return
+        if self.webcam_capture is None or self.webcam_capture.camera is not camera:
+            capture = QtMultimedia.QCameraImageCapture(camera, self)
+            capture.setCaptureDestination(QtMultimedia.QCameraImageCapture.CaptureToBuffer)
+            capture.imageCaptured.connect(self.webcam_captured)
+            capture.error.connect(self.webcam_failed)
+            capture.camera = camera
+            self.webcam_capture = capture
+        capture_id = self.webcam_capture.capture()
+        if capture_id < 0:
+            self.record(number, {"status": "failed", "error": f"the webcam could not capture: {self.webcam_capture.errorString()}"})
+            return
+        self.webcam_pending[capture_id] = (number, args)
+        QtCore.QTimer.singleShot(WEBCAM_TIMEOUT_MS, lambda: self.webcam_timed_out(capture_id))
+
+    def webcam_captured(self, capture_id, image):
+        if capture_id in self.webcam_pending:
+            number, args = self.webcam_pending.pop(capture_id)
+            try:
+                self.record(number, {"status": "applied", "result": self.picture_result(image, args)})
+            except ValidationError as error:
+                self.record(number, {"status": "failed", "error": str(error)})
+
+    def webcam_failed(self, capture_id, _error, text):
+        if capture_id in self.webcam_pending:
+            number, _args = self.webcam_pending.pop(capture_id)
+            self.record(number, {"status": "failed", "error": f"the webcam could not capture: {text}"})
+
+    def webcam_timed_out(self, capture_id):
+        if capture_id in self.webcam_pending:
+            number, _args = self.webcam_pending.pop(capture_id)
+            self.record(number, {"status": "failed", "error": f"the webcam sent no picture within {WEBCAM_TIMEOUT_MS / 1000:g} s"})
+
     def apply(self, name, args):
+        """Carry out one accepted request; the outcome says applied (with a result, if any) or why not."""
+        from .commands import check_display
+        handlers = {"set_display": self.set_display, "set_windows": self.set_windows, "get_picture": self.get_picture,
+                    "open_image_file": self.open_image_file, "set_table_view": self.set_table_view}
         try:
-            if name == "set_display":
-                self.camera.apply(args or {})
-            else:
+            if name not in handlers:
                 raise ValidationError(f"no window handle for {name!r}")
+            if name == "set_display":                                   # the frame may have changed size since
+                args = check_display(self.camera.frame_size(), args)
+            result = handlers[name](args or {})
         except ValidationError as error:
             return {"status": "failed", "error": str(error)}
-        return {"status": "applied"}
+        except Exception as error:                                     # the window raised: say so, keep going
+            logger.exception("Remote Control: %s failed in the window", name)
+            return {"status": "failed", "error": f"{type(error).__name__}: {error}"}
+        return {"status": "applied", **({"result": result} if result is not None else {})}
+
+    def set_display(self, args):
+        window = args.get("window", "camera")
+        settings = {k: v for k, v in args.items() if k != "window"}
+        {"camera": self.camera, "contrast": self.contrast, "tile_overview": self.tile_overview,
+         "main": self.main}[window].apply(settings)
+
+    def set_windows(self, args):
+        """Show, hide and arrange windows as the View menu and the windows' own close buttons do."""
+        window = self.main_window
+        openers = {
+            "main": window.show,
+            "camera": window.camera_window.show,                       # View > Open Camera Window
+            "acquisition_manager": window.acquisition_manager_window.show,
+            "tile_overview": window.tile_view_window.show,
+            "webcam": window.open_webcam_window,
+            "contrast": window.launch_contrast_window,                 # Alignment > Open image contrast window
+            "processor_chain": window.launch_processor_chain_window,   # Plugins > Processor Chain
+        }
+        for name in args.get("show", ()):
+            if name == "optimizer":
+                raise ValidationError("the optimizer opens with optimize, which sets what it searches")
+            openers[name]()
+            self.of(name).raise_()
+        for name in args.get("hide", ()):
+            if name == "main":
+                raise ValidationError("the main window stays: hiding it would hide mesoSPIM")
+            shown = self.of(name)
+            if shown is not None:
+                shown.close()                                          # as its close button: the contrast window goes inactive
+        if args.get("cascade"):
+            window.cascade_all_windows()
+
+    def of(self, name):
+        window = self.main_window
+        attribute = {"camera": "camera_window", "acquisition_manager": "acquisition_manager_window",
+                     "tile_overview": "tile_view_window", "webcam": "webcam_window", "contrast": "contrast_window",
+                     "processor_chain": "processor_chain_window", "optimizer": "optimizer"}
+        return window if name == "main" else getattr(window, attribute[name], None)   # None: not built yet
+
+    def windows(self):
+        return {name: bool(self.of(name) is not None and self.of(name).isVisible()) for name in WINDOWS}
+
+    def get_picture(self, args):
+        """A picture of a window as it is on screen, returned as PNG or saved to a file (the image
+        view's own Export saves what it shows the same way). The webcam's picture is drawn by the
+        video system: see capture_webcam."""
+        name = args["window"]
+        shown = self.of(name)
+        if shown is None or not shown.isVisible():
+            raise ValidationError(f"the {name} window is not open: set_windows {{show: [{name!r}]}} opens it")
+        if name == "main":
+            area = shown.findChild(QtWidgets.QScrollArea)
+            picture = area.widget().grab().toImage() if area is not None else shown.grab().toImage()
+        else:
+            picture = shown.grab().toImage()
+        return self.picture_result(picture, args)
+
+    def picture_result(self, picture, args):
+        """A picture as get_picture returns it: at most max_size on its longer side, PNG in the
+        outcome, or saved to path."""
+        largest = args.get("max_size", PICTURE_MAX)
+        if max(picture.width(), picture.height()) > largest:
+            picture = picture.scaled(largest, largest, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        if "path" in args:
+            if not picture.save(args["path"]):
+                raise ValidationError(f"could not save the picture to {args['path']!r}")
+            return {"path": args["path"], "width": picture.width(), "height": picture.height()}
+        data = QtCore.QByteArray()
+        buffer = QtCore.QBuffer(data)
+        buffer.open(QtCore.QIODevice.WriteOnly)
+        picture.save(buffer, "PNG")
+        return {"format": "png", "width": picture.width(), "height": picture.height(),
+                "base64": base64.b64encode(bytes(data)).decode("ascii")}
+
+    def open_image_file(self, args):
+        """File > Open TIFF without its file dialog: the stack goes into the camera window as the menu
+        puts it there (MainWindow.open_tiff)."""
+        import tifffile
+        path = args["path"]
+        if not os.path.isfile(path):
+            raise ValidationError(f"{path!r} is not a file")
+        stack = tifffile.imread(path)
+        self.main_window.camera_window.set_image(stack)
+        logger.info(f"Remote Control: loaded TIFF file from {path}, dimensions {stack.shape}")
+        return {"path": path, "shape": list(stack.shape)}
+
+    def set_table_view(self, args):
+        self.acquisition_manager.apply(args)
 
     def read(self):
         """What each window shows; a window the main window does not have (yet) is left out."""
+        window = self.main_window
         shown = {}
-        if getattr(self.main_window, "camera_window", None) is not None:
+        if getattr(window, "camera_window", None) is not None:
             shown["camera_window"] = self.camera.read()
+        if getattr(window, "TabWidget", None) is not None:
+            shown["main_window"] = self.main.read()
+        if getattr(window, "acquisition_manager_window", None) is not None:
+            shown["acquisition_manager"] = self.acquisition_manager.read()
+        if getattr(window, "tile_view_window", None) is not None:
+            shown["tile_overview"] = self.tile_overview.read()
+        if hasattr(window, "contrast_window"):
+            shown["contrast_window"] = self.contrast.read()
+        if all(hasattr(window, a) for a in ("camera_window", "acquisition_manager_window", "tile_view_window")):
+            shown["windows"] = self.windows()
         return shown
 
     @QtCore.pyqtSlot()
@@ -253,16 +667,7 @@ class GuiHandles(QtCore.QObject):
             self.shown = shown
 
 
-
-def frame_size(core, cfg):
-    """(width, height) of the camera frame as the windows show it: the frame on display, else the
-    camera's configured size, turned as the camera window turns it (its x_image_width is the
-    configured y_pixels: "flipped to account for image rotation")."""
-    queue = getattr(core, "frame_queue_display", None)
-    if queue:
-        height, width = queue[0].shape[-2:]
-    else:
-        camera = cfg.camera_parameters
-        width, height = camera["y_pixels"], camera["x_pixels"]
-    return int(width), int(height)
+def fraction(bar):
+    span = bar.maximum() - bar.minimum()
+    return (bar.value() - bar.minimum()) / span if span else 0.0
 

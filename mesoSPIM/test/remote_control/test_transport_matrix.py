@@ -94,7 +94,7 @@ def test_command_over_both_lanes(transport, name):
     elif name in WINDOW_CALLS:  # the windows: a request to the GUI thread's handles, never the hardware
         assert mutating == [], (transport, name, call_names)
         handles = _harness.core._remote_control_gui_handles
-        assert handles.requests == ([(name, VALID_CASES[name])] if dispatcher.COMMANDS[name].kind == DISPLAY else [])
+        assert [request for request, _ in handles.requests] == ([name] if dispatcher.COMMANDS[name].kind == DISPLAY else [])
     else:  # READ_ONLY or _SPECIAL: no actuation
         assert mutating == [], (transport, name, call_names)
 

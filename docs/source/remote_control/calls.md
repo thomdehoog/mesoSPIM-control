@@ -1,6 +1,6 @@
 # Remote Control call list
 
-TCP and MCP provide the same 69 calls. The call names and behavior are identical on both
+TCP and MCP provide the same 73 calls. The call names and behavior are identical on both
 transports.
 
 Before changing the microscope, call `get_manual` and `get_limits`. Ordinary changes return an
@@ -119,5 +119,9 @@ camera frame's own pixels (x the column, y the row, as `get_frame` gives the fra
 
 | Call | What it does |
 | --- | --- |
-| `get_display` | Read what the windows show: the camera window's levels, lookup table, overlay, view and regions of interest, with their size and offset from the frame's centre. |
-| `set_display` | Set the camera window's levels or Adjust levels, its lookup table, the region on screen, the overlay, and place or move the box or line region of interest. |
+| `get_display` | Read what the windows show: the camera window's levels, lookup table, overlay, view and regions of interest (with their size and offset from the frame's centre), the contrast map, the tile overview, the main window's tab, status message, progress bars and time-lapse estimate, the acquisition table's grouping, selection and estimates, and which windows are open. |
+| `set_display` | Set what a window shows: in the camera and contrast windows the levels, a lookup table by name or by its colours, the histogram's range, the region on screen, inverted axes, the image view's own ROI and its profile, and normalisation; in the camera window also Adjust levels, the overlay, the box and line regions of interest and the frame of an opened stack; the tile overview's scale and scroll; the main window's tab. |
+| `set_windows` | Open, close and cascade windows, as the View menu and their close buttons do. |
+| `get_picture` | A picture of a window as it is on screen, returned as PNG or saved to a file. |
+| `open_image_file` | Open a TIFF image or stack in the camera window, as File > Open TIFF. |
+| `set_table_view` | Select rows of the acquisition table and group it by laser, by illumination or by the selected rows. |

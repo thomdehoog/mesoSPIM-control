@@ -95,3 +95,43 @@ def test_the_assistant_s_tool_waits_until_the_window_shows_the_change():
     out = dispatch_and_wait(acceptor, "set_display", {"overlay": "box"}, dispatcher.DISPLAY, threading.Event(), Cfg)
     assert out["request"]["status"] == "applied" and out["camera_window"]["overlay"] == "box"
     assert [c for c in acceptor.calls if c[0] == "get_display"] == [("get_display", {"request": 7})] * 2
+
+
+@pytest.mark.parametrize("name, args, says", [
+    ("set_display", {"window": "contrast", "box_roi": {"x": 0, "y": 0, "width": 1, "height": 1}}, "unknown argument"),
+    ("set_display", {"window": "tile_overview", "scale": 2}, "outside the allowed range"),
+    ("set_display", {"window": "elsewhere"}, "not one of"),
+    ("set_display", {"colormap_ticks": [[0, [0, 0, 0]]]}, "two or more"),
+    ("set_display", {"colormap_ticks": [[0, [0, 0, 0]], [1.5, [255, 255, 255]]]}, "between 0 and 1"),
+    ("set_display", {"colormap_ticks": [[0, [0, 0, 0]], [1, [300, 0, 0]]]}, "0..255"),
+    ("set_display", {"normalization": {"mode": "sideways"}}, "normalization mode"),
+    ("set_display", {"profile_roi": {"x": 1}}, "shown"),
+    ("set_windows", {}, "show or hide"),
+    ("set_windows", {"show": ["camera"], "hide": ["camera"]}, "at once"),
+    ("set_windows", {"show": ["somewhere"]}, "list of windows"),
+    ("get_picture", {"window": "camera", "path": "D:/x.svg"}, "must end in"),
+    ("get_picture", {"window": "camera", "path": "Z:/no/such/folder/x.png"}, "does not exist"),
+    ("open_image_file", {"path": "image.png"}, "TIFF"),
+    ("open_image_file", {"path": "Z:/no/such/file.tif"}, "not an existing file"),
+    ("set_table_view", {}, "name a group"),
+    ("set_table_view", {"group": "by colour"}, "group is one of"),
+    ("set_table_view", {"select_rows": [-1]}, "row indices"),
+])
+def test_each_window_call_refuses_what_its_window_cannot_do_and_reaches_no_window(core, name, args, says):
+    with pytest.raises(dispatcher.ValidationError, match=says):
+        dispatcher.run(core, name, args)
+    assert core._remote_control_gui_handles.requests == []
+
+
+@pytest.mark.parametrize("name, args", [
+    ("set_display", {"window": "contrast", "colormap": "magma"}),
+    ("set_display", {"window": "tile_overview", "scale": 0.05, "scroll": {"x": 0.5}}),
+    ("set_display", {"window": "main", "tab": "Parameters"}),
+    ("set_windows", {"show": ["contrast"], "cascade": True}),
+    ("get_picture", {"window": "webcam", "max_size": 512}),
+    ("set_table_view", {"select_rows": [0, 1], "group": "selected"}),
+])
+def test_each_window_call_goes_to_the_windows_and_is_never_busy(core, name, args):
+    core.state["state"] = "run_acquisition_list"
+    assert dispatcher.run(core, name, args) == {"request": 1}
+    assert core._remote_control_gui_handles.requests[0][0] == name

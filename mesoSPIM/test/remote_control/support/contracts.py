@@ -9,6 +9,9 @@ FOLDER = tempfile.mkdtemp(prefix="mesospim_contracts_")
 SAVED_LIST = os.path.join(FOLDER, "saved.csv")
 with open(SAVED_LIST, "w", newline="") as _file:
     _file.write("z_start,z_end,z_step,planes\n0,0,1,1\n")
+IMAGE_FILE = os.path.join(FOLDER, "image.tif")       # what open_image_file opens: a TIFF that exists
+with open(IMAGE_FILE, "wb") as _file:
+    _file.write(b"II*" + bytes(1))
 
 VALID_CASES = {
     "hello": {},
@@ -107,13 +110,17 @@ VALID_CASES = {
     # the windows (gui_handles)
     "get_display": {},
     "set_display": {"levels": [100, 3000]},
+    "set_windows": {"show": ["tile_overview"]},
+    "get_picture": {"window": "camera"},
+    "open_image_file": {"path": IMAGE_FILE},
+    "set_table_view": {"group": "none"},
 }
 
 # What a call's valid example needs installed first: delete keeps at least one row.
 SETUP = {"delete_acquisition_rows": lambda core: core.state.__setitem__("acq_list", [{}, {}])}
 
 # The calls on mesoSPIM's windows (gui_handles): no Core call, a request to the GUI thread's handles.
-WINDOW_CALLS = {"get_display", "set_display"}
+WINDOW_CALLS = {"get_display", "set_display", "set_windows", "get_picture", "open_image_file", "set_table_view"}
 for _name in WINDOW_CALLS:
     SETUP[_name] = lambda core: setattr(core, "_remote_control_gui_handles", RecordingHandles())
 
@@ -187,7 +194,7 @@ OPERATIONAL_COMMANDS = set(EXPECTED_CORE_CALL) | {
     "stop_activity",
 } | TABLE_CALLS
 
-CALL_COUNT = 69
+CALL_COUNT = 73
 assert len(VALID_CASES) == CALL_COUNT
 assert len(OPERATIONAL_COMMANDS) == 49
 
