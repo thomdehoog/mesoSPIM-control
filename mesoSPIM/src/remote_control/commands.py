@@ -51,6 +51,8 @@ from .dispatcher import (
     DISPLAY,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # --- State access and asynchronous scheduling ---
 def state(core, key, default=None):
@@ -2825,6 +2827,361 @@ command(
                     "select_rows": {"type": "array", "items": {"type": "integer", "minimum": 0}}}),
     hint="in: {group?: none|laser|illumination|selected, select_rows?}: the acquisition table's selection and grouping "
          "(an edit to a group's first row then goes to the whole group). out: {request}",
+)
+
+
+# --- The windows' own instrument features: what only a window offers (gui_handles) ---------------
+# These change the instrument, so they are ordinary operations under the busy gate. The writer
+# parameters, the processor chain, Save to config and auto illumination need no window to carry
+# them out; the ETL and galvo toggles and the optimizer are the window's own, so the GUI thread
+# carries them out and ends the operation (dispatcher.finish_operation).
+
+OPTIMIZER_MODES = ("focus", "etl_offset", "etl_amp")         # mesoSPIM_Optimizer's modes_list
+OPTIMIZER_POINTS = (3, 51)
+ALIGNMENT_TOGGLES = ("zero_left_etl", "zero_right_etl", "freeze_galvo")
+
+
+def _writer_class(name):
+    from ..plugins.utils import get_image_writer_plugins
+
+    for plugin in get_image_writer_plugins():
+        if plugin["name"] == name:
+            return plugin["writer_class"]
+    known = ", ".join(w["name"] for w in _image_writers())
+    raise ValidationError(f"no image writer {name!r}; there are {known}")
+
+
+def _writer_parameters(core, name):
+    """A writer's own settings as the filename wizard's Writer parameters page shows them: its
+    wizard_parameters() defaults, overridden by the config's entry for it (and this session's)."""
+    writer = _writer_class(name)
+    offered = writer.wizard_parameters() if hasattr(writer, "wizard_parameters") else {}
+    current = getattr(core.cfg, name, {}) or {}
+    return {key: {"value": current.get(key, default), "default": default, "help": help_text}
+            for key, (default, help_text) in offered.items()}
+
+
+def _accept_get_writer_parameters(core, args):
+    only(args, ("writer",))
+    name = text(args, "writer")
+    _writer_class(name)
+    return {"writer": name}
+
+
+def _run_get_writer_parameters(core, args):
+    return {"writer": args["writer"], "parameters": _writer_parameters(core, args["writer"])}
+
+
+def _writer_value(key, default, value):
+    """One value as the wizard's page takes it, typed by its default: a check box for a bool, a whole
+    number for an int, text (or None) for a string, and a literal (a tuple as a list, or None) for
+    the rest."""
+    if isinstance(default, bool):
+        if not isinstance(value, bool):
+            raise ValidationError(f"{key} must be true or false")
+        return value
+    if isinstance(default, int):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValidationError(f"{key} must be a whole number >= 0")
+        return value
+    if isinstance(default, str):
+        if value is not None and not isinstance(value, str):
+            raise ValidationError(f"{key} must be text, or null")
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    if value is None or isinstance(value, (int, float, str)) and not isinstance(value, bool):
+        return value
+    raise ValidationError(f"{key} must be a list, a number, text or null")
+
+
+def _accept_set_writer_parameters(core, args):
+    only(args, ("writer", "parameters"))
+    name = text(args, "writer")
+    offered = _writer_parameters(core, name)
+    if not offered:
+        raise ValidationError(f"{name} offers no parameters to set")
+    parameters = args.get("parameters")
+    if not isinstance(parameters, dict) or not parameters:
+        raise ValidationError("parameters must name at least one of the writer's settings")
+    unknown = sorted(set(parameters) - set(offered))
+    if unknown:
+        raise ValidationError(f"{name} has no setting {', '.join(unknown)}; it has {', '.join(offered)}")
+    return {"writer": name, "parameters": {key: _writer_value(key, offered[key]["default"], value)
+                                           for key, value in parameters.items()}}
+
+
+def _run_set_writer_parameters(core, args):
+    """As the wizard's page applies them: into the config attribute the writer reads at the start of a
+    run, for this session only; the config file is not touched."""
+    name = args["writer"]
+    merged = dict(getattr(core.cfg, name, {}) or {})
+    merged.update(args["parameters"])
+    setattr(core.cfg, name, merged)
+    logger.info(f"Remote Control: {name} parameters set: {args['parameters']}")
+    return {"writer": name, "parameters": {k: v["value"] for k, v in _writer_parameters(core, name).items()}}
+
+
+def _processor_chain(core):
+    chain = getattr(getattr(core, "camera_worker", None), "processor_chain", None)
+    if chain is None:
+        raise ValidationError("this mesoSPIM has no processor chain")
+    return chain
+
+
+def _parameters_of(processor_class):
+    """A processor's parameters as the chain window reads them: none when it describes none
+    (IdentityProcessor has no parameter_descriptions)."""
+    describe = getattr(processor_class, "parameter_descriptions", None)
+    return (describe() or {}) if describe is not None else {}
+
+
+def _processor_value(name, key, description, value):
+    """One processor parameter against its own description (type, min, max, choices), as the chain
+    window's editor holds it."""
+    kind = description.get("type")
+    if kind == "float":
+        value = _finite(value, f"{name}.{key}")
+    elif kind == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValidationError(f"{name}.{key} must be a whole number")
+    elif kind == "bool":
+        if not isinstance(value, bool):
+            raise ValidationError(f"{name}.{key} must be true or false")
+    elif kind == "str":
+        if not isinstance(value, str):
+            raise ValidationError(f"{name}.{key} must be text")
+    if "choices" in description and value not in description["choices"]:
+        raise ValidationError(f"{name}.{key}={value!r} is not one of {description['choices']}")
+    if kind in ("float", "int") and not description.get("min", value) <= value <= description.get("max", value):
+        raise ValidationError(f"{name}.{key}={value} is outside [{description.get('min')}, {description.get('max')}]")
+    return value
+
+
+def _run_get_processor_chain(core, args):
+    chain = _processor_chain(core)
+    available = [{"name": p["name"], "description": p["description"],
+                  "parameters": _parameters_of(p["processor_class"])} for p in chain.available_processors]
+    return {"available": available, "chain": chain.get_config()["processors"], "enabled": chain.is_enabled}
+
+
+def _accept_set_processor_chain(core, args):
+    only(args, ("processors", "save"))
+    chain = _processor_chain(core)
+    available = {p["name"]: _parameters_of(p["processor_class"]) for p in chain.available_processors}
+    processors = args.get("processors")
+    if not isinstance(processors, list):
+        raise ValidationError("processors must be the chain, first to last: [{name, enabled?, config?}] ([] empties it)")
+    clean = []
+    for i, entry in enumerate(processors):
+        if not isinstance(entry, dict):
+            raise ValidationError(f"processors[{i}] must be {{name, enabled?, config?}}")
+        only(entry, ("name", "enabled", "config"))
+        name = text(entry, "name")
+        if name not in available:
+            raise ValidationError(f"processors[{i}]: no processor {name!r}; there are {', '.join(available)}")
+        config_ = entry.get("config", {})
+        if not isinstance(config_, dict):
+            raise ValidationError(f"processors[{i}].config must be an object")
+        unknown = sorted(set(config_) - set(available[name]))
+        if unknown:
+            raise ValidationError(f"{name} has no parameter {', '.join(unknown)}; it has {', '.join(available[name])}")
+        clean.append({"name": name, "enabled": flag(entry, "enabled", True),
+                      "config": {k: _processor_value(name, k, available[name][k], v) for k, v in config_.items()}})
+    return {"processors": clean, "save": flag(args, "save")}
+
+
+def _run_set_processor_chain(core, args):
+    """The chain as the window's Apply sets it (and its Save writes it): the chain takes its own lock, so
+    the camera thread processes the next frame with the new chain. An open chain window shows it."""
+    chain = _processor_chain(core)
+    chain.set_config({"processors": args["processors"]})
+    result = {"chain": chain.get_config()["processors"], "enabled": chain.is_enabled}
+    if args["save"]:
+        path = getattr(getattr(core, "parent", None), "processor_chain_config_path", None)
+        if not path or not chain.save_to_file(path):
+            raise ValidationError(f"could not save the processor chain to {path!r}")
+        result["saved_to"] = path
+    handles = getattr(core, "_remote_control_gui_handles", None)
+    if handles is not None:
+        handles.request("refresh_processor_chain", {})
+    return result
+
+
+def _accept_set_alignment_toggles(core, args):
+    only(args, ALIGNMENT_TOGGLES)
+    gui_handles(core)
+    toggles = {key: flag(args, key) for key in ALIGNMENT_TOGGLES if key in args}
+    if not toggles:
+        raise ValidationError(f"name one or more of {', '.join(ALIGNMENT_TOGGLES)}")
+    return toggles
+
+
+def _accept_optimize(core, args):
+    only(args, ("mode", "range", "points", "roi"))
+    gui_handles(core)
+    mode = text(args, "mode")
+    if mode not in OPTIMIZER_MODES:
+        raise ValidationError(f"mode is one of {list(OPTIMIZER_MODES)}")
+    out = {"mode": mode, "range": number(args, "range", (1e-6, 1e6)),
+           "points": integer(args, "points", *OPTIMIZER_POINTS, required=False, default=7)}
+    if out["points"] % 2 == 0:
+        raise ValidationError("points must be odd, as the optimizer asks (the current value sits in the middle)")
+    if mode != "focus" and state(core, "shutterconfig") not in ("Left", "Right"):
+        raise ValidationError(f"{mode} needs one light sheet (shutterconfig Left or Right), as the optimizer asks")
+    if "roi" in args:
+        out["roi"] = _region(args["roi"], "roi", ("x", "y", "width", "height"), frame_size(core, core.cfg))
+    return out
+
+
+def _accept_finish_optimization(core, args):
+    only(args, ("accept",))
+    gui_handles(core)
+    if "accept" not in args:
+        raise ValidationError("'accept' is required: true applies the optimum, false keeps the old value")
+    return {"accept": flag(args, "accept")}
+
+
+def _on_the_gui_thread_as_operation(name):
+    """A window's instrument feature: the operation stays processing (it holds the busy gate) until the
+    GUI thread has carried it out and finished it with its result."""
+    def execute(core, args):
+        gui_handles(core).operation(core, operation_snapshot(core)["id"], name, args)
+        return {"scheduled": True}
+    return execute
+
+
+def _accept_save_parameters_to_config(core, args):
+    only(args, ("path", "overwrite"))
+    config_file = getattr(core.cfg, "__file__", None)
+    if config_file is None:
+        raise ValidationError("the config file's path is not known (the config has no __file__)")
+    path = text(args, "path", required=False, default=config_file)
+    if not path.endswith(".py"):
+        raise ValidationError("the config is a Python file: path must end in .py")
+    if not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+        raise ValidationError(f"the folder of {path!r} does not exist")
+    if os.path.exists(path) and not flag(args, "overwrite"):
+        raise ValidationError(f"{path} exists; overwrite=true replaces it, as the window's question does")
+    return {"config_file": config_file, "path": path}
+
+
+def _run_save_parameters_to_config(core, args):
+    from .gui_handles import CONFIG_PARAMETERS, parameters_to_config
+
+    appended = parameters_to_config(args["config_file"], core.state, args["path"])
+    return {"path": args["path"], "saved": list(CONFIG_PARAMETERS), "appended_as_startup_update": appended}
+
+
+def _accept_auto_illumination(core, args):
+    from .gui_handles import illumination_by_x
+
+    only(args, ())
+    rows = _installed(core)
+    if not rows:
+        raise ValidationError("the installed acquisition list is empty")
+    options = getattr(core.cfg, "ui_options", {}) or {}
+    sides = illumination_by_x([row["x_pos"] for row in rows], bool(options.get("flip_auto_LR_illumination")))
+    for row, side in zip(rows, sides):
+        row["shutterconfig"] = side
+    return _as_list(core, rows)
+
+
+command(
+    "get_writer_parameters",
+    READ,
+    _run_get_writer_parameters,
+    accept=_accept_get_writer_parameters,
+    schema=_schema({"writer": _STRING}, required=("writer",)),
+    hint="in: {writer}. out: the writer's own settings as the filename wizard's Writer parameters page shows them, "
+         "each {value, default, help}",
+)
+
+command(
+    "set_writer_parameters",
+    ACTION,
+    _run_set_writer_parameters,
+    accept=_accept_set_writer_parameters,
+    schema=_schema({"writer": _STRING, "parameters": {"type": "object", "additionalProperties": True,
+                                                      "description": "settings named as get_writer_parameters lists them"}},
+                   required=("writer", "parameters")),
+    hint="in: {writer, parameters}: a writer's settings (OME-Zarr chunks, compression, shards, ...) for this session, "
+         "as the filename wizard's Writer parameters page sets them. out: {writer, parameters}",
+)
+
+command(
+    "get_processor_chain",
+    READ,
+    _run_get_processor_chain,
+    accept=no_args,
+    hint="in: none. out: the processors there are, with their parameters, and the chain applied to the live view "
+         "and the saved images, first to last",
+)
+
+command(
+    "set_processor_chain",
+    ACTION,
+    _run_set_processor_chain,
+    accept=_accept_set_processor_chain,
+    schema=_schema({"processors": {"type": "array", "items": _schema(
+        {"name": _STRING, "enabled": _BOOLEAN, "config": {"type": "object", "additionalProperties": True}}, required=("name",))},
+        "save": {**_BOOLEAN, "description": "also save it, as the window's Save does"}}, required=("processors",)),
+    hint="in: {processors: [{name, enabled?, config?}], save?}: the whole chain, first to last, as the Processor "
+         "Chain window's Apply sets it. out: {chain, enabled}",
+)
+
+command(
+    "set_alignment_toggles",
+    WAIT,
+    _on_the_gui_thread_as_operation("set_alignment_toggles"),
+    accept=_accept_set_alignment_toggles,
+    schema=_schema({key: _BOOLEAN for key in ALIGNMENT_TOGGLES}),
+    hint="in: {zero_left_etl?, zero_right_etl?, freeze_galvo?}: the ETL tab's AmpL=0, AmpR=0 and Freeze galvos, "
+         "which set the amplitude to 0 and back. out: the three toggles",
+)
+
+command(
+    "optimize",
+    WAIT,
+    _on_the_gui_thread_as_operation("optimize"),
+    accept=_accept_optimize,
+    schema=_schema({"mode": {"type": "string", "enum": list(OPTIMIZER_MODES)},
+                    "range": {**_NUMBER, "description": "+- around the current value: um for focus, V for the ETL"},
+                    "points": {"type": "integer", "minimum": OPTIMIZER_POINTS[0], "maximum": OPTIMIZER_POINTS[1],
+                               "description": "odd; 7 when omitted"},
+                    "roi": _BOX}, required=("mode", "range")),
+    hint="in: {mode: focus|etl_offset|etl_amp, range, points?, roi?}: the optimizer (AUTO Focus, Launch Optimizer): "
+         "snaps across the range, scores each frame's sharpness within roi (the camera window's box) and fits the "
+         "best. out: {old, new, points, sharpness}; nothing changes until finish_optimization",
+)
+
+command(
+    "finish_optimization",
+    WAIT,
+    _on_the_gui_thread_as_operation("finish_optimization"),
+    accept=_accept_finish_optimization,
+    schema=_schema({"accept": _BOOLEAN}, required=("accept",)),
+    hint="in: {accept}: the optimizer's result window: true applies the new value (Accept), false keeps the old "
+         "(Discard). out: {accepted, value}",
+)
+
+command(
+    "save_parameters_to_config",
+    ACTION,
+    _run_save_parameters_to_config,
+    accept=_accept_save_parameters_to_config,
+    schema=_schema({"path": {**_STRING, "description": "the config file when omitted"}, "overwrite": _BOOLEAN}),
+    hint="in: {path?, overwrite?}: the Parameters tab's Save config file: sweep, camera, laser, galvo and ETL timing "
+         "and binning written into the config file. out: {path, saved}",
+)
+
+command(
+    "auto_illumination",
+    ACTION,
+    _run_set_acquisition_list,
+    accept=_accept_auto_illumination,
+    hint="in: none. out: {count}: the acquisition manager's Auto L/R illumination: rows left of the median X lit "
+         "from the right, the others from the left",
 )
 
 

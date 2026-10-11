@@ -22,3 +22,18 @@ def use_tiff_writer():
         sys.modules[name] = module
         spec.loader.exec_module(module)
     return TIFF
+
+
+ZARR = "OME_Zarr_Writer"
+
+
+def use_zarr_writer():
+    """The OME-Zarr writer registered alone: a writer with parameters of its own (wizard_parameters)."""
+    name = MESOSPIM_PLUGIN_MODULE_PREFIX + "OmeZarrWriter"
+    if name not in sys.modules:
+        path = Path(__file__).resolve().parents[3] / "src" / "plugins" / "ImageWriters" / "OmeZarrWriter.py"
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return ZARR

@@ -13,6 +13,8 @@ from mesoSPIM.test.remote_control.support.contracts import (
     SETUP,
     TABLE_CALLS,
     WINDOW_CALLS,
+    WINDOW_FEATURE_CALLS,
+    GUI_OPERATIONS,
     CALL_COUNT,
 )
 from mesoSPIM.test.remote_control.support.writers import use_tiff_writer
@@ -95,13 +97,17 @@ def test_command_over_both_lanes(transport, name):
         assert mutating == [], (transport, name, call_names)
         handles = _harness.core._remote_control_gui_handles
         assert [request for request, _ in handles.requests] == ([name] if dispatcher.COMMANDS[name].kind == DISPLAY else [])
+    elif name in WINDOW_FEATURE_CALLS:  # a window's own feature: no Core call; the GUI thread carries the operations
+        assert mutating == [], (transport, name, call_names)
+        handles = _harness.core._remote_control_gui_handles
+        assert [operation for _, operation, _ in handles.operations] == ([name] if name in GUI_OPERATIONS else [])
     else:  # READ_ONLY or _SPECIAL: no actuation
         assert mutating == [], (transport, name, call_names)
 
 
 def test_contract_tables_partition_the_vocabulary():
-    """Completeness guard: the four buckets exactly cover the commands, once each."""
-    buckets = (set(EXPECTED_CORE_CALL), READ_ONLY_WITHOUT_CORE_CALL, _SPECIAL, WINDOW_CALLS)
+    """Completeness guard: the five buckets exactly cover the commands, once each."""
+    buckets = (set(EXPECTED_CORE_CALL), READ_ONLY_WITHOUT_CORE_CALL, _SPECIAL, WINDOW_CALLS, WINDOW_FEATURE_CALLS)
     assert sum(len(b) for b in buckets) == len(set().union(*buckets))
     assert set().union(*buckets) == set(VALID_CASES) == set(dispatcher.COMMANDS)
     assert len(VALID_CASES) == CALL_COUNT

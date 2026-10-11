@@ -258,3 +258,52 @@ def test_a_picture_of_the_camera_window_comes_back_as_png_or_as_a_file(main, tmp
     path = tmp_path / "camera.png"
     outcome = handles.apply("get_picture", {"window": "camera", "path": str(path), "max_size": 4096})
     assert outcome["status"] == "applied" and path.stat().st_size > 1000
+
+
+# --- the two handlers whose dialogs stand in a remote caller's way, repeated exactly -------------
+CONFIG_TEXT = ("startup = {\n    'sweeptime': 0.1,  # s\n    \"camera_exposure_time\": 0.02,\n    'galvo_l_frequency': 99.9,\n"
+               "    'camera_binning': '1x1',\n}\n")
+
+
+def test_save_to_config_writes_exactly_what_the_window_s_own_save_writes(app, tmp_path, monkeypatch):
+    from PyQt5 import QtWidgets as W
+    from mesoSPIM.src.mesoSPIM_MainWindow import mesoSPIM_MainWindow
+    state = mesoSPIM_StateSingleton()
+    for i, key in enumerate(gui_handles.CONFIG_PARAMETERS):
+        state[key] = round(0.5 + i * 1.25, 3)
+    state["camera_binning"] = "2x2"
+    by_window, by_call = tmp_path / "window_config.py", tmp_path / "call_config.py"
+    by_window.write_text(CONFIG_TEXT, encoding="utf-8")
+    by_call.write_text(CONFIG_TEXT, encoding="utf-8")
+    monkeypatch.setattr(W.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(by_window), "")))
+    monkeypatch.setattr(W.QMessageBox, "question", staticmethod(lambda *a, **k: W.QMessageBox.Yes))
+    monkeypatch.setattr(W.QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    window = SimpleNamespace(cfg=SimpleNamespace(__file__=str(by_window)), state=state)
+    mesoSPIM_MainWindow.save_parameters_to_config(window)                  # the window's own Save, dialogs answered
+    appended = gui_handles.parameters_to_config(str(by_call), state, str(by_call))
+    assert by_call.read_text(encoding="utf-8") == by_window.read_text(encoding="utf-8")
+    assert "'sweeptime': 0.5" in by_call.read_text(encoding="utf-8") and "camera_exposure_time" not in appended
+
+
+@pytest.mark.parametrize("flip", [False, True])
+def test_auto_illumination_lights_the_tiles_exactly_as_the_window_s_own_button(flip):
+    from mesoSPIM.src.mesoSPIM_AcquisitionManagerWindow import mesoSPIM_AcquisitionManagerWindow
+    xs = [500.0, -1200.0, 0.0, 3000.0, 0.0, 250.0, -40.0]
+
+    class Model:
+        def __init__(self):
+            self.sides = {}
+
+        def rowCount(self):
+            return len(xs)
+
+        def getXPosition(self, row):
+            return xs[row]
+
+        def setShutterconfig(self, row, side):
+            self.sides[row] = side
+
+    window = SimpleNamespace(model=Model(), cfg=SimpleNamespace(ui_options={"flip_auto_LR_illumination": flip}),
+                             display_information=lambda *a: None)       # the confirmation box, answered OK
+    mesoSPIM_AcquisitionManagerWindow.auto_illumination(window)
+    assert gui_handles.illumination_by_x(xs, flip) == [window.model.sides[row] for row in range(len(xs))]

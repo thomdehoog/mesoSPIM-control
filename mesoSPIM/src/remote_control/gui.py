@@ -209,8 +209,10 @@ class RemoteControlGUI(QtWidgets.QWidget):
     def on_window_state_request(self, request):
         """The main window's STOP (and the AI Assistant's Stop microscope, which calls the same
         handler) asks Core for the idle state. A remote run it ends is marked stopped, as
-        stop_activity marks it, so the client is not told a stopped run simply completed."""
-        if isinstance(request, dict) and request.get("state") == "idle":
+        stop_activity marks it, so the client is not told a stopped run simply completed. While a
+        window feature runs on the GUI thread (the optimizer stops live itself), the operator cannot
+        press STOP, so an idle request then is the feature's own, not a stop."""
+        if isinstance(request, dict) and request.get("state") == "idle" and self.gui_handles.operating is None:
             self.on_window_stop()
 
     def eventFilter(self, watched, event):

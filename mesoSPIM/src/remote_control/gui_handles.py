@@ -25,6 +25,8 @@ Maintainer (2026):
 """
 import base64
 import importlib.util
+import re
+import statistics
 import itertools
 import logging
 import os
@@ -34,7 +36,7 @@ from pathlib import Path
 import numpy as np
 from PyQt5 import QtCore, QtWidgets
 
-from .dispatcher import ValidationError
+from .dispatcher import ValidationError, fail_operation, finish_operation
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,54 @@ def frame_size(core, cfg):
         camera = cfg.camera_parameters
         width, height = camera["y_pixels"], camera["x_pixels"]
     return int(width), int(height)
+
+
+# The Parameters-tab values MainWindow.save_parameters_to_config writes back into a config file, in
+# its order. Kept equal to that handler by test_gui_handles_real_qt (it runs both on one file).
+CONFIG_PARAMETERS = (
+    "sweeptime", "camera_exposure_time", "camera_delay_%", "camera_pulse_%",
+    "laser_l_delay_%", "laser_r_delay_%", "laser_l_pulse_%", "laser_r_pulse_%",
+    "laser_l_max_amplitude_%", "laser_r_max_amplitude_%",
+    "galvo_l_frequency", "galvo_r_frequency", "galvo_l_offset", "galvo_r_offset", "galvo_l_phase", "galvo_r_phase",
+    "etl_l_delay_%", "etl_r_delay_%", "etl_l_ramp_rising_%", "etl_r_ramp_rising_%",
+    "etl_l_ramp_falling_%", "etl_r_ramp_falling_%",
+    "camera_binning", "camera_display_live_subsampling", "camera_display_acquisition_subsampling",
+)
+
+
+def parameters_to_config(config_file, state, save_path):
+    """Save to config without its dialogs: what MainWindow.save_parameters_to_config writes, read from
+    config_file and written to save_path. Each value replaces its entry where the file has one; the
+    rest are appended as a startup.update (format 2: they live in the hardware file). Returns the
+    keys appended."""
+    params = {key: state[key] for key in CONFIG_PARAMETERS}
+    with open(config_file, "r", encoding="utf-8") as file:
+        content = file.read()
+    skipped = []
+    for key, value in params.items():
+        pattern = r"(['\"]" + re.escape(key) + r"['\"]\s*:\s*)([^,\n#]+)"
+        new_content, count = re.subn(pattern, r"\g<1>" + repr(value), content)
+        if count > 0:
+            content = new_content
+        else:
+            skipped.append(key)
+    if skipped:
+        content += ("\n\nstartup.update({\n" + "".join(f"    {k!r}: {params[k]!r},\n" for k in skipped) + "})\n")
+    with open(save_path, "w", encoding="utf-8") as file:
+        file.write(content)
+    return skipped
+
+
+def illumination_by_x(x_positions, flip=False):
+    """Auto L/R illumination without its confirmation box: AcquisitionManagerWindow.auto_illumination's
+    rule. A tile left of the median X is lit from the right, the others from the left; the config's
+    ui_options flip_auto_LR_illumination swaps the two. Kept equal to that handler by the tests."""
+    median = statistics.median(x_positions)
+    sides = []
+    for x in x_positions:
+        side = "Right" if x < median else "Left"
+        sides.append({"Left": "Right", "Right": "Left"}[side] if flip else side)
+    return sides
 
 
 def ticks_of(state):
@@ -428,6 +478,7 @@ class GuiHandles(QtCore.QObject):
     that get_display reads is refreshed after each request and every REFRESH_MS."""
 
     sig_request = QtCore.pyqtSignal(int, str, object)
+    sig_operation = QtCore.pyqtSignal(object, str, str, object)          # core, operation id, name, args
 
     def __init__(self, main_window, parent=None):
         super().__init__(parent)
@@ -442,6 +493,8 @@ class GuiHandles(QtCore.QObject):
         self.outcomes = {}
         self.shown = {}
         self.sig_request.connect(self.perform, type=QtCore.Qt.QueuedConnection)
+        self.sig_operation.connect(self.operate, type=QtCore.Qt.QueuedConnection)
+        self.operating = None                                         # the window feature running now, if any
         self.timer = None
         self.webcam_capture = None
         self.webcam_pending = {}                                       # capture id -> (request number, args)
@@ -463,6 +516,11 @@ class GuiHandles(QtCore.QObject):
         self.sig_request.emit(number, name, args)
         return number
 
+    def operation(self, core, operation_id, name, args):
+        """Hand an instrument operation that only a window can carry out to the GUI thread; the
+        operation stays processing (it holds the busy gate) until that thread finishes it."""
+        self.sig_operation.emit(core, operation_id, name, args)
+
     def display(self, number=None):
         """The latest copy of what the windows show, with one request's outcome when asked for."""
         with self.lock:
@@ -478,6 +536,79 @@ class GuiHandles(QtCore.QObject):
             self.capture_webcam(number, args)                          # completes when the picture arrives
             return
         self.record(number, self.apply(name, args))
+
+    @QtCore.pyqtSlot(object, str, str, object)
+    def operate(self, core, operation_id, name, args):
+        handlers = {"set_alignment_toggles": self.set_alignment_toggles, "optimize": self.optimize,
+                    "finish_optimization": self.finish_optimization}
+        self.operating = name
+        try:
+            result = handlers[name](args)
+        except ValidationError as error:
+            fail_operation(core, operation_id, error)
+        except Exception as error:                                     # the window raised: say so, keep going
+            logger.exception("Remote Control: %s failed in the window", name)
+            fail_operation(core, operation_id, f"{type(error).__name__}: {error}")
+        else:
+            finish_operation(core, operation_id, result)
+        finally:
+            self.operating = None
+        self.refresh()
+
+    def set_alignment_toggles(self, args):
+        """The ETL tab's AmpL=0 and AmpR=0 and Freeze galvos, pressed as the operator presses them: their
+        own handlers keep the amplitude to restore and lock the boxes that go with them."""
+        window = self.main_window
+        buttons = {"zero_left_etl": window.ZeroLeftETLButton, "zero_right_etl": window.ZeroRightETLButton,
+                   "freeze_galvo": window.freezeGalvoButton}
+        for key, value in args.items():
+            button = buttons[key]
+            if button.isChecked() != value and not button.isEnabled():
+                shutter = window.state["shutterconfig"]
+                side = {"zero_left_etl": "Left", "zero_right_etl": "Right"}.get(key)
+                why = (f"with shutterconfig {shutter!r} the {side.lower()} ETL is not in use" if side and shutter in ("Left", "Right")
+                       else "the other ETL is zeroed with both light sheets on")
+                raise ValidationError(f"{key} is disabled in the window now: {why}")
+            button.setChecked(value)
+        return self.alignment_toggles()
+
+    def alignment_toggles(self):
+        window = self.main_window
+        return {"zero_left_etl": window.ZeroLeftETLButton.isChecked(), "zero_right_etl": window.ZeroRightETLButton.isChecked(),
+                "freeze_galvo": window.freezeGalvoButton.isChecked()}
+
+    def optimize(self, args):
+        """The optimizer as AUTO Focus and Launch Optimizer open it, run with its own Run: it snaps
+        points frames across +- range around the current value, scores each within the camera window's
+        box ROI (the whole frame without one), and fits the best. Its result window then waits for
+        finish_optimization, as for the operator's Accept or Discard."""
+        window = self.main_window
+        if window.camera_window.image_view.getImageItem().image is None:     # the optimizer reads it as it opens
+            raise ValidationError("the camera window has shown no frame yet: start live first, as for AUTO Focus")
+        if "roi" in args:
+            box, every = args["roi"], self.camera.every()
+            window.camera_window.overlayCombo.setCurrentText(OVERLAYS["box"])
+            window.camera_window.set_roi("box", (box["x"] / every, box["y"] / every, box["width"] / every, box["height"] / every))
+        try:
+            window.launch_optimizer({"mode": args["mode"], "amplitude": args["range"], "n_points": args["points"]})
+        except AssertionError as error:                                # its own check: ETL modes need one shutter
+            raise ValidationError(f"the optimizer refused: {error}") from None
+        optimizer = window.optimizer
+        optimizer.set_parameters({"mode": args["mode"], "amplitude": args["range"], "n_points": args["points"]})
+        optimizer.run_optimization()
+        return {"mode": optimizer.mode, "parameter": optimizer.state_key if optimizer.mode != "focus" else "f_pos",
+                "old": float(optimizer.ini_state), "new": float(optimizer.new_state),
+                "points": [float(v) for v in optimizer.search_grid], "sharpness": [float(v) for v in optimizer.metric_array],
+                "waiting_for": "finish_optimization {accept}"}
+
+    def finish_optimization(self, args):
+        optimizer = getattr(self.main_window, "optimizer", None)
+        results = getattr(optimizer, "results_window", None)
+        if results is None:
+            raise ValidationError("there is no optimization result to accept or discard: optimize first")
+        new = float(optimizer.new_state)
+        (results.acceptButton if args["accept"] else results.discardButton).click()
+        return {"accepted": args["accept"], "value": new if args["accept"] else None}
 
     def record(self, number, outcome):
         with self.lock:
@@ -533,7 +664,8 @@ class GuiHandles(QtCore.QObject):
         """Carry out one accepted request; the outcome says applied (with a result, if any) or why not."""
         from .commands import check_display
         handlers = {"set_display": self.set_display, "set_windows": self.set_windows, "get_picture": self.get_picture,
-                    "open_image_file": self.open_image_file, "set_table_view": self.set_table_view}
+                    "open_image_file": self.open_image_file, "set_table_view": self.set_table_view,
+                    "refresh_processor_chain": self.refresh_processor_chain}
         try:
             if name not in handlers:
                 raise ValidationError(f"no window handle for {name!r}")
@@ -632,6 +764,12 @@ class GuiHandles(QtCore.QObject):
         self.main_window.camera_window.set_image(stack)
         logger.info(f"Remote Control: loaded TIFF file from {path}, dimensions {stack.shape}")
         return {"path": path, "shape": list(stack.shape)}
+
+    def refresh_processor_chain(self, _args):
+        """An open Processor Chain window shows the chain a call set, with its own refresh."""
+        window = getattr(self.main_window, "processor_chain_window", None)
+        if window is not None:
+            window.refresh_from_chain()
 
     def set_table_view(self, args):
         self.acquisition_manager.apply(args)

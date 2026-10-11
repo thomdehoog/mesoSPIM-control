@@ -2,7 +2,8 @@
 import os
 import tempfile
 
-from mesoSPIM.test.remote_control.support.fakes import RecordingHandles
+from mesoSPIM.test.remote_control.support.fakes import RecordingChain, RecordingHandles
+from mesoSPIM.test.remote_control.support.writers import ZARR, use_zarr_writer
 
 # The files and folders the table and folder calls name: a folder that exists, a list saved in it.
 FOLDER = tempfile.mkdtemp(prefix="mesospim_contracts_")
@@ -114,6 +115,16 @@ VALID_CASES = {
     "get_picture": {"window": "camera"},
     "open_image_file": {"path": IMAGE_FILE},
     "set_table_view": {"group": "none"},
+    # the windows' own instrument features (gui_handles)
+    "get_writer_parameters": {"writer": ZARR},
+    "set_writer_parameters": {"writer": ZARR, "parameters": {"compression_level": 3}},
+    "get_processor_chain": {},
+    "set_processor_chain": {"processors": [{"name": "GaussianBlur", "config": {"sigma": 2.0}}]},
+    "set_alignment_toggles": {"freeze_galvo": True},
+    "optimize": {"mode": "focus", "range": 300},
+    "finish_optimization": {"accept": False},
+    "save_parameters_to_config": {"path": os.path.join(FOLDER, "saved_config.py"), "overwrite": True},
+    "auto_illumination": {},
 }
 
 # What a call's valid example needs installed first: delete keeps at least one row.
@@ -123,6 +134,30 @@ SETUP = {"delete_acquisition_rows": lambda core: core.state.__setitem__("acq_lis
 WINDOW_CALLS = {"get_display", "set_display", "set_windows", "get_picture", "open_image_file", "set_table_view"}
 for _name in WINDOW_CALLS:
     SETUP[_name] = lambda core: setattr(core, "_remote_control_gui_handles", RecordingHandles())
+
+# The windows' own instrument features (gui_handles): no Core call; the toggles and the optimizer are
+# operations the GUI thread's handles carry out.
+CONFIG_FILE = os.path.join(FOLDER, "config.py")
+with open(CONFIG_FILE, "w") as _file:
+    _file.write("startup = {\n    'sweeptime': 0.1,\n}\n")
+
+
+def _features(core):
+    from mesoSPIM.src.remote_control.gui_handles import CONFIG_PARAMETERS
+
+    use_zarr_writer()
+    core._remote_control_gui_handles = RecordingHandles()
+    core.camera_worker = type("Worker", (), {"processor_chain": RecordingChain()})()
+    core.cfg.__file__ = CONFIG_FILE
+    for key in CONFIG_PARAMETERS:
+        core.state[key] = 1
+
+
+GUI_OPERATIONS = {"set_alignment_toggles", "optimize", "finish_optimization"}
+WINDOW_FEATURE_CALLS = GUI_OPERATIONS | {"get_writer_parameters", "set_writer_parameters", "get_processor_chain",
+                                         "set_processor_chain", "save_parameters_to_config", "auto_illumination"}
+for _name in WINDOW_FEATURE_CALLS:
+    SETUP[_name] = _features
 
 # The calls that edit the acquisition table: each installs through set_acquisition_list, no Core call.
 TABLE_CALLS = {"update_acquisition_row", "add_acquisition_rows", "delete_acquisition_rows", "move_acquisition_row",
@@ -194,7 +229,7 @@ OPERATIONAL_COMMANDS = set(EXPECTED_CORE_CALL) | {
     "stop_activity",
 } | TABLE_CALLS
 
-CALL_COUNT = 73
+CALL_COUNT = 82
 assert len(VALID_CASES) == CALL_COUNT
 assert len(OPERATIONAL_COMMANDS) == 49
 

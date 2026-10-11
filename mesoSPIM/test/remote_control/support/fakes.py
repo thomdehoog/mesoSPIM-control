@@ -117,8 +117,12 @@ class RecordingHandles:
     and keeps what the windows would show after it."""
 
     def __init__(self):
-        self.requests, self.outcomes = [], {}
+        self.requests, self.outcomes, self.operations = [], {}, []
         self.shown = {"camera_window": {"levels": [100.0, 3000.0], "overlay": "light_sheet_marker"}}
+
+    def operation(self, core, operation_id, name, args):
+        """An instrument feature handed to the GUI thread: recorded; a test finishes it."""
+        self.operations.append((operation_id, name, args))
 
     def request(self, name, args):
         self.requests.append((name, args))
@@ -299,3 +303,37 @@ class RefusingCore(RecordingCore):
         self._record("start", *args, **kwargs)
         self.sig_warning.emit("The following files already exist - stopping! x.raw")
         self.sig_finished.emit()
+
+
+class RecordingProcessor:
+    """An image processor's description, as a processor plugin gives it."""
+
+    @classmethod
+    def parameter_descriptions(cls):
+        return {"sigma": {"type": "float", "default": 1.0, "min": 0.0, "max": 100.0},
+                "mode": {"type": "str", "default": "reflect", "choices": ["reflect", "nearest"]}}
+
+
+class RecordingChain:
+    """mesoSPIM_ProcessorChain's interface, without loading the processor plugins (some install
+    packages when loaded)."""
+
+    def __init__(self):
+        self.available_processors = [{"name": "GaussianBlur", "description": "blur", "processor_class": RecordingProcessor},
+                                     # a processor with nothing to set has no parameter_descriptions (IdentityProcessor)
+                                     {"name": "Identity", "description": "as is", "processor_class": type("Identity", (), {})}]
+        self.config, self.saved = {"processors": []}, None
+
+    def get_config(self):
+        return self.config
+
+    def set_config(self, config):
+        self.config = config
+
+    @property
+    def is_enabled(self):
+        return any(p["enabled"] for p in self.config["processors"])
+
+    def save_to_file(self, path):
+        self.saved = path
+        return True

@@ -433,6 +433,25 @@ def _record_mutation_failure(core, operation_id, error):
         operation["error"] = str(error)
 
 
+def finish_operation(core, operation_id, result):
+    """End one operation that work on another thread carried out (the GUI thread's, gui_handles):
+    COMPLETED with its result, or STOPPED if a stop came meanwhile. Nothing if it is no longer the
+    current operation."""
+    with _GATE:
+        operation = _active(core)
+        if operation is None or operation["id"] != operation_id:
+            return
+        stored = operation.get("result")
+        result = jsonable(result)
+        operation["result"] = {**stored, **result} if isinstance(stored, dict) and isinstance(result, dict) else result
+        operation["status"] = STOPPED if operation.get("stop_requested") else COMPLETED
+
+
+def fail_operation(core, operation_id, error):
+    """End one operation that work on another thread could not carry out, with the reason."""
+    _record_mutation_failure(core, operation_id, error)
+
+
 def _schedule_mutation(core, cmd, args, operation):
     """Queue an admitted ACTION or WAIT and return before its execution begins."""
     operation_id = operation["id"]

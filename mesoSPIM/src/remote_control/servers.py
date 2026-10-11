@@ -35,7 +35,6 @@ from .dispatcher import (
     EMERGENCY,
     PROCESSING,
     STOPPING,
-    WAIT,
     _core_state,
     run,
     complete,

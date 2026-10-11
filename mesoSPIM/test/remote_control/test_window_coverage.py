@@ -21,7 +21,6 @@ GUI = Path(__file__).resolve().parents[2] / "gui"
 CONTROLS = ("QPushButton", "QCheckBox", "QComboBox", "QSpinBox", "QDoubleSpinBox", "QSlider", "QLineEdit")
 JOG = "move_relative"
 ZERO = "zero"
-OPEN_WINDOW = "display"
 
 MAIN_WINDOW = {
     # the position read-outs
@@ -42,8 +41,7 @@ MAIN_WINDOW = {
        for name in ("xyzIncrementSpinbox", "focusIncrementSpinbox", "rotIncrementSpinbox")},
     "xyzLoadButton": "load_sample", "xyzUnloadButton": "unload_sample", "centerButton": "center_sample",
     "xyzrotStopButton": "stop",
-    "focusAutoButton": "not exposed: the auto-focus optimizer; work package 5 decides",
-    "launchOptimizerButton": "not exposed: the optimizer window; work package 5 decides",
+    "focusAutoButton": "optimize", "launchOptimizerButton": "optimize",
     # the ETL
     "LeftETLOffsetSpinBox": "set_etl:etl_l_offset", "RightETLOffsetSpinBox": "set_etl:etl_r_offset",
     "LeftETLAmplitudeSpinBox": "set_etl:etl_l_amplitude", "RightETLAmplitudeSpinBox": "set_etl:etl_r_amplitude",
@@ -53,9 +51,7 @@ MAIN_WINDOW = {
     "RightETLRampFallingSpinBox": "set_etl:etl_r_ramp_falling_%",
     "ChooseETLcfgButton": "reload_etl_config", "SaveETLParametersButton": "save_etl_config",
     "ETLIncrementSpinBox": "display",
-    "ZeroLeftETLButton": "not exposed: a toggle that zeroes the left ETL; the owner decides (plan 3.4b)",
-    "ZeroRightETLButton": "not exposed: a toggle that zeroes the right ETL; the owner decides (plan 3.4b)",
-    "freezeGalvoButton": "not exposed: a toggle that zeroes the galvo amplitude; the owner decides (plan 3.4b)",
+    **{name: "set_alignment_toggles" for name in ("ZeroLeftETLButton", "ZeroRightETLButton", "freezeGalvoButton")},
     # camera, timing and galvos
     "SweeptimeSpinBox": "set_state:sweeptime",
     "CameraExposureTimeSpinBox": "set_camera:camera_exposure_time",
@@ -67,26 +63,27 @@ MAIN_WINDOW = {
     "RightLaserPulseDelaySpinBox": "set_laser_timing:laser_r_delay_%",
     "LeftLaserPulseLengthSpinBox": "set_laser_timing:laser_l_pulse_%",
     "RightLaserPulseLengthSpinBox": "set_laser_timing:laser_r_pulse_%",
-    "LeftLaserPulseMaxAmplitudeSpinBox": "not exposed: waveform generation does not apply the maximum (plan fact 14)",
-    "RightLaserPulseMaxAmplitudeSpinBox": "not exposed: waveform generation does not apply the maximum (plan fact 14)",
+    "LeftLaserPulseMaxAmplitudeSpinBox": "set_laser_timing:laser_l_max_amplitude_%",
+    "RightLaserPulseMaxAmplitudeSpinBox": "set_laser_timing:laser_r_max_amplitude_%",
     "GalvoFrequencySpinBox": "set_galvo:galvo_l_frequency", "LeftGalvoAmplitudeSpinBox": "set_galvo:galvo_l_amplitude",
     "LeftGalvoOffsetSpinBox": "set_galvo:galvo_l_offset", "RightGalvoOffsetSpinBox": "set_galvo:galvo_r_offset",
     "LeftGalvoPhaseSpinBox": "set_galvo:galvo_l_phase", "RightGalvoPhaseSpinBox": "set_galvo:galvo_r_phase",
     "checkBoxScaleWZoom": "set_galvo:galvo_amp_scale_w_zoom",
     # files and settings
     "ChooseSnapFolderButton": "set_snap_folder",
-    "SaveToConfigButton": "not exposed: writes the Parameters tab into the config file; the owner decides (plan 3.4b)",
+    "SaveToConfigButton": "save_parameters_to_config",
     # the time-lapse tab: time_lapse_start takes the interval and the number of points
     "EnableTimelapseCheckBox": "display", "AsFastAsPossibleCheckBox": "time_lapse_start",
     "TimelapseHoursSpinBox": "time_lapse_start", "TimelapseMinutesSpinBox": "time_lapse_start",
     "TimelapseSecondsSpinBox": "time_lapse_start", "TimelapseTimepointsSpinBox": "time_lapse_start",
     # windows of their own
-    "ContrastWindowButton": "display",
+    "ContrastWindowButton": "set_windows",
     "openScriptEditorButton": "not exposed: the script editor runs code",
     "actionScriptWindow": "not exposed: the script editor runs code",
-    **{name: OPEN_WINDOW for name in ("actionOpen_Camera_Window", "actionOpen_Acquisition_Manager", "actionAbout",
-                                      "actionOpen_TIFF", "actionCascade_windows", "actionOpen_Webcam_Window",
-                                      "actionOpen_Tile_Overview")},
+    **{name: "set_windows" for name in ("actionOpen_Camera_Window", "actionOpen_Acquisition_Manager",
+                                        "actionCascade_windows", "actionOpen_Webcam_Window", "actionOpen_Tile_Overview")},
+    "actionOpen_TIFF": "open_image_file",
+    "actionAbout": "display",                                   # the version: get_info
     **{name: "not exposed: closes mesoSPIM" for name in ("actionClose", "actionClose_2", "actionExit")},
 }
 
@@ -101,9 +98,9 @@ ACQUISITION_MANAGER = {
     "PreviewSelectionButton": "preview_acquisition", "PreviewZCheckBox": "preview_acquisition",
     "TilingWizardButton": "build_tiling_list", "FilenameWizardButton": "name_acquisition_rows",
     "FocusTrackingWizardButton": "track_focus", "SetFoldersButton": "update_acquisition_row",
-    "AutoIlliminationButton": "not exposed: left or right per tile from its x; the owner decides (plan 3.4b)",
-    "ImageProcessingWizardButton": "not exposed: the processor chain; the owner decides (plan 3.4b)",
-    **{name: "display" for name in ("GroupByChannelButton", "GroupByIlluminationButton", "GroupSelectedButton")},
+    "AutoIlliminationButton": "auto_illumination",
+    "ImageProcessingWizardButton": "update_acquisition_row",     # it sets each row's Processing (MAX or none)
+    **{name: "set_table_view" for name in ("GroupByChannelButton", "GroupByIlluminationButton", "GroupSelectedButton")},
 }
 
 WINDOWS = {"mesoSPIM_MainWindow.ui": MAIN_WINDOW, "mesoSPIM_AcquisitionManagerWindow.ui": ACQUISITION_MANAGER}
@@ -135,7 +132,11 @@ def test_every_entry_names_a_call_and_a_key_that_exist():
 
 
 def test_the_window_s_features_are_calls_and_what_is_left_is_named():
+    """Everything the two windows do is a call, but three things on purpose: the jog step boxes
+    (move_relative takes the step), the script editor (it runs code) and closing mesoSPIM."""
     entries = [entry for table in WINDOWS.values() for entry in table.values()]
     calls = {entry.partition(":")[0] for entry in entries if entry != "display" and not entry.startswith("not")}
-    open_items = sorted({entry for entry in entries if "owner decides" in entry})
-    assert len(calls) == 39 and len(open_items) == 6, (len(calls), open_items)
+    left = sorted({entry for entry in entries if entry.startswith("not exposed: ")})
+    assert len(calls) == 46, len(calls)
+    assert left == ["not exposed: closes mesoSPIM", "not exposed: the jog buttons' step; move_relative takes the step itself",
+                    "not exposed: the script editor runs code"], left

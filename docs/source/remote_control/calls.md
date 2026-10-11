@@ -1,6 +1,6 @@
 # Remote Control call list
 
-TCP and MCP provide the same 73 calls. The call names and behavior are identical on both
+TCP and MCP provide the same 82 calls. The call names and behavior are identical on both
 transports.
 
 Before changing the microscope, call `get_manual` and `get_limits`. Ordinary changes return an
@@ -125,3 +125,20 @@ camera frame's own pixels (x the column, y the row, as `get_frame` gives the fra
 | `get_picture` | A picture of a window as it is on screen, returned as PNG or saved to a file. |
 | `open_image_file` | Open a TIFF image or stack in the camera window, as File > Open TIFF. |
 | `set_table_view` | Select rows of the acquisition table and group it by laser, by illumination or by the selected rows. |
+
+## The windows' own instrument features
+
+What only a window offers, as calls. They change the instrument, so they are ordinary operations
+under the busy gate; the toggles and the optimizer are carried out by the window itself.
+
+| Call | What it does |
+| --- | --- |
+| `get_writer_parameters` | Read an image writer's own settings, as the filename wizard's Writer parameters page shows them. |
+| `set_writer_parameters` | Set an image writer's settings for this session (OME-Zarr chunks, compression, shards, ...). |
+| `get_processor_chain` | Read the processors there are, with their parameters, and the chain applied to images. |
+| `set_processor_chain` | Set the whole processor chain, as the Processor Chain window's Apply does, and optionally save it. |
+| `set_alignment_toggles` | The ETL tab's AmpL=0, AmpR=0 and Freeze galvos. |
+| `optimize` | Run the optimizer (AUTO Focus, Launch Optimizer) over focus or an ETL, within a region of interest. |
+| `finish_optimization` | Accept or discard the optimizer's result. |
+| `save_parameters_to_config` | Save the Parameters tab into the config file, as Save config file does. |
+| `auto_illumination` | Light each tile from the left or right by its X position, as Auto L/R illumination does. |

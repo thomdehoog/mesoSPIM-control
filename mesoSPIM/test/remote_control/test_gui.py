@@ -396,6 +396,24 @@ def test_another_state_request_from_the_window_is_not_a_stop():
     assert not dispatcher.operation_snapshot(core).get("stop_requested")
 
 
+def test_the_optimizer_stopping_live_is_not_a_stop_of_its_own_operation():
+    """Found on the Windows demo: optimize ended "stopped". The optimizer stops live itself with an
+    idle request through the main window; while a window feature runs on the GUI thread the operator
+    cannot press STOP, so that request is the feature's own."""
+    from mesoSPIM.src.remote_control import dispatcher as dispatcher
+
+    core = _SessionCore()
+    window = _WindowWithStop(core)
+    tab = _build(window)
+    dispatcher.run(core, "run_acquisition_list", {})
+    tab.gui_handles.operating = "optimize"
+    window.sig_state_request.emit({"state": "idle"})
+    assert not dispatcher.operation_snapshot(core).get("stop_requested")
+    tab.gui_handles.operating = None
+    window.sig_state_request.emit({"state": "idle"})
+    assert dispatcher.operation_snapshot(core)["stop_requested"] is True
+
+
 # --- a warning a remote command caused goes to its caller, not into a window ---
 
 _REFUSED = "The following files already exist - stopping! x.raw"

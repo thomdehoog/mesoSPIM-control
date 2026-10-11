@@ -201,6 +201,8 @@ SETTABLE_STATE_KEYS = (
     "laser_l_pulse_%",
     "laser_r_delay_%",
     "laser_r_pulse_%",
+    "laser_l_max_amplitude_%",
+    "laser_r_max_amplitude_%",
     "camera_delay_%",
     "camera_pulse_%",
     "camera_display_live_subsampling",
@@ -242,7 +244,8 @@ SETTING_GROUPS = {
         "galvo_r_phase",
         "galvo_amp_scale_w_zoom",
     ),
-    "set_laser_timing": ("laser_l_delay_%", "laser_l_pulse_%", "laser_r_delay_%", "laser_r_pulse_%"),
+    "set_laser_timing": ("laser_l_delay_%", "laser_l_pulse_%", "laser_r_delay_%", "laser_r_pulse_%",
+                         "laser_l_max_amplitude_%", "laser_r_max_amplitude_%"),
 }
 
 ACQUISITION_FIELDS = (
