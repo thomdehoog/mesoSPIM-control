@@ -1,0 +1,508 @@
+{
+ "conf-a-tab-is-not-a-setting": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "main",
+      "tab": "ETL"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The main window is now on the ETL tab. Its tabs are Movement, ETL, Parameters, Alignment, Timelapse, Scripting, Remote Control and AI Assistant. I haven't changed any hardware settings."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41235,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24509
+ },
+ "conf-best-focus-is-the-optimizer": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll take a snap first, then run the autofocus over ±50 µm of the current focus and accept the result if it looks good."
+    },
+    {
+     "tool": "snap",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "optimize",
+     "args": {
+      "mode": "focus",
+      "range": 50
+     }
+    }
+   ],
+   [
+    {
+     "text": "The autofocus peaks at the current focus value, 1000, so the new value matches the old. I'll accept it to close the optimizer, which leaves focus where it is."
+    },
+    {
+     "tool": "finish_optimization",
+     "args": {
+      "accept": true
+     }
+    }
+   ],
+   [
+    {
+     "text": "I took the snap; it was saved as remote_20260917-120000.tif in the snap folder. The autofocus searched ±50 µm around the current focus and its sharpness peaked at the starting value, f = 1000, so focus is unchanged. Sharpness fell off symmetrically on both sides (about 0.2 at ±33 µm and 0.1 at ±50 µm), so 1000 looks like the true best focus. I accepted the result, which keeps f at 1000."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 82884,
+   "requests": 4,
+   "eyes_input": 0
+  },
+  "tokens": 49052
+ },
+ "conf-bring-up-a-window": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_windows",
+     "args": {
+      "show": [
+       "contrast"
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "tool": "get_picture",
+     "args": {
+      "window": "contrast"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The contrast window is open. The picture I got back is a 1×1 pixel image, so I can't see it visually. The window's settings are readable, though: its colormap is jet, its levels are [0, 1], and its map is an 8×8 grid of values. Most cells read 0.55, and the top-left two cells in the first two rows read 0.12. The camera window beside it is in grey with levels 100 to 3000 and the light-sheet marker overlay on."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 63998,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37731
+ },
+ "conf-defaults-are-the-config-file": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "save_parameters_to_config",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "I haven't saved anything yet. The config file, `demo_config.py`, already exists, and saving would overwrite it. Do you want me to replace it with the current settings?\n\nThe save also writes the sweep, galvo and ETL timing and binning, not only the camera and laser timing you named. If you want only the camera and laser timing kept, tell me and I'll check how to do that first."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40770,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24234
+ },
+ "conf-edit-together-is-grouping": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_table_view",
+     "args": {
+      "group": "laser"
+     }
+    }
+   ],
+   [
+    {
+     "tool": "get_acquisition_list",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "The acquisition table is now grouped by laser. Rows 0 (a.tif) and 2 (c.tif) are the 488 nm rows, so they form one group, and an edit to either of them will apply to both. Row 1 (b.tif, 561 nm) sits in its own group and is not affected.\n\nI only changed the grouping. I haven't edited any row."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 63028,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37186
+ },
+ "conf-focus-step-is-a-move": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "move_relative",
+     "args": {
+      "deltas": {
+       "f": 20
+      }
+     }
+    }
+   ],
+   [
+    {
+     "text": "I moved focus (f) by +20 µm, from 1000 to 1020. The move completed and the readout confirms f = 1020."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40532,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24196
+ },
+ "conf-one-row-side-is-an-edit": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_config",
+     "args": {}
+    },
+    {
+     "tool": "get_acquisition_list",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "update_acquisition_row",
+     "args": {
+      "row": 1,
+      "changes": {
+       "shutterconfig": "Right"
+      }
+     }
+    }
+   ],
+   [
+    {
+     "text": "The b.tif row (row 1) now uses the \"Right\" shutter configuration, so it will be illuminated from the right side. The other two rows still use \"Left\". The update also moved the selected row to row 1. Nothing has been run."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 62600,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 36870
+ },
+ "conf-picture-of-sample": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "look",
+     "args": {
+      "question": "Describe the sample in view: what is visible, where the signal is, and whether the exposure and focus look usable.",
+      "label": "picture_request"
+     }
+    }
+   ],
+   [
+    {
+     "text": "I took a snap, but the picture is mostly black. The only signal is a small, bright rectangular feature just above the centre of the field. The peak is low (about 0.06 of full scale), so the frame is underexposed. Nothing is saturated, and the edges look reasonably sharp, though the faint signal makes focus hard to judge.\n\nThe shutter readout still says closed, so the shutters may need opening for a usable image. I haven't changed the exposure, intensity or shutters. Should I open the shutters and raise the exposure, or would you rather adjust those yourself?"
+    }
+   ]
+  ],
+  "eyes": [
+   [
+    {
+     "text": "The frame shows a almost entirely black field with one small, bright rectangular feature near the centre, slightly above it. Most of the view carries no signal. The peak is 0.061, below the 0.1 threshold, so the exposure is underexposed. Nothing is saturated (0.0), but the mean of 0.006 confirms the image is very dark. The laplacian focus value of 8.2 suggests the edges are reasonably sharp, but the faint signal makes that hard to judge. The exposure would need to be raised before this frame is usable. There is no earlier frame to compare with."
+    }
+   ]
+  ],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41195,
+   "requests": 2,
+   "eyes_input": 682
+  },
+  "tokens": 24456
+ },
+ "conf-resolution-is-psf": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll run the PSF (bead) analysis on that stack and then read the result."
+    },
+    {
+     "tool": "analyse_psf",
+     "args": {
+      "path": "C:\\Users\\LOCAL_~2.DE1\\Temp\\mesospim_eval_nohehk6v/beads.tif"
+     }
+    }
+   ],
+   [
+    {
+     "text": "Your bead stack gives a lateral resolution of about 1.0 µm and an axial resolution of about 2.0 µm (FWHM), from 3 beads. Both medians have zero spread across the beads.\n\nI ran the analysis with its default pixel pitch and z step of 1.0 µm, and did not check them against your optics. The numbers are quantised to those steps, so the true resolution could differ by up to about one pixel or one z-plane. If you give me the actual pixel pitch (from magnification and camera) and the z step you used, I can rerun it for a proper figure."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41836,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24726
+ },
+ "conf-saturation-is-the-frame": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_frame",
+     "args": {
+      "include_image": false
+     }
+    }
+   ],
+   [
+    {
+     "text": "I can't tell yet. The frame readout is unavailable: the microscope is in live mode, but no frame has been captured or displayed, so there is no saturation figure to read. Once a frame is available, I can check its saturated fraction. Taking a snap would save a file to the snap folder, so I'll wait for your go-ahead before I take one. Alternatively, you could take a snap or let the live view update and ask again."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40482,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24127
+ },
+ "conf-screenshot-of-window": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_picture",
+     "args": {
+      "window": "camera"
+     }
+    }
+   ],
+   [
+    {
+     "text": "I couldn't get a usable screenshot. The camera window returned a blank 1×1 image, so there's nothing to show you.\n\nThe microscope is idle, live view is not running, and no frame has been captured yet (`frame_available` is false), so the window has no current image. If you want, I can start live view and then take the screenshot, or take a snap and show you that frame instead. Which would you prefer?"
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41323,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24557
+ },
+ "conf-show-a-file-is-opening-it": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "open_image_file",
+     "args": {
+      "path": "C:\\Users\\LOCAL_~2.DE1\\Temp\\mesospim_eval_nlyc_0aj/beads.tif"
+     }
+    }
+   ],
+   [
+    {
+     "text": "I opened `beads.tif` in the camera window. It is a stack of 3 frames, each 512 × 512 pixels, and the window is showing frame 0 at the default grey levels (100 to 3000). I haven't changed anything on the instrument. Tell me if you want a different frame, contrast, or a zoomed region."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41351,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24572
+ },
+ "conf-still-beam-is-freeze": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_alignment_toggles",
+     "args": {
+      "freeze_galvo": true
+     }
+    }
+   ],
+   [
+    {
+     "text": "I've turned on Freeze galvos, which sets the galvo amplitude to zero, so the beam should now stand still. The toggle is accepted and completed, but I can't see the beam from here. Live is still running. To resume scanning, turn Freeze galvos off."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40719,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24214
+ },
+ "conf-the-plan-is-the-list": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "save_acquisition_list",
+     "args": {
+      "path": "C:\\Users\\LOCAL_~2.DE1\\Temp\\mesospim_eval_hzcr_tlu/plan.csv"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The acquisition list is saved to C:\\Users\\LOCAL_~2.DE1\\Temp\\mesospim_eval_hzcr_tlu/plan.csv. It contains 3 rows (a.tif, b.tif, c.tif). The microscope is idle and nothing else was changed."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40737,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24259
+ },
+ "conf-washed-out-is-the-display": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "adjust_levels": {
+       "low_percentile": 25,
+       "high_percentile": 99.99
+      }
+     }
+    }
+   ],
+   [
+    {
+     "tool": "get_frame",
+     "args": {
+      "max_size": 512,
+      "include_image": false
+     }
+    }
+   ],
+   [
+    {
+     "text": "I re-set the camera window's display levels to the 25th to 99.99th percentile stretch, which should remove the washed-out look. The display now spans about 900 to 1600 counts on a 0 to 4000 histogram, with grey colormap. I left the laser, camera, and all other instrument settings unchanged.\n\nThe frame readout came back unavailable, so I can't confirm the new contrast numerically. Tell me if it still looks flat and I can take a look at the picture."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 62422,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37060
+ },
+ "conf-weak-signal-is-the-laser": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_intensity",
+     "args": {
+      "intensity": 30
+     }
+    }
+   ],
+   [
+    {
+     "text": "The laser intensity is now 30%, up from 10%. The laser is still 488 nm. I haven't looked at the image yet, so if the signal is still weak, tell me and I can take a frame to check."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40577,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24174
+ }
+}

@@ -11,7 +11,7 @@ pytest.importorskip("pydantic_ai")
 
 FILES = tuple(harness.CASES_FILE.with_name(name) for name in
               ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json",
-               "cases_windows.json", "cases_windows_holdout.json"))
+               "cases_windows.json", "cases_windows_holdout.json", "cases_confusable.json"))
 
 
 def _recorded_cases():

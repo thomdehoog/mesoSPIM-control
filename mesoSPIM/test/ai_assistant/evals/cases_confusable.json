@@ -1,0 +1,407 @@
+[
+  {
+    "id": "conf-picture-of-sample",
+    "prompt": "Take a picture of the sample.",
+    "expect": {
+      "calls_any": [
+        "snap",
+        "look"
+      ],
+      "not_calls": [
+        "get_picture"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-screenshot-of-window",
+    "prompt": "Send me a screenshot of the live view window as it looks now.",
+    "expect": {
+      "args": {
+        "get_picture": {
+          "window": "camera"
+        }
+      },
+      "not_calls": [
+        "snap"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-saturation-is-the-frame",
+    "prompt": "Is anything in the current image saturated?",
+    "setup": {
+      "state": "live"
+    },
+    "expect": {
+      "calls_any": [
+        "get_frame",
+        "look"
+      ],
+      "not_calls": [
+        "set_display",
+        "set_intensity"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-washed-out-is-the-display",
+    "prompt": "The live image looks washed out on my screen. Make it look better, but leave the laser and the camera as they are.",
+    "setup": {
+      "state": "live"
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "not_calls": [
+        "set_intensity",
+        "set_camera"
+      ],
+      "state": {
+        "intensity": 10
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-weak-signal-is-the-laser",
+    "prompt": "The signal is too weak. Raise the laser power to 30 %.",
+    "expect": {
+      "calls": [
+        "set_intensity"
+      ],
+      "not_calls": [
+        "set_display"
+      ],
+      "state": {
+        "intensity": 30
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-best-focus-is-the-optimizer",
+    "prompt": "Take a snap, then find the sharpest focus automatically, searching 50 µm either side, and use it.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
+    "expect": {
+      "calls": [
+        "optimize",
+        "finish_optimization"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-focus-step-is-a-move",
+    "prompt": "Move the focus by +20 µm.",
+    "expect": {
+      "calls": [
+        "move_relative"
+      ],
+      "not_calls": [
+        "optimize"
+      ],
+      "state": {
+        "position.f_pos": 1020.0
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-defaults-are-the-config-file",
+    "prompt": "Keep the current camera and laser timing settings as the defaults for the next time mesoSPIM starts.",
+    "expect": {
+      "calls": [
+        "save_parameters_to_config"
+      ],
+      "not_calls": [
+        "save_acquisition_list",
+        "save_etl_config"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-the-plan-is-the-list",
+    "prompt": "Save what's in the acquisition manager to {folder}/plan.csv.",
+    "setup": {
+      "files": [
+        "list.csv"
+      ],
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "save_acquisition_list"
+      ],
+      "not_calls": [
+        "save_parameters_to_config"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-edit-together-is-grouping",
+    "prompt": "In the acquisition manager, I want an edit to one 488 nm row to change all the 488 nm rows. Set that up.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "561 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "args": {
+        "set_table_view": {
+          "group": "laser"
+        }
+      },
+      "not_calls": [
+        "update_acquisition_row",
+        "set_acquisition_list",
+        "move_acquisition_row"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-still-beam-is-freeze",
+    "prompt": "Stop the galvos scanning so I can see the beam standing still.",
+    "setup": {
+      "state": "live"
+    },
+    "expect": {
+      "calls": [
+        "set_alignment_toggles"
+      ],
+      "not_calls": [
+        "stop",
+        "stop_activity"
+      ],
+      "display": {
+        "main_window.alignment_toggles.freeze_galvo": true
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-resolution-is-psf",
+    "prompt": "How good is my resolution? The bead stack is {folder}/beads.tif.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "analyse_psf"
+      ],
+      "not_calls": [
+        "look"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-show-a-file-is-opening-it",
+    "prompt": "Show me {folder}/beads.tif.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "open_image_file"
+      ],
+      "not_calls": [
+        "analyse_psf",
+        "snap"
+      ]
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-bring-up-a-window",
+    "prompt": "I can't see the contrast map. Bring it up.",
+    "expect": {
+      "args": {
+        "set_windows": {
+          "show": [
+            "contrast"
+          ]
+        }
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-a-tab-is-not-a-setting",
+    "prompt": "Go to the ETL settings in the main window.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "not_calls": [
+        "set_etl"
+      ],
+      "display": {
+        "main_window.tab": "ETL"
+      }
+    },
+    "category": "confusable"
+  },
+  {
+    "id": "conf-one-row-side-is-an-edit",
+    "prompt": "Illuminate the b.tif row from the right side.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "update_acquisition_row"
+      ],
+      "not_calls": [
+        "auto_illumination"
+      ],
+      "state": {
+        "acq_list.1.shutterconfig": "Right",
+        "acq_list.0.shutterconfig": "Left"
+      }
+    },
+    "category": "confusable"
+  }
+]
