@@ -41,6 +41,8 @@ MCP_INSTRUCTIONS = (
 )
 # Appended to each wait command's description in tools/list; the AI Assistant's tools wait themselves.
 MCP_WAIT_NOTE = "Returns once admitted: poll get_progress until 'completed', 'stopped' or 'failed'."
+MCP_DISPLAY_NOTE = "Returns a request number at once: get_display {request} says when the window shows it."
+MCP_KIND_NOTES = {"wait": MCP_WAIT_NOTE, "display": MCP_DISPLAY_NOTE}
 
 # --- network ---
 # Loopback is the safe default. Any other address exposes the service to a network.

@@ -2,6 +2,8 @@
 import os
 import tempfile
 
+from mesoSPIM.test.remote_control.support.fakes import RecordingHandles
+
 # The files and folders the table and folder calls name: a folder that exists, a list saved in it.
 FOLDER = tempfile.mkdtemp(prefix="mesospim_contracts_")
 SAVED_LIST = os.path.join(FOLDER, "saved.csv")
@@ -102,10 +104,18 @@ VALID_CASES = {
                           "z_step": 10, "channels": [{"laser": "488 nm", "intensity": 10, "filter": "Empty"}],
                           "folder": FOLDER, "writer": "Tiff_Writer"},
     "set_snap_folder": {"folder": FOLDER},
+    # the windows (gui_handles)
+    "get_display": {},
+    "set_display": {"levels": [100, 3000]},
 }
 
 # What a call's valid example needs installed first: delete keeps at least one row.
 SETUP = {"delete_acquisition_rows": lambda core: core.state.__setitem__("acq_list", [{}, {}])}
+
+# The calls on mesoSPIM's windows (gui_handles): no Core call, a request to the GUI thread's handles.
+WINDOW_CALLS = {"get_display", "set_display"}
+for _name in WINDOW_CALLS:
+    SETUP[_name] = lambda core: setattr(core, "_remote_control_gui_handles", RecordingHandles())
 
 # The calls that edit the acquisition table: each installs through set_acquisition_list, no Core call.
 TABLE_CALLS = {"update_acquisition_row", "add_acquisition_rows", "delete_acquisition_rows", "move_acquisition_row",
@@ -177,7 +187,8 @@ OPERATIONAL_COMMANDS = set(EXPECTED_CORE_CALL) | {
     "stop_activity",
 } | TABLE_CALLS
 
-assert len(VALID_CASES) == 67
+CALL_COUNT = 69
+assert len(VALID_CASES) == CALL_COUNT
 assert len(OPERATIONAL_COMMANDS) == 49
 
 # A universal negative case for every exact command name. Command-specific wrong types, unsafe

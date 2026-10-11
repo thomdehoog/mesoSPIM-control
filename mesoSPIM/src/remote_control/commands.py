@@ -28,6 +28,7 @@ import os
 import time
 
 from . import config
+from .gui_handles import OVERLAYS, colormaps, frame_size
 from .dispatcher import (
     command,
     complete,
@@ -47,6 +48,7 @@ from .dispatcher import (
     ACTION,
     WAIT,
     EMERGENCY,
+    DISPLAY,
 )
 
 
@@ -993,6 +995,10 @@ _MANUAL_INTERACTION = {
         "emergency": "An immediate command allowed while another mutation is processing: the "
         "stops (stop, stop_activity, time_lapse_stop), close_shutters, and the guarded recovery "
         "clear_stuck_operation. It does not create a new operation.",
+        "display": "A change to what the windows show (levels, lookup table, view, regions of interest). "
+        "It never touches the instrument, opens no operation and is never refused as busy, so it works "
+        "during a run too. It returns a request number at once; get_display {request} reports when the "
+        "window shows it.",
     },
     "mutation_gate": "Only one mutation may run at a time. A second valid mutation is rejected "
     "with error code 'busy' while an operation is processing or stopping. Reads, "
@@ -2475,6 +2481,141 @@ command(
 )
 
 
+# --- The windows: what the operator sees and sets there (gui_handles works the windows) ----------
+# A display call changes only what a window shows; it is never gated (dispatcher.DISPLAY) and the GUI
+# thread applies it a moment later. Positions are in the camera frame's own pixels (x the column, y
+# the row, as get_frame gives the frame), whatever subsampling the window shows the frame at.
+
+DISPLAY_SETTINGS = ("levels", "adjust_levels", "colormap", "view", "overlay", "box_roi", "line_roi")
+
+
+def _region(value, label, keys, frame=None):
+    """A rectangle or a line in frame pixels: exactly `keys`, finite numbers, inside the frame."""
+    if not isinstance(value, dict):
+        raise ValidationError(f"{label} must be {{{', '.join(keys)}}} in frame pixels")
+    only(value, keys)
+    region = {key: number(value, key) for key in keys}
+    if "width" in region and (region["width"] <= 0 or region["height"] <= 0):
+        raise ValidationError(f"{label} width and height must be positive")
+    if frame is not None:
+        width, height = frame
+        xs = [region[k] for k in ("x", "x1", "x2") if k in region]
+        ys = [region[k] for k in ("y", "y1", "y2") if k in region]
+        if "width" in region:
+            xs.append(region["x"] + region["width"])
+            ys.append(region["y"] + region["height"])
+        if min(xs + ys) < 0 or max(xs) > width or max(ys) > height:
+            raise ValidationError(f"{label} is outside the frame ({width} x {height} pixels)")
+    return region
+
+
+def check_display(frame, args):
+    """set_display's arguments against the frame (width, height). Run when the call arrives, and again
+    on the GUI thread before it is applied (the frame may have changed size since)."""
+    only(args, DISPLAY_SETTINGS)
+    out = {}
+    if "levels" in args:
+        levels = args["levels"]
+        if not isinstance(levels, list) or len(levels) != 2:
+            raise ValidationError("levels must be [low, high] with low < high")
+        low, high = _finite(levels[0], "levels[0]"), _finite(levels[1], "levels[1]")
+        if not low < high:
+            raise ValidationError("levels must be [low, high] with low < high")
+        out["levels"] = [low, high]
+    if "adjust_levels" in args:
+        adjust = args["adjust_levels"]
+        if adjust is True:
+            out["adjust_levels"] = True
+        elif isinstance(adjust, dict):
+            only(adjust, ("low_percentile", "high_percentile"))
+            out["adjust_levels"] = {key: number(adjust, key, (0, 100)) for key in adjust}
+        else:
+            raise ValidationError("adjust_levels is true, or {low_percentile, high_percentile} between 0 and 100")
+    if "colormap" in args:
+        name = text(args, "colormap")
+        if name not in colormaps():
+            raise ValidationError(f"colormap {name!r} is not one of {colormaps()}")
+        out["colormap"] = name
+    if "overlay" in args:
+        overlay = text(args, "overlay")
+        if overlay not in OVERLAYS:
+            raise ValidationError(f"overlay {overlay!r} is not one of {list(OVERLAYS)}")
+        out["overlay"] = overlay
+    if "view" in args:
+        out["view"] = "fit" if args["view"] == "fit" else _region(args["view"], "view", ("x", "y", "width", "height"))
+    if "box_roi" in args:
+        out["box_roi"] = _region(args["box_roi"], "box_roi", ("x", "y", "width", "height"), frame)
+    if "line_roi" in args:
+        out["line_roi"] = _region(args["line_roi"], "line_roi", ("x1", "y1", "x2", "y2"), frame)
+    return out
+
+
+def gui_handles(core):
+    """The GUI thread's handles on the windows, published by the Remote Control tab."""
+    found = getattr(core, "_remote_control_gui_handles", None)
+    if found is None:
+        raise ValidationError("there are no windows to change: this mesoSPIM runs without its GUI")
+    return found
+
+
+def _accept_set_display(core, args):
+    return check_display(frame_size(core, core.cfg), args)
+
+
+def _run_set_display(core, args):
+    return {"request": gui_handles(core).request("set_display", args)}
+
+
+def _accept_get_display(core, args):
+    only(args, ("request",))
+    if "request" in args:
+        integer(args, "request", minimum=1)
+    gui_handles(core)
+    return args
+
+
+def _run_get_display(core, args):
+    return gui_handles(core).display(args.get("request"))
+
+
+_FRAME_PIXELS = "numbers in the camera frame's pixels (x the column, y the row, as get_frame gives the frame)"
+_BOX = _schema({key: _NUMBER for key in ("x", "y", "width", "height")}, required=("x", "y", "width", "height"),
+               description=_FRAME_PIXELS)
+
+command(
+    "get_display",
+    READ,
+    _run_get_display,
+    accept=_accept_get_display,
+    schema=_schema({"request": {"type": "integer", "minimum": 1}}),
+    hint="in: {request?}. out: what the windows show: the camera window's levels, colormap, overlay, view and "
+         "regions of interest in frame pixels and um (with their offset from the frame's centre), and a display "
+         "request's outcome",
+)
+
+command(
+    "set_display",
+    DISPLAY,
+    _run_set_display,
+    accept=_accept_set_display,
+    schema=_schema({
+        "levels": {"type": "array", "items": _NUMBER, "minItems": 2, "maxItems": 2, "description": "[low, high] counts"},
+        "adjust_levels": {"description": "true, or {low_percentile, high_percentile}: the Adjust levels button (25, 99.99)",
+                          "anyOf": [{"type": "boolean", "const": True},
+                                    _schema({"low_percentile": _NUMBER, "high_percentile": _NUMBER})]},
+        "colormap": {"type": "string", "enum": colormaps(), "description": "a lookup table of the histogram"},
+        "view": {"description": "the region to show, kept at square pixels, or 'fit' for the whole frame",
+                 "anyOf": [{"type": "string", "const": "fit"}, _BOX]},
+        "overlay": {"type": "string", "enum": list(OVERLAYS)},
+        "box_roi": _BOX,
+        "line_roi": _schema({key: _NUMBER for key in ("x1", "y1", "x2", "y2")}, required=("x1", "y1", "x2", "y2"),
+                            description=_FRAME_PIXELS),
+    }),
+    hint="in: {levels?, adjust_levels?, colormap?, view?, overlay?, box_roi?, line_roi?}: the camera window's live view "
+         "as the operator sets it; a box_roi or line_roi shows that overlay. out: {request}",
+)
+
+
 def _enter_and_start(core, run_state, row):
     """Run upstream's synchronous acquisition entry point with a truthful state transition.
 
@@ -2791,3 +2932,4 @@ def self_test(source):
     note(not accepts("__import__", {}), "unknown command refused")
     note(len(sim.moves) == expected, f"only the {expected} in-range move(s) reached the mock stage")
     return ok, report
+

@@ -12,12 +12,15 @@ from mesoSPIM.test.remote_control.support.contracts import (
     READ_ONLY_WITHOUT_CORE_CALL,
     SETUP,
     TABLE_CALLS,
+    WINDOW_CALLS,
+    CALL_COUNT,
 )
 from mesoSPIM.test.remote_control.support.writers import use_tiff_writer
 
 use_tiff_writer()   # the table calls that name rows need a writer
 
-READ, ACTION, WAIT, EMERGENCY = dispatcher.READ, dispatcher.ACTION, dispatcher.WAIT, dispatcher.EMERGENCY
+READ, ACTION, WAIT, EMERGENCY, DISPLAY = (dispatcher.READ, dispatcher.ACTION, dispatcher.WAIT, dispatcher.EMERGENCY,
+                                          dispatcher.DISPLAY)
 _SPECIAL = {"set_acquisition_list", "acquire_finish"} | TABLE_CALLS  # neither contract table; ordinary ACTIONs
 _INLINE_FAKE_TIMER = {
     "snap",
@@ -88,13 +91,17 @@ def test_command_over_both_lanes(transport, name):
             name,
             call_names,
         )
+    elif name in WINDOW_CALLS:  # the windows: a request to the GUI thread's handles, never the hardware
+        assert mutating == [], (transport, name, call_names)
+        handles = _harness.core._remote_control_gui_handles
+        assert handles.requests == ([(name, VALID_CASES[name])] if dispatcher.COMMANDS[name].kind == DISPLAY else [])
     else:  # READ_ONLY or _SPECIAL: no actuation
         assert mutating == [], (transport, name, call_names)
 
 
 def test_contract_tables_partition_the_vocabulary():
-    """Completeness guard: the three buckets exactly cover the 67 commands, once each."""
-    classified = set(EXPECTED_CORE_CALL) | READ_ONLY_WITHOUT_CORE_CALL | _SPECIAL
-    assert classified == set(VALID_CASES)
-    assert set(VALID_CASES) == set(dispatcher.COMMANDS)
-    assert len(VALID_CASES) == 67
+    """Completeness guard: the four buckets exactly cover the commands, once each."""
+    buckets = (set(EXPECTED_CORE_CALL), READ_ONLY_WITHOUT_CORE_CALL, _SPECIAL, WINDOW_CALLS)
+    assert sum(len(b) for b in buckets) == len(set().union(*buckets))
+    assert set().union(*buckets) == set(VALID_CASES) == set(dispatcher.COMMANDS)
+    assert len(VALID_CASES) == CALL_COUNT

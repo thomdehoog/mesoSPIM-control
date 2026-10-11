@@ -112,6 +112,29 @@ class _ImageWriter:
             pass
 
 
+class RecordingHandles:
+    """The GUI thread's handles on the windows (gui_handles), applied at once: records each request
+    and keeps what the windows would show after it."""
+
+    def __init__(self):
+        self.requests, self.outcomes = [], {}
+        self.shown = {"camera_window": {"levels": [100.0, 3000.0], "overlay": "light_sheet_marker"}}
+
+    def request(self, name, args):
+        self.requests.append((name, args))
+        number = len(self.requests)
+        if "levels" in args:
+            self.shown["camera_window"]["levels"] = list(map(float, args["levels"]))
+        self.outcomes[number] = {"status": "applied"}
+        return number
+
+    def display(self, number=None):
+        shown = dict(self.shown)
+        if number is not None:
+            shown["request"] = {"number": number, **self.outcomes.get(number, {"status": "unknown"})}
+        return shown
+
+
 class RecordingCore:
     """Production state contract; records every Core call/emit under a lock so the concurrent HTTP
     worker threads and the test thread share one inspectable log."""

@@ -1,6 +1,6 @@
 # Remote Control call list
 
-TCP and MCP provide the same 67 calls. The call names and behavior are identical on both
+TCP and MCP provide the same 69 calls. The call names and behavior are identical on both
 transports.
 
 Before changing the microscope, call `get_manual` and `get_limits`. Ordinary changes return an
@@ -109,3 +109,15 @@ installs it as `set_acquisition_list` does, with the same checks.
 | `track_focus` | Set each row's focus range on the line through two (z, focus) points. |
 | `build_tiling_list` | Replace the list with the tiling wizard's grid of tiles and channels. |
 | `set_snap_folder` | Choose the folder snaps are saved to. |
+
+## Change what the windows show
+
+These calls change only what mesoSPIM's windows show, never the instrument, so they are never
+refused as busy and work during a run too. A change returns a request number at once and the
+window applies it a moment later; `get_display` with that number says when. Positions are in the
+camera frame's own pixels (x the column, y the row, as `get_frame` gives the frame) and in um.
+
+| Call | What it does |
+| --- | --- |
+| `get_display` | Read what the windows show: the camera window's levels, lookup table, overlay, view and regions of interest, with their size and offset from the frame's centre. |
+| `set_display` | Set the camera window's levels or Adjust levels, its lookup table, the region on screen, the overlay, and place or move the box or line region of interest. |

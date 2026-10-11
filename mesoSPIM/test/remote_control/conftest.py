@@ -77,9 +77,25 @@ def _install_fake_pyqt5():
             return _MAIN_THREAD
 
     class QTimer:
+        """singleShot runs at once (it drives deferred WAIT bodies in-test); a repeating timer never
+        fires on its own, so a test calls the slot itself when it wants the tick."""
+        timeout = pyqtSignal()
+
+        def __init__(self, parent=None):
+            self.interval, self.active = 0, False
+
         @staticmethod
         def singleShot(_msec, fn):
-            fn()  # immediate: drive deferred WAIT bodies in-test
+            fn()
+
+        def setInterval(self, msec):
+            self.interval = msec
+
+        def start(self):
+            self.active = True
+
+        def stop(self):
+            self.active = False
 
     class QEvent:
         Show = 17

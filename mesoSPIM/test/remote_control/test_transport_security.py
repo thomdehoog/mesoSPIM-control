@@ -475,7 +475,7 @@ def test_tools_list_over_wire():
     reply = _h.mcp.rpc("tools/list")
     tools = reply["result"]["tools"]
     assert {t["name"] for t in tools} == set(dispatcher.COMMANDS)
-    assert len(tools) == 67
+    assert len(tools) == len(dispatcher.COMMANDS)
     for tool in tools:
         assert tool["inputSchema"] == dispatcher.COMMANDS[tool["name"]].schema
         assert tool["inputSchema"]["additionalProperties"] is False
@@ -483,6 +483,8 @@ def test_tools_list_over_wire():
         if command.kind == dispatcher.WAIT:                         # returns once admitted: poll
             assert "poll" not in command.hint                       # the transport says it, once
             assert tool["description"] == f"{command.hint}. {config.MCP_WAIT_NOTE}"
+        elif command.kind == dispatcher.DISPLAY:                    # returns a request number: get_display
+            assert tool["description"] == f"{command.hint}. {config.MCP_DISPLAY_NOTE}"
         else:
             assert tool["description"] == command.hint
     by_name = {t["name"]: t["inputSchema"] for t in tools}

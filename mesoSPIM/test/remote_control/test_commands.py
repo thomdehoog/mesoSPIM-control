@@ -12,12 +12,12 @@ from mesoSPIM.src.remote_control import commands as commands
 from mesoSPIM.src.remote_control import config as config
 from mesoSPIM.src.remote_control import dispatcher as dispatcher
 from mesoSPIM.src.remote_control import servers as servers
-from mesoSPIM.test.remote_control.support.contracts import EXPECTED_CORE_CALL, VALID_CASES
+from mesoSPIM.test.remote_control.support.contracts import CALL_COUNT, EXPECTED_CORE_CALL, VALID_CASES
 from mesoSPIM.test.remote_control.support.fakes import RecordingCore, RefusingCore
 
 
-def test_registry_is_the_documented_67_calls():
-    assert len(dispatcher.COMMANDS) == 67
+def test_registry_is_the_documented_calls():
+    assert len(dispatcher.COMMANDS) == CALL_COUNT
     assert set(dispatcher.COMMANDS) == set(VALID_CASES)
     assert "execute_stage_program" not in dispatcher.COMMANDS
     assert "procedure" not in dispatcher.COMMANDS
@@ -29,12 +29,13 @@ def test_published_call_list_matches_the_registry():
     text = (repository / "docs" / "source" / "remote_control" / "calls.md").read_text()
     documented = re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE)
 
-    assert len(documented) == len(set(documented)) == 67
+    assert len(documented) == len(set(documented)) == CALL_COUNT
+    assert f"the same {CALL_COUNT} calls" in text
     assert set(documented) == set(dispatcher.COMMANDS)
 
 
 def test_every_call_has_a_kind_and_readable_hint():
-    allowed = {dispatcher.READ, dispatcher.ACTION, dispatcher.WAIT, dispatcher.EMERGENCY}
+    allowed = {dispatcher.READ, dispatcher.ACTION, dispatcher.WAIT, dispatcher.EMERGENCY, dispatcher.DISPLAY}
     for specification in dispatcher.COMMANDS.values():
         assert specification.kind in allowed
         assert specification.hint.strip()
@@ -66,6 +67,7 @@ def test_built_in_manual_matches_the_registry_and_async_contract():
     assert {entry["name"] for entry in manual["commands"]} == set(dispatcher.COMMANDS)
     assert "ordinary mutation" in manual["interaction"]["accepted_or_rejected"]
     assert "poll get_progress" in manual["interaction"]["kinds"]["wait"]
+    assert "get_display" in manual["interaction"]["kinds"]["display"] and "busy" in manual["interaction"]["kinds"]["display"]
     assert "does not create a new operation" in manual["interaction"]["kinds"]["emergency"]
     for name, command in dispatcher.COMMANDS.items():
         if command.kind == dispatcher.EMERGENCY:

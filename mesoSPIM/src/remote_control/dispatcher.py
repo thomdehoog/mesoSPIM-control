@@ -48,6 +48,9 @@ READ = "read"
 ACTION = "action"
 WAIT = "wait"
 EMERGENCY = "emergency"
+# A change to what the windows show (gui_handles): handed to the GUI thread, never gated, since the
+# operator can change the live view during a run too.
+DISPLAY = "display"
 
 # Only PROCESSING and STOPPING hold the mutation gate. An operation a stop cut short ends STOPPED, so a
 # client that reads only the status does not take it for one that finished (COMPLETED).
@@ -469,7 +472,7 @@ def precheck(name):
 
 
 def dispatch(core, cmd, args):
-    if cmd.kind == READ:
+    if cmd.kind in (READ, DISPLAY):
         return jsonable(cmd.execute(core, args))
 
     if cmd.kind == EMERGENCY:

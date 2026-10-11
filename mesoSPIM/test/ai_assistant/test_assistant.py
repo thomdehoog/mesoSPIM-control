@@ -619,7 +619,8 @@ def test_system_prompt_is_the_preamble_plus_the_commands_by_kind():
     commands = prompt.split("# Commands")[1]
     by_kind = {line.split(":")[0].strip("- "): line.split(":", 1)[1] for line in commands.splitlines() if line.startswith("- ")}
     assert set(by_kind) == {"reads, which change nothing", "actions, which return at once",
-                            "waits, which return when the instrument is done", "emergency commands, which always run"}
+                            "waits, which return when the instrument is done", "emergency commands, which always run",
+                            "display changes, which change what the windows show and never the instrument"}
     for name, cmd in COMMANDS.items():
         if name != "get_manual":
             assert any(name in names for label, names in by_kind.items() if label.startswith(cmd.kind[:4]))
