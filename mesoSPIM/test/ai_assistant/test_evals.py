@@ -325,3 +325,88 @@ def test_the_second_round_of_vision_frames_carry_what_they_claim():
 def test_the_trace_counts_the_look_and_adjust_rounds():
     tools = [{"tool": name} for name in ("look", "move_relative", "look", "set_intensity", "look", "get_state")]
     assert harness.rounds(tools) == 2
+
+
+# --- the windows cases: each passes when the assistant does what it asks, through the simulated windows
+def windows_answers(folder):
+    """For each windows case, the calls a right answer makes and its reply (folder: the run's files)."""
+    beads, flat, tilted = (str(folder / name) for name in ("beads.tif", "flat.tif", "tilted.tif"))
+    box = {"x": 874.0, "y": 874.0, "width": 300.0, "height": 300.0}
+    return {
+        "window-lut-name": ((("set_display", {"colormap": "viridis"}),), "Viridis it is."),
+        "window-levels": ((("set_display", {"levels": [200, 3000]}),), "Range set to 200-3000."),
+        "window-auto-contrast": ((("set_display", {"adjust_levels": True}),), "Adjusted."),
+        "window-lut-own-colours": ((("set_display", {"colormap_ticks": [[0, [0, 0, 0, 255]], [1, [0, 255, 0, 255]]]}),), "Black to green."),
+        "window-roi-box-centre": ((("set_display", {"box_roi": {"x": 824, "y": 874, "width": 400, "height": 300}}),), "Box drawn."),
+        "window-roi-read": ((("get_display", {}),), "It is 600 x 300 µm."),
+        "window-roi-where": ((("get_display", {}),), "It sits 400 µm to the right of the centre."),
+        "window-roi-move": ((("set_display", {"box_roi": {"x": 924, "y": 874, "width": 600, "height": 300}}),), "Moved."),
+        "window-line-measure": ((("set_display", {"line_roi": {"x1": 100, "y1": 100, "x2": 400, "y2": 500}}),), "500 µm long."),
+        "window-view-zoom": ((("set_display", {"view": {"x": 0, "y": 0, "width": 1024, "height": 1024}}),), "Zoomed in."),
+        "window-view-fit": ((("set_display", {"view": "fit"}),), "Whole frame."),
+        "window-open-contrast": ((("set_windows", {"show": ["contrast"]}),), "Open."),
+        "window-close-tile": ((("set_windows", {"hide": ["tile_overview"]}),), "Closed."),
+        "window-picture": ((("get_picture", {"window": "tile_overview"}),), "Here it is."),
+        "window-tab": ((("set_display", {"window": "main", "tab": "Parameters"}),), "Parameters tab."),
+        "window-group-laser": ((("set_table_view", {"group": "laser"}),), "Grouped by laser."),
+        "window-writer-compression": ((("set_writer_parameters", {"writer": "OME_Zarr_Writer", "parameters": {"compression": "lz4"}}),),
+                                      "OME-Zarr now uses lz4."),
+        "window-processor-blur": ((("set_processor_chain", {"processors": [{"name": "GaussianBlur", "config": {"sigma": 2.0}}]}),),
+                                  "Gaussian blur, sigma 2."),
+        "window-freeze-galvos": ((("set_alignment_toggles", {"freeze_galvo": True}),), "Frozen."),
+        "window-max-amplitude": ((("set_laser_timing", {"laser_l_max_amplitude_%": 80}),), "Set to 80%."),
+        "window-auto-illumination": ((("auto_illumination", {}),), "Done."),
+        "window-psf": ((("analyse_psf", {"path": beads}),), "Lateral 1.0 µm, axial 2.0 µm."),
+        "window-field-curvature": ((("analyse_field_curvature", {"channels": [{"path": flat}, {"path": tilted}]}),),
+                                   "The tilted stack shows a sag of 5.8 µm."),
+        "window-open-tiff": ((("open_image_file", {"path": beads}), ("set_display", {"frame_index": 2})), "Last plane shown."),
+        "window-display-during-run": ((("set_display", {"colormap": "magma"}),), "Magma."),
+        "window-autofocus-keep": ((("snap", {}), ("optimize", {"mode": "focus", "range": 100})), "Best focus near 1000 µm; unchanged."),
+        "window-save-config": ((("save_parameters_to_config", {}),), "The config file exists: shall I overwrite it?"),
+        "ms-window-1": ((("snap", {}), ("set_display", {"box_roi": box}), ("optimize", {"mode": "focus", "range": 150, "roi": box}),
+                         ("finish_optimization", {"accept": True})), "Focus applied."),
+        "ms-window-2": ((("set_display", {"adjust_levels": True, "colormap": "magma"}), ("get_picture", {"window": "camera"})),
+                        "Here is the picture."),
+        "ms-window-3": ((("set_windows", {"show": ["contrast"]}), ("get_display", {})), "The top left has the lowest contrast."),
+        "ms-window-4": ((("auto_illumination", {}), ("set_table_view", {"group": "illumination"})), "Done and grouped."),
+        "ms-window-5": ((("set_alignment_toggles", {"freeze_galvo": True}), ("snap", {}),
+                         ("set_alignment_toggles", {"freeze_galvo": False})), "Snapped with frozen galvos."),
+        "ms-window-6": ((("analyse_psf", {"path": beads, "z_fit_window_um": 10}),), "Axial FWHM 2.0 µm: yes, above 1.5 µm."),
+    }
+
+
+WINDOWS_FILE = harness.CASES_FILE.with_name("cases_windows.json")
+WINDOWS_HOLDOUT_FILE = harness.CASES_FILE.with_name("cases_windows_holdout.json")
+
+
+def windows_cases():
+    """The windows cases: their own file until a model run of them is recorded (then they join the
+    replay suite, test_replay.FILES)."""
+    return harness.load_cases(WINDOWS_FILE)
+
+
+@pytest.mark.parametrize("the_case", windows_cases(), ids=lambda c: c["id"])
+def test_a_windows_case_passes_when_the_assistant_does_what_it_asks(the_case, tmp_path, monkeypatch):
+    import tempfile
+    monkeypatch.setattr(tempfile, "mkdtemp", lambda *a, **k: str(tmp_path))     # the run's files where the answer names them
+    calls, reply = windows_answers(tmp_path)[the_case["id"]]
+    trace = harness.run_case(the_case, scripted((*calls, reply)), SCRIPTED)
+    assert harness.score(the_case, trace) == [], (trace["tools"], trace["display"].get("camera_window"))
+
+
+def test_every_windows_case_is_sound_has_a_held_out_twin_and_an_answer(tmp_path):
+    cases, holdout = windows_cases(), harness.load_cases(WINDOWS_HOLDOUT_FILE)
+    assert harness.check_cases(cases) == [] and harness.check_cases(holdout) == []
+    assert len(cases) == 33 and set(windows_answers(tmp_path)) == {c["id"] for c in cases}
+    assert {"h-" + c["id"] for c in cases if not c["id"].startswith("ms-")} == {c["id"] for c in holdout}
+
+
+def test_a_windows_case_fails_when_the_window_shows_something_else(tmp_path, monkeypatch):
+    import tempfile
+    monkeypatch.setattr(tempfile, "mkdtemp", lambda *a, **k: str(tmp_path))
+    lut = next(c for c in windows_cases() if c["id"] == "window-lut-name")
+    trace = harness.run_case(lut, scripted((("set_display", {"colormap": "magma"}), "Done.")), SCRIPTED)
+    assert any("camera_window.colormap is 'magma'" in f for f in harness.score(lut, trace))
+    roi = next(c for c in windows_cases() if c["id"] == "window-roi-box-centre")
+    trace = harness.run_case(roi, scripted((("set_display", {"box_roi": {"x": 0, "y": 0, "width": 400, "height": 300}}), "Done.")), SCRIPTED)
+    assert any("offset_x" in f and "+- 2" in f for f in harness.score(roi, trace))

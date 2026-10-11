@@ -1,0 +1,692 @@
+[
+  {
+    "id": "window-lut-name",
+    "category": "windows",
+    "prompt": "Show the live image with the viridis lookup table.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "viridis"
+      }
+    }
+  },
+  {
+    "id": "window-levels",
+    "category": "windows",
+    "prompt": "Set the live view's display range to 200 to 3000 counts.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.levels": [
+          200.0,
+          3000.0
+        ]
+      }
+    }
+  },
+  {
+    "id": "window-auto-contrast",
+    "category": "windows",
+    "prompt": "Adjust the contrast of the live image automatically.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.levels": [
+          900.0,
+          1600.0
+        ]
+      }
+    }
+  },
+  {
+    "id": "window-lut-own-colours",
+    "category": "windows",
+    "prompt": "Make the live view's lookup table run from black to green.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "custom"
+      }
+    }
+  },
+  {
+    "id": "window-roi-box-centre",
+    "category": "windows",
+    "prompt": "Draw a box region of interest of 400 by 300 pixels in the middle of the live image.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.overlay": "box",
+        "camera_window.box_roi.width": 400.0,
+        "camera_window.box_roi.height": 300.0
+      },
+      "display_near": {
+        "camera_window.box_roi.offset_x": [
+          0,
+          2
+        ],
+        "camera_window.box_roi.offset_y": [
+          0,
+          2
+        ]
+      }
+    }
+  },
+  {
+    "id": "window-roi-read",
+    "category": "windows",
+    "prompt": "How large is the region of interest, in micrometres?",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 724.0,
+          "y": 874.0,
+          "width": 600.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "get_display"
+      ],
+      "no_mutations": true,
+      "reply_mentions_any": [
+        "600"
+      ]
+    }
+  },
+  {
+    "id": "window-roi-where",
+    "category": "windows",
+    "prompt": "Where is the region of interest compared with the centre of the image?",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 1224.0,
+          "y": 874.0,
+          "width": 400.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "get_display"
+      ],
+      "no_mutations": true,
+      "reply_mentions_any": [
+        "400",
+        "right"
+      ]
+    }
+  },
+  {
+    "id": "window-roi-move",
+    "category": "windows",
+    "prompt": "Move the region of interest 200 pixels to the right.",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 724.0,
+          "y": 874.0,
+          "width": 600.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.box_roi.width": 600.0
+      },
+      "display_near": {
+        "camera_window.box_roi.x": [
+          924,
+          1
+        ]
+      }
+    }
+  },
+  {
+    "id": "window-line-measure",
+    "category": "windows",
+    "prompt": "Draw a line from pixel (100, 100) to pixel (400, 500) in the live image and tell me how long it is in micrometres.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display_near": {
+        "camera_window.line_roi.length": [
+          500,
+          1
+        ]
+      },
+      "reply_mentions_any": [
+        "500"
+      ]
+    }
+  },
+  {
+    "id": "window-view-zoom",
+    "category": "windows",
+    "prompt": "Zoom the live view in on the top-left quarter of the frame.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display_near": {
+        "camera_window.view.x": [
+          0,
+          10
+        ],
+        "camera_window.view.width": [
+          1024,
+          10
+        ]
+      }
+    }
+  },
+  {
+    "id": "window-view-fit",
+    "category": "windows",
+    "prompt": "Show the whole frame in the live view again.",
+    "setup": {
+      "camera_window": {
+        "view": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 512.0,
+          "height": 512.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.view.width": 2048.0
+      }
+    }
+  },
+  {
+    "id": "window-open-contrast",
+    "category": "windows",
+    "prompt": "Open the contrast window.",
+    "expect": {
+      "calls": [
+        "set_windows"
+      ],
+      "display": {
+        "windows.contrast": true
+      }
+    }
+  },
+  {
+    "id": "window-close-tile",
+    "category": "windows",
+    "prompt": "Close the tile overview.",
+    "expect": {
+      "calls": [
+        "set_windows"
+      ],
+      "display": {
+        "windows.tile_overview": false
+      }
+    }
+  },
+  {
+    "id": "window-picture",
+    "category": "windows",
+    "prompt": "Take a picture of the tile overview window.",
+    "expect": {
+      "args": {
+        "get_picture": {
+          "window": "tile_overview"
+        }
+      }
+    }
+  },
+  {
+    "id": "window-tab",
+    "category": "windows",
+    "prompt": "Switch the main window to the Parameters tab.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "main_window.tab": "Parameters"
+      }
+    }
+  },
+  {
+    "id": "window-group-laser",
+    "category": "windows",
+    "prompt": "Group the acquisition table by laser.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "set_table_view"
+      ],
+      "display": {
+        "acquisition_manager.grouping": "laser"
+      }
+    }
+  },
+  {
+    "id": "window-writer-compression",
+    "category": "windows",
+    "prompt": "From now on, save OME-Zarr files with lz4 compression.",
+    "expect": {
+      "calls": [
+        "set_writer_parameters"
+      ],
+      "args": {
+        "set_writer_parameters": {
+          "writer": "OME_Zarr_Writer"
+        }
+      },
+      "reply_mentions_any": [
+        "lz4"
+      ]
+    }
+  },
+  {
+    "id": "window-processor-blur",
+    "category": "windows",
+    "prompt": "Apply a Gaussian blur with sigma 2 to the live image.",
+    "expect": {
+      "calls": [
+        "set_processor_chain"
+      ],
+      "reply_mentions_any": [
+        "blur",
+        "gaussian"
+      ]
+    }
+  },
+  {
+    "id": "window-freeze-galvos",
+    "category": "windows",
+    "prompt": "Freeze the galvos.",
+    "expect": {
+      "calls": [
+        "set_alignment_toggles"
+      ],
+      "display": {
+        "main_window.alignment_toggles.freeze_galvo": true
+      }
+    }
+  },
+  {
+    "id": "window-max-amplitude",
+    "category": "windows",
+    "prompt": "Set the left laser pulse's maximum amplitude to 80 percent.",
+    "expect": {
+      "args": {
+        "set_laser_timing": {
+          "laser_l_max_amplitude_%": 80
+        }
+      }
+    }
+  },
+  {
+    "id": "window-auto-illumination",
+    "category": "windows",
+    "prompt": "Set each tile's illumination side automatically from its position.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "auto_illumination"
+      ],
+      "state": {
+        "acq_list.0.shutterconfig": "Right",
+        "acq_list.2.shutterconfig": "Left"
+      }
+    }
+  },
+  {
+    "id": "window-psf",
+    "category": "windows",
+    "prompt": "Analyse the bead stack {folder}/beads.tif and tell me the lateral and axial resolution.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "analyse_psf"
+      ],
+      "reply_mentions_any": [
+        "1.0",
+        "2.0",
+        "1 µm",
+        "2 µm"
+      ]
+    }
+  },
+  {
+    "id": "window-field-curvature",
+    "category": "windows",
+    "prompt": "Measure the field curvature of {folder}/flat.tif and {folder}/tilted.tif.",
+    "setup": {
+      "files": [
+        "flat.tif",
+        "tilted.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "analyse_field_curvature"
+      ],
+      "reply_mentions_any": [
+        "sag",
+        "depth of field"
+      ]
+    }
+  },
+  {
+    "id": "window-open-tiff",
+    "category": "windows",
+    "prompt": "Open {folder}/beads.tif in the camera window and show its last plane.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "open_image_file"
+      ],
+      "display": {
+        "camera_window.frames.index": 2
+      }
+    }
+  },
+  {
+    "id": "window-display-during-run",
+    "category": "windows",
+    "prompt": "Switch the live view to the magma lookup table.",
+    "setup": {
+      "state": "run_acquisition_list"
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "magma"
+      }
+    }
+  },
+  {
+    "id": "window-autofocus-keep",
+    "category": "windows",
+    "prompt": "Take a snap, then run the autofocus over plus and minus 100 µm, but don't change the focus yet.",
+    "expect": {
+      "calls": [
+        "optimize"
+      ],
+      "not_calls": [],
+      "state": {
+        "position.f_pos": 1000.0
+      }
+    }
+  },
+  {
+    "id": "window-save-config",
+    "category": "windows",
+    "prompt": "Save the current parameters to the config file.",
+    "expect": {
+      "reply_mentions_any": [
+        "overwrite",
+        "replace",
+        "exists"
+      ]
+    }
+  },
+  {
+    "id": "ms-window-1",
+    "category": "windows workflows",
+    "prompt": "Take a snap, put a 300-pixel box ROI in the middle, then run the autofocus within it over plus and minus 150 µm and apply the result.",
+    "expect": {
+      "calls_in_order": [
+        "set_display",
+        "optimize",
+        "finish_optimization"
+      ],
+      "args": {
+        "finish_optimization": {
+          "accept": true
+        }
+      }
+    }
+  },
+  {
+    "id": "ms-window-2",
+    "category": "windows workflows",
+    "prompt": "Make the live view easier to see: automatic contrast and the magma lookup table. Then take a picture of the camera window.",
+    "expect": {
+      "calls": [
+        "set_display",
+        "get_picture"
+      ],
+      "display": {
+        "camera_window.colormap": "magma",
+        "camera_window.levels": [
+          900.0,
+          1600.0
+        ]
+      }
+    }
+  },
+  {
+    "id": "ms-window-3",
+    "category": "windows workflows",
+    "prompt": "Open the contrast window and tell me which part of the image has the lowest contrast.",
+    "expect": {
+      "calls": [
+        "set_windows",
+        "get_display"
+      ],
+      "reply_mentions_any": [
+        "top left",
+        "top-left",
+        "upper left",
+        "upper-left"
+      ]
+    }
+  },
+  {
+    "id": "ms-window-4",
+    "category": "windows workflows",
+    "prompt": "Set every tile's illumination side automatically, then group the table by illumination.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls_in_order": [
+        "auto_illumination",
+        "set_table_view"
+      ],
+      "display": {
+        "acquisition_manager.grouping": "illumination"
+      }
+    }
+  },
+  {
+    "id": "ms-window-5",
+    "category": "windows workflows",
+    "prompt": "Freeze the galvos, take a snap, then unfreeze them.",
+    "expect": {
+      "calls_in_order": [
+        "set_alignment_toggles",
+        "snap",
+        "set_alignment_toggles"
+      ],
+      "display": {
+        "main_window.alignment_toggles.freeze_galvo": false
+      }
+    }
+  },
+  {
+    "id": "ms-window-6",
+    "category": "windows workflows",
+    "prompt": "Analyse the beads in {folder}/beads.tif with a z fit window of 10 µm, and tell me whether the axial FWHM is above 1.5 µm.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "args": {
+        "analyse_psf": {
+          "z_fit_window_um": 10
+        }
+      },
+      "reply_mentions_any": [
+        "2.0",
+        "2 µm",
+        "above",
+        "yes"
+      ]
+    }
+  }
+]

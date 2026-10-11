@@ -39,6 +39,12 @@ Expectations:
                    and looks may come before it); null: none loaded
                    (run with skills: run.py --skills <folder>)
     calls_in_order tool names that must appear in this order among the calls (others may come between)
+    display        {dotted.path: value}: what the windows show afterwards (get_display's shape, from the
+                   simulated windows, windows.py): camera_window.colormap, camera_window.box_roi.width, ...
+    display_near   {dotted.path: [value, tolerance]}: a number there, within the tolerance
+Setup "files": names of test files (beads.tif, flat.tif, tilted.tif, list.csv) written into a temporary
+folder for the run; "{folder}" in a prompt is that folder. "windows": {name: true} opens windows first;
+"camera_window": {"overlay": "box", "box_roi": {...}} sets the live view first.
 Every case also fails when a reply quotes the <microscope_state> block, which the manual forbids.
 The trace counts the look-and-adjust rounds of
 a multi-step case (rounds: a look followed by a setting or a move), for reading, not scoring.
@@ -57,7 +63,9 @@ from mesoSPIM.src.remote_control import config as rc_config
 from mesoSPIM.src.remote_control import dispatcher as dispatcher
 from mesoSPIM.src.remote_control import servers as servers
 from mesoSPIM.src.remote_control.dispatcher import COMMANDS, READ
-from mesoSPIM.test.remote_control.support.fakes import RecordingCore
+from mesoSPIM.test.remote_control.support.fakes import RecordingChain, RecordingCore
+from mesoSPIM.test.remote_control.support.writers import use_zarr_writer
+from mesoSPIM.test.ai_assistant.evals.windows import SimulatedWindows
 from mesoSPIM.test.remote_control.support.writers import use_tiff_writer
 
 use_tiff_writer()   # the writer the table calls name rows with; the offline registry loads no plugins
@@ -262,6 +270,27 @@ class SimulatedInstrument(RecordingCore):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.image_writer = _LoggingSnapWriter(self.image_writer)
+        self.with_windows()
+
+    def with_windows(self):
+        """What the window calls reach (gui_handles): the windows, the camera worker's processor
+        chain, the image writers with their own settings, and a config file to save into."""
+        from mesoSPIM.src.remote_control.gui_handles import CONFIG_PARAMETERS
+        import tempfile
+
+        use_tiff_writer(), use_zarr_writer()
+        self.folder = Path(tempfile.mkdtemp(prefix="mesospim_eval_"))
+        config_file = self.folder / "demo_config.py"
+        config_file.write_text("startup = {\n    'sweeptime': 0.2,\n}\n", encoding="utf-8")
+        self.cfg.__file__ = str(config_file)
+        for key in CONFIG_PARAMETERS:
+            try:
+                self.state[key]
+            except KeyError:
+                self.state[key] = 1
+        self.state["galvo_l_amplitude"] = 2.5
+        self.camera_worker = type("CameraWorker", (), {"processor_chain": RecordingChain()})()
+        self._remote_control_gui_handles = SimulatedWindows(self)
 
     def snap(self, write_flag=True):
         super().snap(write_flag)
@@ -395,6 +424,13 @@ def _run_once(case, model, endpoint, vision_model=None, skills=None):
             core.frame_name = value[0]
         elif key in ("axes", "true_axes", "sample"):
             pass                                      # read below
+        elif key == "files":
+            for name in value:
+                write_test_file(core.folder / name)
+        elif key == "windows":
+            core._remote_control_gui_handles.open.update(value)
+        elif key == "camera_window":
+            core._remote_control_gui_handles.set_display(dict(value))
         elif key == "position":
             core.state["position"].update(value)
             core.state["position_absolute"].update(value)
@@ -430,7 +466,7 @@ def _run_once(case, model, endpoint, vision_model=None, skills=None):
         for index, prompt in enumerate(prompts_of(case)):
             if frames:
                 core.frame_name = frames[min(index, len(frames) - 1)]
-            turn(prompt)
+            turn(prompt.replace("{folder}", str(core.folder)))
     except Exception as problem:
         error = _describe(problem)
     finally:
@@ -444,6 +480,7 @@ def _run_once(case, model, endpoint, vision_model=None, skills=None):
         "state": _state_snapshot(core, expected_paths), "replies": replies, "served": served, "error": error,
         "seconds": round(time.monotonic() - started, 2), "prompts_run": prompts_run, "rounds": rounds(tools),
         **({"truth": core.truth()} if timed else {}),
+        "display": core._remote_control_gui_handles.display(),
     }
 
 
@@ -554,6 +591,21 @@ def score(case, trace):
             failures.append(f"no {name} in the simulator's truth")
         elif (side == "max" and abs(value) > bound) or (side == "min" and abs(value) < bound):
             failures.append(f"{name} is {value}, expected {'at most' if side == 'max' else 'at least'} {bound}")
+    shown = trace.get("display") or {}
+    for path, value in expect.get("display", {}).items():
+        try:
+            actual = _get_path(shown, path)
+        except (KeyError, TypeError, IndexError):
+            actual = None
+        if actual != value:
+            failures.append(f"display {path} is {actual!r}, expected {value!r}")
+    for path, (value, tolerance) in expect.get("display_near", {}).items():
+        try:
+            actual = _get_path(shown, path)
+        except (KeyError, TypeError, IndexError):
+            actual = None
+        if not isinstance(actual, (int, float)) or abs(actual - value) > tolerance:
+            failures.append(f"display {path} is {actual!r}, expected {value} +- {tolerance}")
     if "<microscope_state>" in replies:                        # every case: the manual forbids quoting the block
         failures.append("a reply quotes the <microscope_state> block")
     return failures
@@ -575,7 +627,7 @@ def check_cases(cases):
     """Problems in the case file itself: duplicate ids, unknown tools, unknown expectation keys."""
     known = {"calls", "calls_any", "not_calls", "max_calls", "min_calls", "max_tool_calls", "args", "state", "core_calls",
              "core_calls_not", "asks", "no_mutations", "reply_mentions_any", "reply_mentions_none",
-             "truth", "core_call_counts", "skill", "calls_in_order"}
+             "truth", "core_call_counts", "skill", "calls_in_order", "display", "display_near"}
     tools = set(COMMANDS) | {"look", "ask_eyes", "calibrate", "load_skill"}
     problems, seen = [], set()
     for case in cases:
@@ -593,3 +645,23 @@ def check_cases(cases):
             if name not in tools:
                 problems.append(f"{case['id']}: unknown tool {name}")
     return problems
+
+
+def write_test_file(path):
+    """A small test file a case names: beads.tif (three beads, lateral FWHM 1.0 um, axial 2.0 um as the
+    PSF tool simulates them), flat.tif and tilted.tif (z-stacks), list.csv (an acquisition list)."""
+    import numpy as np
+    import tifffile
+
+    if path.suffix == ".csv":
+        path.write_text("z_start,z_end,z_step,planes\n0,0,1,1\n", encoding="utf-8")
+        return
+    zz, yy, xx = np.meshgrid(np.arange(21), np.arange(64), np.arange(64), indexing="ij")
+    stack = np.full(zz.shape, 300.0)
+    if path.stem == "beads":
+        lateral, axial = (1.0 / 2.3548) / (4.25 / 5.0), (2.0 / 2.3548) / 1.0
+        for z, y, x in ((10, 16, 16), (10, 16, 48), (10, 48, 32)):
+            stack += 5000.0 * np.exp(-((zz - z) ** 2 / (2 * axial ** 2) + ((yy - y) ** 2 + (xx - x) ** 2) / (2 * lateral ** 2)))
+    else:
+        stack += 3000.0 * np.random.default_rng(0).random(stack.shape) * (np.abs(zz - 10) < 3)
+    tifffile.imwrite(path, stack.astype(np.uint16))

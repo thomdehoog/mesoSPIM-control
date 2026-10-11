@@ -1,0 +1,542 @@
+[
+  {
+    "id": "h-window-lut-name",
+    "category": "windows",
+    "prompt": "Change the camera view's colour map to viridis.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "viridis"
+      }
+    }
+  },
+  {
+    "id": "h-window-levels",
+    "category": "windows",
+    "prompt": "Make the camera window show intensities from 200 up to 3000.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.levels": [
+          200.0,
+          3000.0
+        ]
+      }
+    }
+  },
+  {
+    "id": "h-window-auto-contrast",
+    "category": "windows",
+    "prompt": "Let the camera window pick a good brightness range by itself.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.levels": [
+          900.0,
+          1600.0
+        ]
+      }
+    }
+  },
+  {
+    "id": "h-window-lut-own-colours",
+    "category": "windows",
+    "prompt": "I want the camera image shown in shades of green, dark to bright.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "custom"
+      }
+    }
+  },
+  {
+    "id": "h-window-roi-box-centre",
+    "category": "windows",
+    "prompt": "Put a 400 x 300 pixel ROI box at the centre of the camera frame.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.overlay": "box",
+        "camera_window.box_roi.width": 400.0,
+        "camera_window.box_roi.height": 300.0
+      },
+      "display_near": {
+        "camera_window.box_roi.offset_x": [
+          0,
+          2
+        ],
+        "camera_window.box_roi.offset_y": [
+          0,
+          2
+        ]
+      }
+    }
+  },
+  {
+    "id": "h-window-roi-read",
+    "category": "windows",
+    "prompt": "What are the width and height of the ROI box in um?",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 724.0,
+          "y": 874.0,
+          "width": 600.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "get_display"
+      ],
+      "no_mutations": true,
+      "reply_mentions_any": [
+        "600"
+      ]
+    }
+  },
+  {
+    "id": "h-window-roi-where",
+    "category": "windows",
+    "prompt": "Is the ROI box centred? If not, how far off is it?",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 1224.0,
+          "y": 874.0,
+          "width": 400.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "get_display"
+      ],
+      "no_mutations": true,
+      "reply_mentions_any": [
+        "400",
+        "right"
+      ]
+    }
+  },
+  {
+    "id": "h-window-roi-move",
+    "category": "windows",
+    "prompt": "Shift the ROI box right by 200 pixels, same size.",
+    "setup": {
+      "camera_window": {
+        "overlay": "box",
+        "box_roi": {
+          "x": 724.0,
+          "y": 874.0,
+          "width": 600.0,
+          "height": 300.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.box_roi.width": 600.0
+      },
+      "display_near": {
+        "camera_window.box_roi.x": [
+          924,
+          1
+        ]
+      }
+    }
+  },
+  {
+    "id": "h-window-line-measure",
+    "category": "windows",
+    "prompt": "Measure the distance between image pixels (100,100) and (400,500) with a line ROI, in um.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display_near": {
+        "camera_window.line_roi.length": [
+          500,
+          1
+        ]
+      },
+      "reply_mentions_any": [
+        "500"
+      ]
+    }
+  },
+  {
+    "id": "h-window-view-zoom",
+    "category": "windows",
+    "prompt": "Show only the upper left quarter of the camera image.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display_near": {
+        "camera_window.view.x": [
+          0,
+          10
+        ],
+        "camera_window.view.width": [
+          1024,
+          10
+        ]
+      }
+    }
+  },
+  {
+    "id": "h-window-view-fit",
+    "category": "windows",
+    "prompt": "Zoom the camera view back out to the full image.",
+    "setup": {
+      "camera_window": {
+        "view": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 512.0,
+          "height": 512.0
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.view.width": 2048.0
+      }
+    }
+  },
+  {
+    "id": "h-window-open-contrast",
+    "category": "windows",
+    "prompt": "Bring up the image contrast map window.",
+    "expect": {
+      "calls": [
+        "set_windows"
+      ],
+      "display": {
+        "windows.contrast": true
+      }
+    }
+  },
+  {
+    "id": "h-window-close-tile",
+    "category": "windows",
+    "prompt": "I don't need the tile overview window, close it.",
+    "expect": {
+      "calls": [
+        "set_windows"
+      ],
+      "display": {
+        "windows.tile_overview": false
+      }
+    }
+  },
+  {
+    "id": "h-window-picture",
+    "category": "windows",
+    "prompt": "Grab a screenshot of the tile overview.",
+    "expect": {
+      "args": {
+        "get_picture": {
+          "window": "tile_overview"
+        }
+      }
+    }
+  },
+  {
+    "id": "h-window-tab",
+    "category": "windows",
+    "prompt": "Show me the Parameters page of the main window.",
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "main_window.tab": "Parameters"
+      }
+    }
+  },
+  {
+    "id": "h-window-group-laser",
+    "category": "windows",
+    "prompt": "Arrange the acquisition list in groups per laser line.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "set_table_view"
+      ],
+      "display": {
+        "acquisition_manager.grouping": "laser"
+      }
+    }
+  },
+  {
+    "id": "h-window-writer-compression",
+    "category": "windows",
+    "prompt": "Use lz4 instead of zstd when writing OME-Zarr.",
+    "expect": {
+      "calls": [
+        "set_writer_parameters"
+      ],
+      "args": {
+        "set_writer_parameters": {
+          "writer": "OME_Zarr_Writer"
+        }
+      },
+      "reply_mentions_any": [
+        "lz4"
+      ]
+    }
+  },
+  {
+    "id": "h-window-processor-blur",
+    "category": "windows",
+    "prompt": "Smooth the camera images with a Gaussian of sigma 2 pixels.",
+    "expect": {
+      "calls": [
+        "set_processor_chain"
+      ],
+      "reply_mentions_any": [
+        "blur",
+        "gaussian"
+      ]
+    }
+  },
+  {
+    "id": "h-window-freeze-galvos",
+    "category": "windows",
+    "prompt": "Stop the galvo scanning for alignment.",
+    "expect": {
+      "calls": [
+        "set_alignment_toggles"
+      ],
+      "display": {
+        "main_window.alignment_toggles.freeze_galvo": true
+      }
+    }
+  },
+  {
+    "id": "h-window-max-amplitude",
+    "category": "windows",
+    "prompt": "Limit the left laser pulse to 80% of its maximum amplitude.",
+    "expect": {
+      "args": {
+        "set_laser_timing": {
+          "laser_l_max_amplitude_%": 80
+        }
+      }
+    }
+  },
+  {
+    "id": "h-window-auto-illumination",
+    "category": "windows",
+    "prompt": "Let the software choose left or right light sheet for every tile by its X.",
+    "setup": {
+      "acq_list": [
+        {
+          "x_pos": 0,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "a.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 1000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "b.tif",
+          "folder": "tmp"
+        },
+        {
+          "x_pos": 2000,
+          "y_pos": 0,
+          "z_start": 0,
+          "z_end": 20,
+          "z_step": 10,
+          "laser": "488 nm",
+          "filter": "Empty",
+          "zoom": "1x",
+          "intensity": 10,
+          "shutterconfig": "Left",
+          "filename": "c.tif",
+          "folder": "tmp"
+        }
+      ]
+    },
+    "expect": {
+      "calls": [
+        "auto_illumination"
+      ],
+      "state": {
+        "acq_list.0.shutterconfig": "Right",
+        "acq_list.2.shutterconfig": "Left"
+      }
+    }
+  },
+  {
+    "id": "h-window-psf",
+    "category": "windows",
+    "prompt": "What FWHM do the beads in {folder}/beads.tif have, laterally and axially?",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "analyse_psf"
+      ],
+      "reply_mentions_any": [
+        "1.0",
+        "2.0",
+        "1 µm",
+        "2 µm"
+      ]
+    }
+  },
+  {
+    "id": "h-window-field-curvature",
+    "category": "windows",
+    "prompt": "Compare the depth of field and sag of the stacks {folder}/flat.tif and {folder}/tilted.tif.",
+    "setup": {
+      "files": [
+        "flat.tif",
+        "tilted.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "analyse_field_curvature"
+      ],
+      "reply_mentions_any": [
+        "sag",
+        "depth of field"
+      ]
+    }
+  },
+  {
+    "id": "h-window-open-tiff",
+    "category": "windows",
+    "prompt": "Load the stack {folder}/beads.tif into the camera view and go to its final frame.",
+    "setup": {
+      "files": [
+        "beads.tif"
+      ]
+    },
+    "expect": {
+      "calls": [
+        "open_image_file"
+      ],
+      "display": {
+        "camera_window.frames.index": 2
+      }
+    }
+  },
+  {
+    "id": "h-window-display-during-run",
+    "category": "windows",
+    "prompt": "Use the magma colour map for the camera image.",
+    "setup": {
+      "state": "run_acquisition_list"
+    },
+    "expect": {
+      "calls": [
+        "set_display"
+      ],
+      "display": {
+        "camera_window.colormap": "magma"
+      }
+    }
+  },
+  {
+    "id": "h-window-autofocus-keep",
+    "category": "windows",
+    "prompt": "Snap, then search focus within +-100 um with the optimizer; leave the focus where it is for now.",
+    "expect": {
+      "calls": [
+        "optimize"
+      ],
+      "not_calls": [],
+      "state": {
+        "position.f_pos": 1000.0
+      }
+    }
+  },
+  {
+    "id": "h-window-save-config",
+    "category": "windows",
+    "prompt": "Write today's parameters into the config file.",
+    "expect": {
+      "reply_mentions_any": [
+        "overwrite",
+        "replace",
+        "exists"
+      ]
+    }
+  }
+]

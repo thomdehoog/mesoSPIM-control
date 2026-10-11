@@ -493,6 +493,9 @@ class MainWindowHandle:
             "status_message": window.statusBar().currentMessage(),
             "progress": {name: {"percent": bar.value(), "text": bar.text()} for name, bar in bars.items()},
             "time_lapse_estimate": window.TimelapseEstimateLabel.text(),
+            "alignment_toggles": {"zero_left_etl": window.ZeroLeftETLButton.isChecked(),
+                                  "zero_right_etl": window.ZeroRightETLButton.isChecked(),
+                                  "freeze_galvo": window.freezeGalvoButton.isChecked()},
         }
 
     def apply(self, args):
