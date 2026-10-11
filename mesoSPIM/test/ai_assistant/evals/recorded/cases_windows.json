@@ -1,0 +1,1169 @@
+{
+ "ms-window-1": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll take the snap first, then place the 300-pixel box at the frame centre, run the focus optimizer over ±150 µm inside it, and apply the result."
+    },
+    {
+     "tool": "snap",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "box_roi": {
+       "x": 2378,
+       "y": 1330,
+       "width": 300,
+       "height": 300
+      }
+     }
+    }
+   ],
+   [
+    {
+     "tool": "optimize",
+     "args": {
+      "mode": "focus",
+      "range": 150,
+      "roi": {
+       "x": 2378,
+       "y": 1330,
+       "width": 300,
+       "height": 300
+      }
+     }
+    }
+   ],
+   [
+    {
+     "tool": "finish_optimization",
+     "args": {
+      "accept": true
+     }
+    }
+   ],
+   [
+    {
+     "text": "I took the snap, set a 300 × 300 pixel box at the frame centre (x 2378–2678, y 1330–1630), ran the focus optimizer over ±150 µm inside it, and applied the result.\n\nThe optimizer found the best focus is where it already was: f stays at 1000 (old and new both 1000). The sharpness peaked at that point and fell off on both sides across the 850–1150 range, so the focus is well defined and needed no change."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 107158,
+   "requests": 5,
+   "eyes_input": 0
+  },
+  "tokens": 62601
+ },
+ "ms-window-2": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll set the camera window to automatic levels (Adjust levels at 25/99.99) with the magma lookup table, then take a picture of that window. The state shows the microscope idle, so there's no live view running; the settings will apply to the last displayed frame."
+    },
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "colormap": "magma",
+      "adjust_levels": {
+       "low_percentile": 25,
+       "high_percentile": 99.99
+      }
+     }
+    }
+   ],
+   [
+    {
+     "tool": "get_picture",
+     "args": {
+      "window": "camera"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The camera window now has the magma lookup table, but the automatic contrast didn't take effect and the picture came back blank.\n\n- **Lookup table:** set to magma. The window reports it applied.\n- **Automatic contrast:** I requested Adjust levels at 25 / 99.99 percentiles, but the window still reads levels 900 to 1600, so nothing was re-stretched. There is no frame yet (no snap taken, no live view running), so there was nothing to adjust.\n- **Picture:** the camera window capture came back as a 1×1 pixel image, so there's no usable picture to show you.\n\nThe microscope is idle. To see the live view you asked about, I need to start live, which opens the shutters and illuminates the sample. Should I start live now and re-apply the automatic levels to it? Alternatively, I can take a single snap first and adjust the levels on that."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 63748,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37624
+ },
+ "ms-window-3": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_windows",
+     "args": {
+      "show": [
+       "contrast"
+      ]
+     }
+    },
+    {
+     "tool": "get_display",
+     "args": {
+      "request": 1
+     }
+    }
+   ],
+   [
+    {
+     "text": "I opened the contrast window. Its map shows the lowest contrast in the top-left corner: the upper-left 2×2 block of cells, roughly the top-left quarter of the 2048-pixel frame, reads 0.12 on the 0–1 scale. The rest of the map is uniform at 0.55. I read this from the window's values, not from a picture, so the map's orientation (top-left as the top-left of the frame) is my reading of the readout. The camera window is at 100–3000 levels with a grey colormap, and no new frame was taken."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 42724,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 25146
+ },
+ "ms-window-4": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "auto_illumination",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_table_view",
+     "args": {
+      "group": "illumination"
+     }
+    }
+   ],
+   [
+    {
+     "text": "I ran the automatic illumination assignment on the three tiles in the acquisition list, which completed and set all three. The table is now grouped by illumination. I didn't read back which side each tile got, so the grouping view is the place to check that."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 61815,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 36716
+ },
+ "ms-window-5": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll turn on the galvo freeze, take a snap, then turn the freeze off."
+    },
+    {
+     "tool": "set_alignment_toggles",
+     "args": {
+      "freeze_galvo": true
+     }
+    }
+   ],
+   [
+    {
+     "tool": "snap",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_alignment_toggles",
+     "args": {
+      "freeze_galvo": false
+     }
+    }
+   ],
+   [
+    {
+     "text": "I froze the galvos, took a snap, and unfroze them. The snap is saved as `D:\\claude-scratch\\pr8\\tmp\\mesospim_snap_lk9yfxor\\remote_20260917-120000.tif`. The galvo freeze is now off. I haven't looked at the image itself; I can take a look at it if you want."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 82116,
+   "requests": 4,
+   "eyes_input": 0
+  },
+  "tokens": 48824
+ },
+ "ms-window-6": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "analyse_psf",
+     "args": {
+      "path": "D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_7irzq5gq/beads.tif",
+      "z_fit_window_um": 10
+     }
+    }
+   ],
+   [
+    {
+     "text": "Yes. The axial FWHM is 2.0 µm, above 1.5 µm. The analysis found 3 beads, all with an axial FWHM of 2.0 µm (median 2.0, std 0). Lateral FWHM is 1.0 µm for all three.\n\nI did not give a z step, so the tool used its default of 1.0 µm per slice. Axial values are only as good as that step. If the stack was acquired with a different z step, tell me the value and I'll rerun the analysis with it."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41811,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24739
+ },
+ "window-auto-contrast": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "adjust_levels": true
+     }
+    }
+   ],
+   [
+    {
+     "text": "I ran auto-contrast on the camera window with the default settings (clipping at the 25th and 99.99th percentiles). The display levels are now 900 to 1600 counts, on a histogram spanning 0 to 4000. This only changes the display, not the instrument. I haven't taken a new frame, so I can't yet say how the live image looks; a fresh look would confirm it."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41228,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24517
+ },
+ "window-auto-illumination": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "auto_illumination",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "get_acquisition_list",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "I set each tile's illumination side from its X position. The median X of the three tiles is 1000, so the tile left of it is lit from the right and the others from the left.\n\n- **a.tif** (X = 0): shutterconfig **Right**\n- **b.tif** (X = 1000, the median): shutterconfig **Left**\n- **c.tif** (X = 2000): shutterconfig **Left**\n\nNothing was run or moved."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 61835,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 36607
+ },
+ "window-autofocus-keep": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll take a snap first, then run the focus optimizer over ±100 µm and leave the result unaccepted."
+    },
+    {
+     "tool": "snap",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "optimize",
+     "args": {
+      "mode": "focus",
+      "range": 100
+     }
+    }
+   ],
+   [
+    {
+     "text": "I took a snap and ran the focus optimizer over ±100 µm around f = 1000. The sharpness peak sits at f = 1000, the current position, so the suggested focus is unchanged. The optimizer is waiting for a decision and I have not accepted anything, so f stays at 1000. Say if you want me to accept or discard the result."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 61725,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 36584
+ },
+ "window-close-tile": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_windows",
+     "args": {
+      "hide": [
+       "tile_overview"
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "The tile overview is closed. The main, camera and acquisition manager windows are still open."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41095,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24500
+ },
+ "window-display-during-run": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "colormap": "magma"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The camera window's live view now uses the magma lookup table. The display levels are unchanged at 100 to 3000 counts. This changed only the display, not the instrument."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41207,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24523
+ },
+ "window-field-curvature": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "analyse_field_curvature",
+     "args": {
+      "channels": [
+       {
+        "path": "D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_fxe2wbk1/flat.tif",
+        "label": "flat"
+       },
+       {
+        "path": "D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_fxe2wbk1/tilted.tif",
+        "label": "tilted"
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "I ran the field-curvature analysis on both stacks with the default settings (no magnification or pixel pitch supplied, so the numbers depend on the software defaults).\n\n- **flat.tif:** depth of field 28.5 µm, sag 0.0 µm in x and y, best plane at z 100 µm (index 10), best-plane contrast 0.4.\n- **tilted.tif:** depth of field 28.5 µm, sag 5.8 µm in x and 0.0 µm in y, average sag 3.1 µm, best plane at z 100 µm (index 10), best-plane contrast 0.4.\n\nThe tilted stack shows sag along x only, which is consistent with a tilt in that direction. The flat stack shows none. Both report a 2.4 mm field of view. Nothing on the instrument moved; the analysis only changed the display.\n\nIf you give me the magnification and pixel pitch, I can rerun it so the µm values are calibrated."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41894,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24759
+ },
+ "window-freeze-galvos": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_alignment_toggles",
+     "args": {
+      "freeze_galvo": true
+     }
+    }
+   ],
+   [
+    {
+     "text": "The galvos are frozen. The freeze toggle is on, and the ETL amplitudes were left unchanged (zero_left_etl and zero_right_etl are both off)."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40552,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24192
+ },
+ "window-group-laser": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_table_view",
+     "args": {
+      "group": "laser"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The acquisition table is now grouped by laser. The table has 2 rows, and the view shows no selection change."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41132,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24514
+ },
+ "window-levels": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "levels": [
+       200,
+       3000
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "The camera window's display range is now set to 200 to 3000 counts. The levels are applied to the live view display only; the instrument itself is unchanged and still idle."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41192,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24519
+ },
+ "window-line-measure": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "line_roi": {
+       "x1": 100,
+       "y1": 100,
+       "x2": 400,
+       "y2": 500
+      }
+     }
+    },
+    {
+     "tool": "get_info",
+     "args": {}
+    },
+    {
+     "tool": "get_config",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "I drew the line in the camera window from pixel (100, 100) to (400, 500). It is **500 µm** long. At the current 1x zoom the pixel size is 1.0 µm, and the line spans 300 px horizontally and 400 px vertically, so its length is √(300² + 400²) = 500 px = 500 µm.\n\nNo live view is running (the microscope is idle), so the line sits over the last displayed frame, which is empty. It will be visible once a frame is shown."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 42039,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24780
+ },
+ "window-lut-name": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "text": "I'll open the camera window, set its lookup table to viridis, and start live."
+    },
+    {
+     "tool": "set_windows",
+     "args": {
+      "show": [
+       "camera"
+      ]
+     }
+    },
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "colormap": "viridis"
+     }
+    }
+   ],
+   [
+    {
+     "tool": "start_live",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "The camera window is open with the viridis lookup table, and live imaging is running. Live continues until you stop it. The shutter was closed before, so the live start may have opened it; I haven't checked the shutter state since."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 64299,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37851
+ },
+ "window-lut-own-colours": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "colormap_ticks": [
+       [
+        0,
+        [
+         0,
+         0,
+         0,
+         255
+        ]
+       ],
+       [
+        1,
+        [
+         0,
+         255,
+         0,
+         255
+        ]
+       ]
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "The camera window's lookup table is now a custom black-to-green ramp (black at the low end, pure green at the high end). The display levels are unchanged at 100–3000 counts. This only changes the display, not the instrument."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41311,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24540
+ },
+ "window-max-amplitude": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_laser_timing",
+     "args": {
+      "laser_l_max_amplitude_pct": 80
+     }
+    }
+   ],
+   [
+    {
+     "text": "The left laser's maximum amplitude is now set to 80 percent. The change was accepted and the operation completed; the other laser timing settings are unchanged."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40537,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24185
+ },
+ "window-open-contrast": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_windows",
+     "args": {
+      "show": [
+       "contrast"
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "The contrast window is now open. It's showing the default colour map (jet) with levels 0 to 1, alongside the camera window and the other windows that were already open."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41438,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24611
+ },
+ "window-open-tiff": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "open_image_file",
+     "args": {
+      "path": "D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_xyy76n8e/beads.tif"
+     }
+    },
+    {
+     "tool": "get_display",
+     "args": {
+      "request": 1
+     }
+    }
+   ],
+   [
+    {
+     "text": "The stack has 3 planes (index 0 to 2), so the last plane is index 2."
+    },
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "frame_index": 2
+     }
+    },
+    {
+     "tool": "get_display",
+     "args": {
+      "request": 2
+     }
+    }
+   ],
+   [
+    {
+     "text": "I opened beads.tif in the camera window. It is a 3-plane stack (512 × 512), and the window is now showing the last plane, index 2. The camera window's frame count reads 3 with index 2 selected."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 66092,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 38793
+ },
+ "window-picture": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_picture",
+     "args": {
+      "window": "tile_overview"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The tile overview picture didn't come through. The request was applied, but the image returned is a 1×1 pixel placeholder, so I can't see the window contents. The window itself is open, at scale 0.01 with the scroll centred. I can try again with a file path or a larger size if you like."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41213,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24549
+ },
+ "window-processor-blur": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_processor_chain",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_processor_chain",
+     "args": {
+      "processors": [
+       {
+        "name": "GaussianBlur",
+        "enabled": true,
+        "config": {
+         "sigma": 2
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "text": "The Gaussian blur (sigma 2, reflect mode) is now the only step in the processor chain, and the chain is enabled. It applies to the live view. It also applies to saved images, since the chain covers both, so any acquisition started now will be saved blurred. I did not save the chain to file. Tell me if you want the chain cleared or the sigma changed."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 61351,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 36440
+ },
+ "window-psf": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "analyse_psf",
+     "args": {
+      "path": "D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_34d723yp/beads.tif"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The analysis found 3 beads in the stack, all at the same z plane (z = 10 of 21 slices). Each gives the same width:\n\n- **Lateral FWHM: 1.0 µm** (median of 3, no spread)\n- **Axial FWHM: 2.0 µm** (median of 3, no spread)\n\nThese numbers are not trustworthy yet. I ran the analysis without the pixel pitch, magnification or z step, so the tool used its defaults of 1.0 µm per pixel and 1.0 µm per slice. The widths are also whole multiples of those steps, which suggests the true sampling is coarser than the reported resolution can resolve. If you tell me the camera pixel pitch (or magnification), and the z step used when the stack was acquired, I'll rerun it for real micrometre values."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41868,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24717
+ },
+ "window-roi-box-centre": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_display",
+     "args": {
+      "request": 1
+     }
+    }
+   ],
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "box_roi": {
+       "x": 1280,
+       "y": 2378,
+       "width": 400,
+       "height": 300
+      }
+     }
+    },
+    {
+     "tool": "get_display",
+     "args": {
+      "request": 2
+     }
+    }
+   ],
+   [
+    {
+     "text": "I drew a 400 × 300 pixel box ROI in the camera window, centred on the frame. The frame is 2960 × 5056 pixels, so the box sits at x 1280 to 1680 and y 2378 to 2678. The display reports its offset from the centre as zero in both directions, so it is centred. The box is only an overlay on the display and does not change the instrument."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 64402,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37871
+ },
+ "window-roi-move": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_display",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "box_roi": {
+       "x": 924,
+       "y": 874,
+       "width": 600,
+       "height": 300
+      }
+     }
+    }
+   ],
+   [
+    {
+     "text": "I moved the camera window's region of interest 200 pixels to the right. Its left edge went from x=724 to x=924 (width 600 and height 300 unchanged, y still 874). Its centre offset is now -256 µm horizontally, from -456 µm. This only changes the display box, not the stage or the optics."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 63326,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37477
+ },
+ "window-roi-read": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_display",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "The region of interest is 600 µm wide by 300 µm high. The camera window reports that box as 600 × 300 frame pixels, and it reads each frame pixel as 1 µm. The microscope state shows no calibrated camera pixel size, so treat the micrometre figures as the window's nominal scale until the pixel size is calibrated. The box sits at an offset of −456 µm in x and −1504 µm in y from the frame centre."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41276,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24542
+ },
+ "window-roi-where": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_display",
+     "args": {}
+    },
+    {
+     "tool": "get_frame",
+     "args": {
+      "include_image": false
+     }
+    }
+   ],
+   [
+    {
+     "text": "The region of interest is a box 400 × 300 µm, with its centre 400 µm to the right of the image centre and level with it vertically. In the window's offsets that is +400 µm horizontally and 0 µm vertically. This comes from the box overlay in the camera window. There is no current frame, so I haven't checked where the signal actually sits inside it. A snap or live view would show that."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41432,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24562
+ },
+ "window-save-config": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "save_parameters_to_config",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "The save was refused. The config file `D:\\claude-scratch\\pr8\\tmp\\mesospim_eval_9180wxa7\\demo_config.py` already exists, and saving would replace it. I have not overwritten it.\n\nDo you want me to overwrite that file with the current sweep, camera, laser, galvo and ETL timing and binning values? Or would you rather I save to a different path? If you give me a new path, I'll save there and leave the existing file alone."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 40563,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24207
+ },
+ "window-tab": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "main",
+      "tab": "Parameters"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The main window is now on the Parameters tab. I didn't move any hardware or change any settings."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41128,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24513
+ },
+ "window-view-fit": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "view": "fit"
+     }
+    }
+   ],
+   [
+    {
+     "text": "The camera window's view is set to fit, so it now shows the whole frame, 2960 × 5056 pixels at 1 µm per pixel. The instrument itself was not touched."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 41175,
+   "requests": 2,
+   "eyes_input": 0
+  },
+  "tokens": 24511
+ },
+ "window-view-zoom": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_display",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "set_display",
+     "args": {
+      "window": "camera",
+      "view": {
+       "x": 0,
+       "y": 0,
+       "width": 1480,
+       "height": 2528
+      }
+     }
+    },
+    {
+     "tool": "get_display",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "text": "The camera window now shows the top-left quarter of the frame: x 0 to 1480 and y 0 to 2528 in frame pixels, applied and confirmed by the display readback. This changed only the view; the stage, optics and camera are untouched."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 64081,
+   "requests": 3,
+   "eyes_input": 0
+  },
+  "tokens": 37723
+ },
+ "window-writer-compression": {
+  "model": "claude-haiku-5-5",
+  "vision": true,
+  "responses": [
+   [
+    {
+     "tool": "get_config",
+     "args": {}
+    }
+   ],
+   [
+    {
+     "tool": "get_writer_parameters",
+     "args": {
+      "writer": "OME_Zarr_Writer"
+     }
+    }
+   ],
+   [
+    {
+     "tool": "set_writer_parameters",
+     "args": {
+      "writer": "OME_Zarr_Writer",
+      "parameters": {
+       "compression": "lz4"
+      }
+     }
+    }
+   ],
+   [
+    {
+     "text": "OME-Zarr files will now be saved with lz4 compression. I changed only the compression setting on the OME_Zarr_Writer, from zstd to lz4. The compression level stays at 5 and the other writer settings are unchanged. This is a session setting, so it applies to the OME-Zarr writer until it is changed again."
+    }
+   ]
+  ],
+  "eyes": [],
+  "failures": [],
+  "provider_tokens": {
+   "input": 83700,
+   "requests": 4,
+   "eyes_input": 0
+  },
+  "tokens": 49570
+ }
+}

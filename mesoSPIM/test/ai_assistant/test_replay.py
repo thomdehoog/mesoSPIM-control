@@ -10,7 +10,8 @@ from mesoSPIM.test.ai_assistant.test_evals import SCRIPTED, scripted
 pytest.importorskip("pydantic_ai")
 
 FILES = tuple(harness.CASES_FILE.with_name(name) for name in
-              ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json"))
+              ("cases.json", "cases_holdout.json", "cases_multistep.json", "cases_generated.json",
+               "cases_windows.json", "cases_windows_holdout.json"))
 
 
 def _recorded_cases():

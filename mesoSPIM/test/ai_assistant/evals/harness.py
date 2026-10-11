@@ -44,6 +44,7 @@ Expectations:
     display_near   {dotted.path: [value, tolerance]}: a number there, within the tolerance
 Setup "files": names of test files (beads.tif, flat.tif, tilted.tif, list.csv) written into a temporary
 folder for the run; "{folder}" in a prompt is that folder. "windows": {name: true} opens windows first;
+"camera": {"x_pixels": 5056, "y_pixels": 2960} is the camera (the window shows its frame turned: 2960 wide);
 "camera_window": {"overlay": "box", "box_roi": {...}} sets the live view first.
 Every case also fails when a reply quotes the <microscope_state> block, which the manual forbids.
 The trace counts the look-and-adjust rounds of
@@ -292,11 +293,25 @@ class SimulatedInstrument(RecordingCore):
         self.camera_worker = type("CameraWorker", (), {"processor_chain": RecordingChain()})()
         self._remote_control_gui_handles = SimulatedWindows(self)
 
+    camera_frames = False
+
     def snap(self, write_flag=True):
         super().snap(write_flag)
         frame = synthetic_frame(self.frame_name)
         if frame is not None:
             self.frame_queue_display.append(frame)
+        elif self.camera_frames:
+            self.frame_queue_display.append(self.camera_frame())
+
+    def camera_frame(self):
+        """A frame of the camera's own shape, as the windows show it (x_pixels rows, y_pixels
+        columns: turned): a bright block in the middle of a dim field."""
+        import numpy as np
+        camera = self.cfg.camera_parameters
+        frame = np.full((camera["x_pixels"], camera["y_pixels"]), 300, dtype=np.uint16)
+        rows, cols = frame.shape
+        frame[rows * 2 // 5:rows * 3 // 5, cols * 2 // 5:cols * 3 // 5] = 2500
+        return frame
 
     def set_state(self, *args, **kwargs):
         super().set_state(*args, **kwargs)
@@ -429,6 +444,9 @@ def _run_once(case, model, endpoint, vision_model=None, skills=None):
                 write_test_file(core.folder / name)
         elif key == "windows":
             core._remote_control_gui_handles.open.update(value)
+        elif key == "camera":
+            core.cfg.camera_parameters = dict(core.cfg.camera_parameters, **value)
+            core.camera_frames = True                 # a snap then gives a frame of this camera's shape
         elif key == "camera_window":
             core._remote_control_gui_handles.set_display(dict(value))
         elif key == "position":

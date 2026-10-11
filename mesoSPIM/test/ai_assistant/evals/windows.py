@@ -29,9 +29,8 @@ class SimulatedWindows:
     def __init__(self, core):
         self.core = core
         self.requests, self.outcomes, self.operations = [], {}, []
-        width, height = frame_size(core, core.cfg)
         self.camera = {"levels": [100.0, 3000.0], "colormap": "grey", "colormap_mode": "rgb", "colormap_ticks": None,
-                       "histogram_range": [0.0, 4000.0], "view": {"x": 0.0, "y": 0.0, "width": float(width), "height": float(height)},
+                       "histogram_range": [0.0, 4000.0], "view": None,                    # None: the whole frame
                        "invert_x": False, "invert_y": False, "overlay": "light_sheet_marker", "box": None, "line": None,
                        "profile_roi": {"shown": False}, "normalization": {"mode": "off", "roi": False, "frame": False,
                                                                          "time_range": False}, "frames": None}
@@ -78,6 +77,7 @@ class SimulatedWindows:
         width, height = frame_size(self.core, self.core.cfg)
         um = self.pixel_um()
         camera = {key: value for key, value in self.camera.items() if key not in ("box", "line", "frames")}
+        camera["view"] = self.camera["view"] or {"x": 0.0, "y": 0.0, "width": float(width), "height": float(height)}
         camera["colormap"] = self.camera["colormap"] if self.camera["colormap_ticks"] is None else "custom"
         camera.update(visible=self.open["camera"], frame={"width": width, "height": height, "shown_every": 2, "pixel_um": um},
                       status="Status: OK")
@@ -130,8 +130,7 @@ class SimulatedWindows:
                 self.camera["levels"] = [900.0, 1600.0]                    # a stretch of the synthetic frame
             if args.get("view") == "fit":
                 args.pop("view")
-                width, height = frame_size(self.core, self.core.cfg)
-                self.camera["view"] = {"x": 0.0, "y": 0.0, "width": float(width), "height": float(height)}
+                self.camera["view"] = None
             if "frame_index" in args:
                 frames = self.camera["frames"]
                 if not frames:

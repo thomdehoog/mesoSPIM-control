@@ -61,6 +61,12 @@
     "id": "h-window-roi-box-centre",
     "category": "windows",
     "prompt": "Put a 400 x 300 pixel ROI box at the centre of the camera frame.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -87,6 +93,10 @@
     "category": "windows",
     "prompt": "What are the width and height of the ROI box in um?",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
@@ -112,11 +122,15 @@
     "category": "windows",
     "prompt": "Is the ROI box centred? If not, how far off is it?",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
-          "x": 1224.0,
-          "y": 874.0,
+          "x": 1680.0,
+          "y": 2378.0,
           "width": 400.0,
           "height": 300.0
         }
@@ -138,6 +152,10 @@
     "category": "windows",
     "prompt": "Shift the ROI box right by 200 pixels, same size.",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
@@ -167,6 +185,12 @@
     "id": "h-window-line-measure",
     "category": "windows",
     "prompt": "Measure the distance between image pixels (100,100) and (400,500) with a line ROI, in um.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -186,6 +210,12 @@
     "id": "h-window-view-zoom",
     "category": "windows",
     "prompt": "Show only the upper left quarter of the camera image.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -196,8 +226,12 @@
           10
         ],
         "camera_window.view.width": [
-          1024,
-          10
+          1480,
+          20
+        ],
+        "camera_window.view.height": [
+          2528,
+          20
         ]
       }
     }
@@ -207,6 +241,10 @@
     "category": "windows",
     "prompt": "Zoom the camera view back out to the full image.",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "view": {
           "x": 0.0,
@@ -221,7 +259,7 @@
         "set_display"
       ],
       "display": {
-        "camera_window.view.width": 2048.0
+        "camera_window.view.width": 2960.0
       }
     }
   },
@@ -371,10 +409,11 @@
     "category": "windows",
     "prompt": "Limit the left laser pulse to 80% of its maximum amplitude.",
     "expect": {
-      "args": {
-        "set_laser_timing": {
-          "laser_l_max_amplitude_%": 80
-        }
+      "calls": [
+        "set_laser_timing"
+      ],
+      "state": {
+        "laser_l_max_amplitude_%": 80
       }
     }
   },
@@ -517,6 +556,12 @@
     "id": "h-window-autofocus-keep",
     "category": "windows",
     "prompt": "Snap, then search focus within +-100 um with the optimizer; leave the focus where it is for now.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "optimize"

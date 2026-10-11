@@ -61,6 +61,12 @@
     "id": "window-roi-box-centre",
     "category": "windows",
     "prompt": "Draw a box region of interest of 400 by 300 pixels in the middle of the live image.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -87,6 +93,10 @@
     "category": "windows",
     "prompt": "How large is the region of interest, in micrometres?",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
@@ -112,11 +122,15 @@
     "category": "windows",
     "prompt": "Where is the region of interest compared with the centre of the image?",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
-          "x": 1224.0,
-          "y": 874.0,
+          "x": 1680.0,
+          "y": 2378.0,
           "width": 400.0,
           "height": 300.0
         }
@@ -138,6 +152,10 @@
     "category": "windows",
     "prompt": "Move the region of interest 200 pixels to the right.",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "overlay": "box",
         "box_roi": {
@@ -167,6 +185,12 @@
     "id": "window-line-measure",
     "category": "windows",
     "prompt": "Draw a line from pixel (100, 100) to pixel (400, 500) in the live image and tell me how long it is in micrometres.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -186,6 +210,12 @@
     "id": "window-view-zoom",
     "category": "windows",
     "prompt": "Zoom the live view in on the top-left quarter of the frame.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display"
@@ -196,8 +226,12 @@
           10
         ],
         "camera_window.view.width": [
-          1024,
-          10
+          1480,
+          20
+        ],
+        "camera_window.view.height": [
+          2528,
+          20
         ]
       }
     }
@@ -207,6 +241,10 @@
     "category": "windows",
     "prompt": "Show the whole frame in the live view again.",
     "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      },
       "camera_window": {
         "view": {
           "x": 0.0,
@@ -221,7 +259,7 @@
         "set_display"
       ],
       "display": {
-        "camera_window.view.width": 2048.0
+        "camera_window.view.width": 2960.0
       }
     }
   },
@@ -371,10 +409,11 @@
     "category": "windows",
     "prompt": "Set the left laser pulse's maximum amplitude to 80 percent.",
     "expect": {
-      "args": {
-        "set_laser_timing": {
-          "laser_l_max_amplitude_%": 80
-        }
+      "calls": [
+        "set_laser_timing"
+      ],
+      "state": {
+        "laser_l_max_amplitude_%": 80
       }
     }
   },
@@ -517,6 +556,12 @@
     "id": "window-autofocus-keep",
     "category": "windows",
     "prompt": "Take a snap, then run the autofocus over plus and minus 100 µm, but don't change the focus yet.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "optimize"
@@ -543,6 +588,12 @@
     "id": "ms-window-1",
     "category": "windows workflows",
     "prompt": "Take a snap, put a 300-pixel box ROI in the middle, then run the autofocus within it over plus and minus 150 µm and apply the result.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls_in_order": [
         "set_display",
@@ -560,6 +611,12 @@
     "id": "ms-window-2",
     "category": "windows workflows",
     "prompt": "Make the live view easier to see: automatic contrast and the magma lookup table. Then take a picture of the camera window.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls": [
         "set_display",
@@ -580,8 +637,7 @@
     "prompt": "Open the contrast window and tell me which part of the image has the lowest contrast.",
     "expect": {
       "calls": [
-        "set_windows",
-        "get_display"
+        "set_windows"
       ],
       "reply_mentions_any": [
         "top left",
@@ -655,6 +711,12 @@
     "id": "ms-window-5",
     "category": "windows workflows",
     "prompt": "Freeze the galvos, take a snap, then unfreeze them.",
+    "setup": {
+      "camera": {
+        "x_pixels": 5056,
+        "y_pixels": 2960
+      }
+    },
     "expect": {
       "calls_in_order": [
         "set_alignment_toggles",

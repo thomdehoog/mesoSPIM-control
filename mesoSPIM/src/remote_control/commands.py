@@ -2731,7 +2731,9 @@ def _run_get_display(core, args):
     return gui_handles(core).display(args.get("request"))
 
 
-_FRAME_PIXELS = "numbers in the camera frame's pixels (x the column, y the row, as get_frame gives the frame)"
+_FRAME_PIXELS = ("numbers in the camera frame's pixels (x the column, y the row, as get_frame gives the frame); the "
+                 "frame's width and height are get_display's camera_window.frame: the window shows the frame turned, so its "
+                 "width is the camera's y_pixels and its height x_pixels")
 _BOX = _schema({key: _NUMBER for key in ("x", "y", "width", "height")}, required=("x", "y", "width", "height"),
                description=_FRAME_PIXELS)
 _PAIR = {"type": "array", "items": _NUMBER, "minItems": 2, "maxItems": 2}

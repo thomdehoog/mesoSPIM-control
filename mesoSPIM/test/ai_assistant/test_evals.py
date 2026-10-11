@@ -331,18 +331,18 @@ def test_the_trace_counts_the_look_and_adjust_rounds():
 def windows_answers(folder):
     """For each windows case, the calls a right answer makes and its reply (folder: the run's files)."""
     beads, flat, tilted = (str(folder / name) for name in ("beads.tif", "flat.tif", "tilted.tif"))
-    box = {"x": 874.0, "y": 874.0, "width": 300.0, "height": 300.0}
+    box = {"x": 1330.0, "y": 2378.0, "width": 300.0, "height": 300.0}          # the middle of the demo's 2960 x 5056 frame
     return {
         "window-lut-name": ((("set_display", {"colormap": "viridis"}),), "Viridis it is."),
         "window-levels": ((("set_display", {"levels": [200, 3000]}),), "Range set to 200-3000."),
         "window-auto-contrast": ((("set_display", {"adjust_levels": True}),), "Adjusted."),
         "window-lut-own-colours": ((("set_display", {"colormap_ticks": [[0, [0, 0, 0, 255]], [1, [0, 255, 0, 255]]]}),), "Black to green."),
-        "window-roi-box-centre": ((("set_display", {"box_roi": {"x": 824, "y": 874, "width": 400, "height": 300}}),), "Box drawn."),
+        "window-roi-box-centre": ((("set_display", {"box_roi": {"x": 1280, "y": 2378, "width": 400, "height": 300}}),), "Box drawn."),
         "window-roi-read": ((("get_display", {}),), "It is 600 x 300 µm."),
         "window-roi-where": ((("get_display", {}),), "It sits 400 µm to the right of the centre."),
         "window-roi-move": ((("set_display", {"box_roi": {"x": 924, "y": 874, "width": 600, "height": 300}}),), "Moved."),
         "window-line-measure": ((("set_display", {"line_roi": {"x1": 100, "y1": 100, "x2": 400, "y2": 500}}),), "500 µm long."),
-        "window-view-zoom": ((("set_display", {"view": {"x": 0, "y": 0, "width": 1024, "height": 1024}}),), "Zoomed in."),
+        "window-view-zoom": ((("set_display", {"view": {"x": 0, "y": 0, "width": 1480, "height": 2528}}),), "Zoomed in."),
         "window-view-fit": ((("set_display", {"view": "fit"}),), "Whole frame."),
         "window-open-contrast": ((("set_windows", {"show": ["contrast"]}),), "Open."),
         "window-close-tile": ((("set_windows", {"hide": ["tile_overview"]}),), "Closed."),
@@ -380,8 +380,8 @@ WINDOWS_HOLDOUT_FILE = harness.CASES_FILE.with_name("cases_windows_holdout.json"
 
 
 def windows_cases():
-    """The windows cases: their own file until a model run of them is recorded (then they join the
-    replay suite, test_replay.FILES)."""
+    """The windows cases (cases_windows.json; their held-out twins in cases_windows_holdout.json), also
+    replayed from their recorded model runs in test_replay."""
     return harness.load_cases(WINDOWS_FILE)
 
 
