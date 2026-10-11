@@ -71,7 +71,7 @@
    "requests": 6,
    "eyes_input": 3657
   },
-  "tokens": 53613
+  "tokens": 74082
  },
  "ms-acquisition-with-checks-2": {
   "model": "gemini-3.5-flash-lite",
@@ -154,7 +154,7 @@
    "requests": 8,
    "eyes_input": 3650
   },
-  "tokens": 71587
+  "tokens": 98829
  },
  "ms-acquisition-with-checks-3": {
   "model": "gemini-3.5-flash-lite",
@@ -225,7 +225,7 @@
    "requests": 6,
    "eyes_input": 3650
   },
-  "tokens": 53398
+  "tokens": 73868
  },
  "ms-acquisition-with-checks-4": {
   "model": "gemini-3.5-flash-lite",
@@ -302,7 +302,7 @@
    "requests": 7,
    "eyes_input": 3655
   },
-  "tokens": 62679
+  "tokens": 86514
  },
  "ms-acquisition-with-checks-5": {
   "model": "gemini-3.5-flash-lite",
@@ -373,7 +373,7 @@
    "requests": 6,
    "eyes_input": 3647
   },
-  "tokens": 53451
+  "tokens": 73920
  },
  "ms-acquisition-with-checks-6": {
   "model": "gemini-3.5-flash-lite",
@@ -444,7 +444,7 @@
    "requests": 6,
    "eyes_input": 3644
   },
-  "tokens": 53412
+  "tokens": 73882
  },
  "ms-centring-1": {
   "model": "gemini-3.5-flash-lite",
@@ -501,7 +501,7 @@
    "requests": 4,
    "eyes_input": 3664
   },
-  "tokens": 35320
+  "tokens": 48967
  },
  "ms-centring-2": {
   "model": "gemini-3.5-flash-lite",
@@ -560,7 +560,7 @@
    "requests": 4,
    "eyes_input": 3715
   },
-  "tokens": 35462
+  "tokens": 49109
  },
  "ms-centring-3": {
   "model": "gemini-3.5-flash-lite",
@@ -617,7 +617,7 @@
    "requests": 4,
    "eyes_input": 3665
   },
-  "tokens": 35365
+  "tokens": 49012
  },
  "ms-centring-4": {
   "model": "gemini-3.5-flash-lite",
@@ -683,7 +683,7 @@
    "requests": 4,
    "eyes_input": 3694
   },
-  "tokens": 35609
+  "tokens": 49256
  },
  "ms-centring-5": {
   "model": "gemini-3.5-flash-lite",
@@ -740,7 +740,7 @@
    "requests": 4,
    "eyes_input": 3681
   },
-  "tokens": 35386
+  "tokens": 49033
  },
  "ms-centring-6": {
   "model": "gemini-3.5-flash-lite",
@@ -812,7 +812,7 @@
    "requests": 6,
    "eyes_input": 3698
   },
-  "tokens": 53535
+  "tokens": 73966
  },
  "ms-exposure-1": {
   "model": "gemini-3.5-flash-lite",
@@ -898,7 +898,7 @@
    "requests": 6,
    "eyes_input": 6041
   },
-  "tokens": 54228
+  "tokens": 74719
  },
  "ms-exposure-2": {
   "model": "gemini-3.5-flash-lite",
@@ -987,7 +987,7 @@
    "requests": 8,
    "eyes_input": 6041
   },
-  "tokens": 72079
+  "tokens": 99321
  },
  "ms-exposure-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1041,7 +1041,7 @@
    "requests": 4,
    "eyes_input": 3585
   },
-  "tokens": 35084
+  "tokens": 48731
  },
  "ms-exposure-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1107,7 +1107,7 @@
    "requests": 6,
    "eyes_input": 3642
   },
-  "tokens": 53180
+  "tokens": 73613
  },
  "ms-exposure-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1196,7 +1196,7 @@
    "requests": 8,
    "eyes_input": 6064
   },
-  "tokens": 72235
+  "tokens": 99478
  },
  "ms-exposure-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1251,7 +1251,7 @@
    "requests": 4,
    "eyes_input": 3609
   },
-  "tokens": 35121
+  "tokens": 48768
  },
  "ms-focusing-1": {
   "model": "gemini-3.5-flash-lite",
@@ -1388,7 +1388,7 @@
    "requests": 12,
    "eyes_input": 12195
   },
-  "tokens": 113191
+  "tokens": 154056
  },
  "ms-focusing-2": {
   "model": "gemini-3.5-flash-lite",
@@ -1519,7 +1519,7 @@
    "requests": 11,
    "eyes_input": 12186
   },
-  "tokens": 102828
+  "tokens": 140450
  },
  "ms-focusing-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1725,7 +1725,7 @@
    "requests": 18,
    "eyes_input": 24918
   },
-  "tokens": 180832
+  "tokens": 242126
  },
  "ms-focusing-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1908,7 +1908,7 @@
    "requests": 16,
    "eyes_input": 19998
   },
-  "tokens": 155209
+  "tokens": 209928
  },
  "ms-focusing-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2066,7 +2066,7 @@
    "requests": 17,
    "eyes_input": 8983
   },
-  "tokens": 160523
+  "tokens": 218413
  },
  "ms-focusing-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2210,7 +2210,7 @@
    "requests": 12,
    "eyes_input": 14721
   },
-  "tokens": 113479
+  "tokens": 154341
  },
  "ms-live-tuning-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2271,7 +2271,7 @@
    "requests": 5,
    "eyes_input": 3615
   },
-  "tokens": 43933
+  "tokens": 60958
  },
  "ms-live-tuning-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2332,7 +2332,7 @@
    "requests": 5,
    "eyes_input": 3618
   },
-  "tokens": 43867
+  "tokens": 60895
  },
  "ms-live-tuning-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2382,7 +2382,7 @@
    "requests": 4,
    "eyes_input": 1616
   },
-  "tokens": 34629
+  "tokens": 48250
  },
  "ms-live-tuning-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2426,7 +2426,7 @@
    "requests": 3,
    "eyes_input": 1616
   },
-  "tokens": 25899
+  "tokens": 36114
  },
  "ms-live-tuning-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2493,7 +2493,7 @@
    "requests": 5,
    "eyes_input": 3602
   },
-  "tokens": 43986
+  "tokens": 61011
  },
  "ms-live-tuning-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2556,7 +2556,7 @@
    "requests": 5,
    "eyes_input": 3667
   },
-  "tokens": 44032
+  "tokens": 61059
  },
  "ms-must-stop-partway-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2592,7 +2592,7 @@
    "requests": 2,
    "eyes_input": 1611
   },
-  "tokens": 17332
+  "tokens": 24149
  },
  "ms-must-stop-partway-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2633,7 +2633,7 @@
    "requests": 3,
    "eyes_input": 1612
   },
-  "tokens": 26151
+  "tokens": 36380
  },
  "ms-must-stop-partway-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2666,7 +2666,7 @@
    "requests": 2,
    "eyes_input": 1610
   },
-  "tokens": 17298
+  "tokens": 24114
  },
  "ms-must-stop-partway-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2699,7 +2699,7 @@
    "requests": 2,
    "eyes_input": 1620
   },
-  "tokens": 17292
+  "tokens": 24108
  },
  "ms-must-stop-partway-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2740,7 +2740,7 @@
    "requests": 3,
    "eyes_input": 1611
   },
-  "tokens": 26149
+  "tokens": 36378
  },
  "ms-must-stop-partway-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2781,7 +2781,7 @@
    "requests": 3,
    "eyes_input": 1616
   },
-  "tokens": 26152
+  "tokens": 36382
  },
  "ms-recovery-from-refusals-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2815,7 +2815,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17228
+  "tokens": 24039
  },
  "ms-recovery-from-refusals-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2850,7 +2850,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17072
+  "tokens": 23883
  },
  "ms-recovery-from-refusals-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2906,7 +2906,7 @@
    "requests": 4,
    "eyes_input": 3628
   },
-  "tokens": 35234
+  "tokens": 48855
  },
  "ms-recovery-from-refusals-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2931,7 +2931,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17014
+  "tokens": 23824
  },
  "ms-recovery-from-refusals-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2971,7 +2971,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25842
+  "tokens": 36058
  },
  "ms-recovery-from-refusals-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2990,7 +2990,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8485
+  "tokens": 11890
  },
  "ms-vague-requests-1": {
   "model": "gemini-3.5-flash-lite",
@@ -3048,7 +3048,7 @@
    "requests": 4,
    "eyes_input": 3639
   },
-  "tokens": 35204
+  "tokens": 48851
  },
  "ms-vague-requests-2": {
   "model": "gemini-3.5-flash-lite",
@@ -3112,7 +3112,7 @@
    "requests": 5,
    "eyes_input": 3675
   },
-  "tokens": 44364
+  "tokens": 61415
  },
  "ms-vague-requests-3": {
   "model": "gemini-3.5-flash-lite",
@@ -3190,7 +3190,7 @@
    "requests": 6,
    "eyes_input": 6048
   },
-  "tokens": 53831
+  "tokens": 74321
  },
  "ms-vague-requests-4": {
   "model": "gemini-3.5-flash-lite",
@@ -3272,7 +3272,7 @@
    "requests": 6,
    "eyes_input": 3618
   },
-  "tokens": 53240
+  "tokens": 73672
  },
  "ms-vague-requests-5": {
   "model": "gemini-3.5-flash-lite",
@@ -3362,7 +3362,7 @@
    "requests": 7,
    "eyes_input": 3658
   },
-  "tokens": 62529
+  "tokens": 86366
  },
  "ms-vague-requests-6": {
   "model": "gemini-3.5-flash-lite",
@@ -3422,6 +3422,6 @@
    "requests": 6,
    "eyes_input": 0
   },
-  "tokens": 52065
+  "tokens": 72497
  }
 }

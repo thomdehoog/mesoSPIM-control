@@ -122,6 +122,8 @@ def test_a_window_feature_that_fails_ends_its_operation_with_the_reason(core):
     ("optimize", {"mode": "focus", "range": 300, "points": 8}, "odd"),
     ("optimize", {"mode": "sharpness", "range": 300}, "mode is one of"),
     ("optimize", {"mode": "focus", "range": 300, "points": 99}, "must be <="),
+    ("optimize", {"mode": "focus", "range": 300, "points": 3}, "must be >= 5"),
+    ("optimize", {"mode": "focus", "range": 900}, "outside the allowed range"),
     ("optimize", {"mode": "focus", "range": 300, "roi": {"x": 0, "y": 0, "width": 99999, "height": 10}}, "outside the frame"),
     ("finish_optimization", {}, "'accept' is required"),
 ])

@@ -2837,7 +2837,8 @@ command(
 # carries them out and ends the operation (dispatcher.finish_operation).
 
 OPTIMIZER_MODES = ("focus", "etl_offset", "etl_amp")         # mesoSPIM_Optimizer's modes_list
-OPTIMIZER_POINTS = (3, 51)
+OPTIMIZER_POINTS = (5, 29)                                   # its Num of points box: 5, 7, ... 29
+OPTIMIZER_RANGE = (0.001, 500.0)                             # its Search interval box
 ALIGNMENT_TOGGLES = ("zero_left_etl", "zero_right_etl", "freeze_galvo")
 
 
@@ -3023,7 +3024,7 @@ def _accept_optimize(core, args):
     mode = text(args, "mode")
     if mode not in OPTIMIZER_MODES:
         raise ValidationError(f"mode is one of {list(OPTIMIZER_MODES)}")
-    out = {"mode": mode, "range": number(args, "range", (1e-6, 1e6)),
+    out = {"mode": mode, "range": number(args, "range", OPTIMIZER_RANGE),
            "points": integer(args, "points", *OPTIMIZER_POINTS, required=False, default=7)}
     if out["points"] % 2 == 0:
         raise ValidationError("points must be odd, as the optimizer asks (the current value sits in the middle)")
@@ -3146,7 +3147,8 @@ command(
     _on_the_gui_thread_as_operation("optimize"),
     accept=_accept_optimize,
     schema=_schema({"mode": {"type": "string", "enum": list(OPTIMIZER_MODES)},
-                    "range": {**_NUMBER, "description": "+- around the current value: um for focus, V for the ETL"},
+                    "range": {**_NUMBER, "minimum": OPTIMIZER_RANGE[0], "maximum": OPTIMIZER_RANGE[1],
+                              "description": "+- around the current value: um for focus, V for the ETL"},
                     "points": {"type": "integer", "minimum": OPTIMIZER_POINTS[0], "maximum": OPTIMIZER_POINTS[1],
                                "description": "odd; 7 when omitted"},
                     "roi": _BOX}, required=("mode", "range")),

@@ -647,21 +647,25 @@ class GuiHandles(QtCore.QObject):
 
     @QtCore.pyqtSlot(object, str, str, object)
     def operate(self, core, operation_id, name, args):
+        """Carry out a window's instrument feature, renew the copy of the windows, then end the
+        operation: a caller that sees it end sees the windows as it left them."""
         handlers = {"set_alignment_toggles": self.set_alignment_toggles, "optimize": self.optimize,
                     "finish_optimization": self.finish_optimization}
         self.operating = name
         try:
-            result = handlers[name](args)
-        except ValidationError as error:
-            fail_operation(core, operation_id, error)
-        except Exception as error:                                     # the window raised: say so, keep going
+            result, error = handlers[name](args), None
+        except ValidationError as refused:
+            result, error = None, refused
+        except Exception as raised:                                    # the window raised: say so, keep going
             logger.exception("Remote Control: %s failed in the window", name)
-            fail_operation(core, operation_id, f"{type(error).__name__}: {error}")
-        else:
-            finish_operation(core, operation_id, result)
+            result, error = None, f"{type(raised).__name__}: {raised}"
         finally:
             self.operating = None
         self.refresh()
+        if error is None:
+            finish_operation(core, operation_id, result)
+        else:
+            fail_operation(core, operation_id, error)
 
     def set_alignment_toggles(self, args):
         """The ETL tab's AmpL=0 and AmpR=0 and Freeze galvos, pressed as the operator presses them: their
@@ -702,7 +706,11 @@ class GuiHandles(QtCore.QObject):
         except AssertionError as error:                                # its own check: ETL modes need one shutter
             raise ValidationError(f"the optimizer refused: {error}") from None
         optimizer = window.optimizer
-        optimizer.set_parameters({"mode": args["mode"], "amplitude": args["range"], "n_points": args["points"]})
+        # Its Run reads the mode, search interval and number of points back from its own fields, and a
+        # change of mode sets that mode's defaults into them: so the mode first, then the two numbers.
+        optimizer.comboBoxMode.setCurrentIndex(optimizer.modes_list.index(args["mode"]))
+        optimizer.searchAmpDoubleSpinBox.setValue(args["range"])
+        optimizer.nPointsSpinBox.setValue(args["points"])
         optimizer.run_optimization()
         return {"mode": optimizer.mode, "parameter": optimizer.state_key if optimizer.mode != "focus" else "f_pos",
                 "old": float(optimizer.ini_state), "new": float(optimizer.new_state),
@@ -719,9 +727,10 @@ class GuiHandles(QtCore.QObject):
         return {"accepted": args["accept"], "value": new if args["accept"] else None}
 
     def record(self, number, outcome):
-        """Keep one request's outcome and renew the copy of the windows (on the GUI thread)."""
-        self.keep(number, outcome)
+        """Renew the copy of the windows, then keep the request's outcome (on the GUI thread): a
+        caller that sees the outcome sees the display it led to, never the one before it."""
         self.refresh()
+        self.keep(number, outcome)
 
     def capture_webcam(self, number, args):
         """The webcam's picture is drawn by the video system, which neither a window grab nor (on

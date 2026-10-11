@@ -31,7 +31,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25725
+  "tokens": 35941
  },
  "gen-acquisition-with-checks-10": {
   "model": "gemini-3.5-flash-lite",
@@ -112,7 +112,7 @@
    "requests": 8,
    "eyes_input": 3622
   },
-  "tokens": 71395
+  "tokens": 98683
  },
  "gen-acquisition-with-checks-11": {
   "model": "gemini-3.5-flash-lite",
@@ -189,7 +189,7 @@
    "requests": 7,
    "eyes_input": 3648
   },
-  "tokens": 62683
+  "tokens": 86520
  },
  "gen-acquisition-with-checks-12": {
   "model": "gemini-3.5-flash-lite",
@@ -304,7 +304,7 @@
    "requests": 8,
    "eyes_input": 6196
   },
-  "tokens": 74096
+  "tokens": 101416
  },
  "gen-acquisition-with-checks-13": {
   "model": "gemini-3.5-flash-lite",
@@ -377,7 +377,7 @@
    "requests": 6,
    "eyes_input": 1628
   },
-  "tokens": 53153
+  "tokens": 73583
  },
  "gen-acquisition-with-checks-14": {
   "model": "gemini-3.5-flash-lite",
@@ -442,7 +442,7 @@
    "requests": 5,
    "eyes_input": 3631
   },
-  "tokens": 44534
+  "tokens": 61600
  },
  "gen-acquisition-with-checks-15": {
   "model": "gemini-3.5-flash-lite",
@@ -564,7 +564,7 @@
    "requests": 9,
    "eyes_input": 6074
   },
-  "tokens": 82549
+  "tokens": 113280
  },
  "gen-acquisition-with-checks-16": {
   "model": "gemini-3.5-flash-lite",
@@ -629,7 +629,7 @@
    "requests": 5,
    "eyes_input": 3623
   },
-  "tokens": 44528
+  "tokens": 61593
  },
  "gen-acquisition-with-checks-17": {
   "model": "gemini-3.5-flash-lite",
@@ -681,7 +681,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 34632
+  "tokens": 48252
  },
  "gen-acquisition-with-checks-18": {
   "model": "gemini-3.5-flash-lite",
@@ -767,7 +767,7 @@
    "requests": 6,
    "eyes_input": 3664
   },
-  "tokens": 53863
+  "tokens": 74334
  },
  "gen-acquisition-with-checks-19": {
   "model": "gemini-3.5-flash-lite",
@@ -832,7 +832,7 @@
    "requests": 5,
    "eyes_input": 3651
   },
-  "tokens": 44525
+  "tokens": 61591
  },
  "gen-acquisition-with-checks-2": {
   "model": "gemini-3.5-flash-lite",
@@ -897,7 +897,7 @@
    "requests": 6,
    "eyes_input": 1625
   },
-  "tokens": 52822
+  "tokens": 73253
  },
  "gen-acquisition-with-checks-20": {
   "model": "gemini-3.5-flash-lite",
@@ -931,7 +931,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25725
+  "tokens": 35941
  },
  "gen-acquisition-with-checks-3": {
   "model": "gemini-3.5-flash-lite",
@@ -1002,7 +1002,7 @@
    "requests": 6,
    "eyes_input": 3640
   },
-  "tokens": 53354
+  "tokens": 73823
  },
  "gen-acquisition-with-checks-4": {
   "model": "gemini-3.5-flash-lite",
@@ -1160,7 +1160,7 @@
    "requests": 14,
    "eyes_input": 16093
   },
-  "tokens": 135342
+  "tokens": 183290
  },
  "gen-acquisition-with-checks-5": {
   "model": "gemini-3.5-flash-lite",
@@ -1256,7 +1256,7 @@
    "requests": 7,
    "eyes_input": 3688
   },
-  "tokens": 63072
+  "tokens": 86948
  },
  "gen-acquisition-with-checks-6": {
   "model": "gemini-3.5-flash-lite",
@@ -1380,7 +1380,7 @@
    "requests": 9,
    "eyes_input": 6101
   },
-  "tokens": 82613
+  "tokens": 113338
  },
  "gen-acquisition-with-checks-7": {
   "model": "gemini-3.5-flash-lite",
@@ -1437,7 +1437,7 @@
    "requests": 5,
    "eyes_input": 1615
   },
-  "tokens": 43787
+  "tokens": 60828
  },
  "gen-acquisition-with-checks-8": {
   "model": "gemini-3.5-flash-lite",
@@ -1508,7 +1508,7 @@
    "requests": 6,
    "eyes_input": 3640
   },
-  "tokens": 53448
+  "tokens": 73920
  },
  "gen-acquisition-with-checks-9": {
   "model": "gemini-3.5-flash-lite",
@@ -1542,7 +1542,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25725
+  "tokens": 35941
  },
  "gen-centring-1": {
   "model": "gemini-3.5-flash-lite",
@@ -1599,7 +1599,7 @@
    "requests": 4,
    "eyes_input": 3658
   },
-  "tokens": 35342
+  "tokens": 48989
  },
  "gen-centring-10": {
   "model": "gemini-3.5-flash-lite",
@@ -1658,7 +1658,7 @@
    "requests": 4,
    "eyes_input": 3716
   },
-  "tokens": 35489
+  "tokens": 49136
  },
  "gen-centring-11": {
   "model": "gemini-3.5-flash-lite",
@@ -1724,7 +1724,7 @@
    "requests": 4,
    "eyes_input": 3689
   },
-  "tokens": 35553
+  "tokens": 49200
  },
  "gen-centring-12": {
   "model": "gemini-3.5-flash-lite",
@@ -1781,7 +1781,7 @@
    "requests": 4,
    "eyes_input": 3697
   },
-  "tokens": 35404
+  "tokens": 49050
  },
  "gen-centring-13": {
   "model": "gemini-3.5-flash-lite",
@@ -1838,7 +1838,7 @@
    "requests": 4,
    "eyes_input": 3714
   },
-  "tokens": 35496
+  "tokens": 49143
  },
  "gen-centring-14": {
   "model": "gemini-3.5-flash-lite",
@@ -1895,7 +1895,7 @@
    "requests": 4,
    "eyes_input": 3656
   },
-  "tokens": 35330
+  "tokens": 48976
  },
  "gen-centring-15": {
   "model": "gemini-3.5-flash-lite",
@@ -1952,7 +1952,7 @@
    "requests": 4,
    "eyes_input": 3683
   },
-  "tokens": 35369
+  "tokens": 49016
  },
  "gen-centring-16": {
   "model": "gemini-3.5-flash-lite",
@@ -2009,7 +2009,7 @@
    "requests": 4,
    "eyes_input": 3668
   },
-  "tokens": 35359
+  "tokens": 49007
  },
  "gen-centring-17": {
   "model": "gemini-3.5-flash-lite",
@@ -2066,7 +2066,7 @@
    "requests": 4,
    "eyes_input": 3725
   },
-  "tokens": 35537
+  "tokens": 49185
  },
  "gen-centring-18": {
   "model": "gemini-3.5-flash-lite",
@@ -2134,7 +2134,7 @@
    "requests": 4,
    "eyes_input": 3660
   },
-  "tokens": 35510
+  "tokens": 49156
  },
  "gen-centring-19": {
   "model": "gemini-3.5-flash-lite",
@@ -2191,7 +2191,7 @@
    "requests": 4,
    "eyes_input": 3706
   },
-  "tokens": 35525
+  "tokens": 49173
  },
  "gen-centring-2": {
   "model": "gemini-3.5-flash-lite",
@@ -2248,7 +2248,7 @@
    "requests": 4,
    "eyes_input": 3719
   },
-  "tokens": 35482
+  "tokens": 49129
  },
  "gen-centring-20": {
   "model": "gemini-3.5-flash-lite",
@@ -2351,7 +2351,7 @@
    "requests": 8,
    "eyes_input": 9135
   },
-  "tokens": 74028
+  "tokens": 101375
  },
  "gen-centring-3": {
   "model": "gemini-3.5-flash-lite",
@@ -2408,7 +2408,7 @@
    "requests": 4,
    "eyes_input": 3665
   },
-  "tokens": 35356
+  "tokens": 49003
  },
  "gen-centring-4": {
   "model": "gemini-3.5-flash-lite",
@@ -2435,7 +2435,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17055
+  "tokens": 23866
  },
  "gen-centring-5": {
   "model": "gemini-3.5-flash-lite",
@@ -2498,7 +2498,7 @@
    "requests": 5,
    "eyes_input": 3657
   },
-  "tokens": 44198
+  "tokens": 61249
  },
  "gen-centring-6": {
   "model": "gemini-3.5-flash-lite",
@@ -2555,7 +2555,7 @@
    "requests": 4,
    "eyes_input": 3650
   },
-  "tokens": 35322
+  "tokens": 48969
  },
  "gen-centring-7": {
   "model": "gemini-3.5-flash-lite",
@@ -2612,7 +2612,7 @@
    "requests": 4,
    "eyes_input": 3646
   },
-  "tokens": 35225
+  "tokens": 48871
  },
  "gen-centring-8": {
   "model": "gemini-3.5-flash-lite",
@@ -2669,7 +2669,7 @@
    "requests": 4,
    "eyes_input": 3693
   },
-  "tokens": 35396
+  "tokens": 49043
  },
  "gen-centring-9": {
   "model": "gemini-3.5-flash-lite",
@@ -2828,7 +2828,7 @@
    "requests": 13,
    "eyes_input": 16091
   },
-  "tokens": 124951
+  "tokens": 169452
  },
  "gen-exposure-1": {
   "model": "gemini-3.5-flash-lite",
@@ -2905,7 +2905,7 @@
    "requests": 6,
    "eyes_input": 6018
   },
-  "tokens": 53713
+  "tokens": 74203
  },
  "gen-exposure-10": {
   "model": "gemini-3.5-flash-lite",
@@ -3034,7 +3034,7 @@
    "requests": 12,
    "eyes_input": 12124
   },
-  "tokens": 112682
+  "tokens": 153544
  },
  "gen-exposure-11": {
   "model": "gemini-3.5-flash-lite",
@@ -3088,7 +3088,7 @@
    "requests": 4,
    "eyes_input": 3602
   },
-  "tokens": 35182
+  "tokens": 48830
  },
  "gen-exposure-12": {
   "model": "gemini-3.5-flash-lite",
@@ -3155,7 +3155,7 @@
    "requests": 6,
    "eyes_input": 3645
   },
-  "tokens": 53170
+  "tokens": 73602
  },
  "gen-exposure-13": {
   "model": "gemini-3.5-flash-lite",
@@ -3210,7 +3210,7 @@
    "requests": 4,
    "eyes_input": 3622
   },
-  "tokens": 35208
+  "tokens": 48854
  },
  "gen-exposure-14": {
   "model": "gemini-3.5-flash-lite",
@@ -3265,7 +3265,7 @@
    "requests": 4,
    "eyes_input": 3621
   },
-  "tokens": 35246
+  "tokens": 48893
  },
  "gen-exposure-15": {
   "model": "gemini-3.5-flash-lite",
@@ -3342,7 +3342,7 @@
    "requests": 6,
    "eyes_input": 6064
   },
-  "tokens": 53955
+  "tokens": 74445
  },
  "gen-exposure-16": {
   "model": "gemini-3.5-flash-lite",
@@ -3400,7 +3400,7 @@
    "requests": 4,
    "eyes_input": 3621
   },
-  "tokens": 35300
+  "tokens": 48948
  },
  "gen-exposure-17": {
   "model": "gemini-3.5-flash-lite",
@@ -3455,7 +3455,7 @@
    "requests": 4,
    "eyes_input": 3654
   },
-  "tokens": 35316
+  "tokens": 48964
  },
  "gen-exposure-18": {
   "model": "gemini-3.5-flash-lite",
@@ -3512,7 +3512,7 @@
    "requests": 4,
    "eyes_input": 3643
   },
-  "tokens": 35245
+  "tokens": 48894
  },
  "gen-exposure-19": {
   "model": "gemini-3.5-flash-lite",
@@ -3568,7 +3568,7 @@
    "requests": 4,
    "eyes_input": 3653
   },
-  "tokens": 35328
+  "tokens": 48976
  },
  "gen-exposure-2": {
   "model": "gemini-3.5-flash-lite",
@@ -3623,7 +3623,7 @@
    "requests": 4,
    "eyes_input": 3593
   },
-  "tokens": 35155
+  "tokens": 48802
  },
  "gen-exposure-20": {
   "model": "gemini-3.5-flash-lite",
@@ -3700,7 +3700,7 @@
    "requests": 6,
    "eyes_input": 6037
   },
-  "tokens": 53924
+  "tokens": 74413
  },
  "gen-exposure-3": {
   "model": "gemini-3.5-flash-lite",
@@ -3754,7 +3754,7 @@
    "requests": 4,
    "eyes_input": 3605
   },
-  "tokens": 35167
+  "tokens": 48813
  },
  "gen-exposure-4": {
   "model": "gemini-3.5-flash-lite",
@@ -3821,7 +3821,7 @@
    "requests": 6,
    "eyes_input": 3638
   },
-  "tokens": 53104
+  "tokens": 73535
  },
  "gen-exposure-5": {
   "model": "gemini-3.5-flash-lite",
@@ -3876,7 +3876,7 @@
    "requests": 4,
    "eyes_input": 3653
   },
-  "tokens": 35300
+  "tokens": 48948
  },
  "gen-exposure-6": {
   "model": "gemini-3.5-flash-lite",
@@ -3951,7 +3951,7 @@
    "requests": 6,
    "eyes_input": 6040
   },
-  "tokens": 53825
+  "tokens": 74315
  },
  "gen-exposure-7": {
   "model": "gemini-3.5-flash-lite",
@@ -4007,7 +4007,7 @@
    "requests": 4,
    "eyes_input": 3626
   },
-  "tokens": 35226
+  "tokens": 48873
  },
  "gen-exposure-8": {
   "model": "gemini-3.5-flash-lite",
@@ -4062,7 +4062,7 @@
    "requests": 4,
    "eyes_input": 3618
   },
-  "tokens": 35195
+  "tokens": 48841
  },
  "gen-exposure-9": {
   "model": "gemini-3.5-flash-lite",
@@ -4118,7 +4118,7 @@
    "requests": 4,
    "eyes_input": 3618
   },
-  "tokens": 35171
+  "tokens": 48819
  },
  "gen-focusing-1": {
   "model": "gemini-3.5-flash-lite",
@@ -4466,7 +4466,7 @@
    "requests": 30,
    "eyes_input": 60801
   },
-  "tokens": 336048
+  "tokens": 438207
  },
  "gen-focusing-10": {
   "model": "gemini-3.5-flash-lite",
@@ -4606,7 +4606,7 @@
    "requests": 12,
    "eyes_input": 10876
   },
-  "tokens": 113399
+  "tokens": 154261
  },
  "gen-focusing-11": {
   "model": "gemini-3.5-flash-lite",
@@ -4733,7 +4733,7 @@
    "requests": 11,
    "eyes_input": 10833
   },
-  "tokens": 101894
+  "tokens": 139431
  },
  "gen-focusing-12": {
   "model": "gemini-3.5-flash-lite",
@@ -4780,7 +4780,7 @@
    "requests": 4,
    "eyes_input": 1620
   },
-  "tokens": 34727
+  "tokens": 48348
  },
  "gen-focusing-13": {
   "model": "gemini-3.5-flash-lite",
@@ -4963,7 +4963,7 @@
    "requests": 16,
    "eyes_input": 15665
   },
-  "tokens": 155292
+  "tokens": 209773
  },
  "gen-focusing-14": {
   "model": "gemini-3.5-flash-lite",
@@ -5044,7 +5044,7 @@
    "requests": 6,
    "eyes_input": 6076
   },
-  "tokens": 54180
+  "tokens": 74668
  },
  "gen-focusing-15": {
   "model": "gemini-3.5-flash-lite",
@@ -5227,7 +5227,7 @@
    "requests": 16,
    "eyes_input": 18439
   },
-  "tokens": 156678
+  "tokens": 211167
  },
  "gen-focusing-16": {
   "model": "gemini-3.5-flash-lite",
@@ -5466,7 +5466,7 @@
    "requests": 21,
    "eyes_input": 29192
   },
-  "tokens": 214979
+  "tokens": 286489
  },
  "gen-focusing-17": {
   "model": "gemini-3.5-flash-lite",
@@ -5576,7 +5576,7 @@
    "requests": 9,
    "eyes_input": 8772
   },
-  "tokens": 82809
+  "tokens": 113558
  },
  "gen-focusing-18": {
   "model": "gemini-3.5-flash-lite",
@@ -5663,7 +5663,7 @@
    "requests": 7,
    "eyes_input": 6109
   },
-  "tokens": 62854
+  "tokens": 86693
  },
  "gen-focusing-19": {
   "model": "gemini-3.5-flash-lite",
@@ -5731,7 +5731,7 @@
    "requests": 6,
    "eyes_input": 3652
   },
-  "tokens": 52916
+  "tokens": 73355
  },
  "gen-focusing-2": {
   "model": "gemini-3.5-flash-lite",
@@ -5787,7 +5787,7 @@
    "requests": 4,
    "eyes_input": 3665
   },
-  "tokens": 35409
+  "tokens": 49058
  },
  "gen-focusing-20": {
   "model": "gemini-3.5-flash-lite",
@@ -5845,7 +5845,7 @@
    "requests": 4,
    "eyes_input": 3603
   },
-  "tokens": 35263
+  "tokens": 48910
  },
  "gen-focusing-3": {
   "model": "gemini-3.5-flash-lite",
@@ -5903,7 +5903,7 @@
    "requests": 4,
    "eyes_input": 3633
   },
-  "tokens": 35323
+  "tokens": 48969
  },
  "gen-focusing-4": {
   "model": "gemini-3.5-flash-lite",
@@ -6019,7 +6019,7 @@
    "requests": 10,
    "eyes_input": 8923
   },
-  "tokens": 91638
+  "tokens": 125748
  },
  "gen-focusing-5": {
   "model": "gemini-3.5-flash-lite",
@@ -6136,7 +6136,7 @@
    "requests": 9,
    "eyes_input": 10783
   },
-  "tokens": 83589
+  "tokens": 114365
  },
  "gen-focusing-6": {
   "model": "gemini-3.5-flash-lite",
@@ -6186,7 +6186,7 @@
    "requests": 4,
    "eyes_input": 1624
   },
-  "tokens": 34825
+  "tokens": 48448
  },
  "gen-focusing-7": {
   "model": "gemini-3.5-flash-lite",
@@ -6323,7 +6323,7 @@
    "requests": 12,
    "eyes_input": 12098
   },
-  "tokens": 111671
+  "tokens": 152639
  },
  "gen-focusing-8": {
   "model": "gemini-3.5-flash-lite",
@@ -6417,7 +6417,7 @@
    "requests": 6,
    "eyes_input": 6113
   },
-  "tokens": 54640
+  "tokens": 75130
  },
  "gen-focusing-9": {
   "model": "gemini-3.5-flash-lite",
@@ -6577,7 +6577,7 @@
    "requests": 14,
    "eyes_input": 15964
   },
-  "tokens": 133399
+  "tokens": 181238
  },
  "gen-live-tuning-1": {
   "model": "gemini-3.5-flash-lite",
@@ -6658,7 +6658,7 @@
    "requests": 7,
    "eyes_input": 6009
   },
-  "tokens": 62523
+  "tokens": 86360
  },
  "gen-live-tuning-10": {
   "model": "gemini-3.5-flash-lite",
@@ -6721,7 +6721,7 @@
    "requests": 5,
    "eyes_input": 3678
   },
-  "tokens": 44088
+  "tokens": 61114
  },
  "gen-live-tuning-11": {
   "model": "gemini-3.5-flash-lite",
@@ -6877,7 +6877,7 @@
    "requests": 13,
    "eyes_input": 16228
   },
-  "tokens": 124536
+  "tokens": 168801
  },
  "gen-live-tuning-12": {
   "model": "gemini-3.5-flash-lite",
@@ -6929,7 +6929,7 @@
    "requests": 5,
    "eyes_input": 0
   },
-  "tokens": 43369
+  "tokens": 60395
  },
  "gen-live-tuning-13": {
   "model": "gemini-3.5-flash-lite",
@@ -6959,7 +6959,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17038
+  "tokens": 23848
  },
  "gen-live-tuning-14": {
   "model": "gemini-3.5-flash-lite",
@@ -7187,7 +7187,7 @@
    "requests": 19,
    "eyes_input": 29644
   },
-  "tokens": 192423
+  "tokens": 257119
  },
  "gen-live-tuning-15": {
   "model": "gemini-3.5-flash-lite",
@@ -7247,7 +7247,7 @@
    "requests": 5,
    "eyes_input": 3619
   },
-  "tokens": 43883
+  "tokens": 60909
  },
  "gen-live-tuning-16": {
   "model": "gemini-3.5-flash-lite",
@@ -7311,7 +7311,7 @@
    "requests": 5,
    "eyes_input": 3660
   },
-  "tokens": 44153
+  "tokens": 61179
  },
  "gen-live-tuning-17": {
   "model": "gemini-3.5-flash-lite",
@@ -7338,7 +7338,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17028
+  "tokens": 23838
  },
  "gen-live-tuning-18": {
   "model": "gemini-3.5-flash-lite",
@@ -7401,7 +7401,7 @@
    "requests": 5,
    "eyes_input": 3671
   },
-  "tokens": 44013
+  "tokens": 61040
  },
  "gen-live-tuning-19": {
   "model": "gemini-3.5-flash-lite",
@@ -7467,7 +7467,7 @@
    "requests": 5,
    "eyes_input": 3672
   },
-  "tokens": 44105
+  "tokens": 61132
  },
  "gen-live-tuning-2": {
   "model": "gemini-3.5-flash-lite",
@@ -7530,7 +7530,7 @@
    "requests": 5,
    "eyes_input": 3659
   },
-  "tokens": 43908
+  "tokens": 60935
  },
  "gen-live-tuning-20": {
   "model": "gemini-3.5-flash-lite",
@@ -7591,7 +7591,7 @@
    "requests": 5,
    "eyes_input": 3644
   },
-  "tokens": 44036
+  "tokens": 61062
  },
  "gen-live-tuning-3": {
   "model": "gemini-3.5-flash-lite",
@@ -7652,7 +7652,7 @@
    "requests": 5,
    "eyes_input": 3621
   },
-  "tokens": 43908
+  "tokens": 60934
  },
  "gen-live-tuning-4": {
   "model": "gemini-3.5-flash-lite",
@@ -7712,7 +7712,7 @@
    "requests": 5,
    "eyes_input": 3626
   },
-  "tokens": 43917
+  "tokens": 60943
  },
  "gen-live-tuning-5": {
   "model": "gemini-3.5-flash-lite",
@@ -7775,7 +7775,7 @@
    "requests": 5,
    "eyes_input": 3686
   },
-  "tokens": 44043
+  "tokens": 61070
  },
  "gen-live-tuning-6": {
   "model": "gemini-3.5-flash-lite",
@@ -8021,7 +8021,7 @@
    "requests": 21,
    "eyes_input": 33949
   },
-  "tokens": 216063
+  "tokens": 287575
  },
  "gen-live-tuning-7": {
   "model": "gemini-3.5-flash-lite",
@@ -8048,7 +8048,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17028
+  "tokens": 23838
  },
  "gen-live-tuning-8": {
   "model": "gemini-3.5-flash-lite",
@@ -8136,7 +8136,7 @@
    "requests": 7,
    "eyes_input": 6056
   },
-  "tokens": 62994
+  "tokens": 86830
  },
  "gen-live-tuning-9": {
   "model": "gemini-3.5-flash-lite",
@@ -8192,7 +8192,7 @@
    "requests": 3,
    "eyes_input": 3617
   },
-  "tokens": 26494
+  "tokens": 36709
  },
  "gen-must-stop-partway-1": {
   "model": "gemini-3.5-flash-lite",
@@ -8225,7 +8225,7 @@
    "requests": 2,
    "eyes_input": 1617
   },
-  "tokens": 17281
+  "tokens": 24098
  },
  "gen-must-stop-partway-10": {
   "model": "gemini-3.5-flash-lite",
@@ -8258,7 +8258,7 @@
    "requests": 2,
    "eyes_input": 1611
   },
-  "tokens": 17298
+  "tokens": 24114
  },
  "gen-must-stop-partway-11": {
   "model": "gemini-3.5-flash-lite",
@@ -8297,7 +8297,7 @@
    "requests": 3,
    "eyes_input": 1613
   },
-  "tokens": 26095
+  "tokens": 36324
  },
  "gen-must-stop-partway-12": {
   "model": "gemini-3.5-flash-lite",
@@ -8345,7 +8345,7 @@
    "requests": 4,
    "eyes_input": 1611
   },
-  "tokens": 34804
+  "tokens": 48427
  },
  "gen-must-stop-partway-13": {
   "model": "gemini-3.5-flash-lite",
@@ -8386,7 +8386,7 @@
    "requests": 3,
    "eyes_input": 1608
   },
-  "tokens": 26121
+  "tokens": 36350
  },
  "gen-must-stop-partway-14": {
   "model": "gemini-3.5-flash-lite",
@@ -8419,7 +8419,7 @@
    "requests": 2,
    "eyes_input": 1614
   },
-  "tokens": 17289
+  "tokens": 24106
  },
  "gen-must-stop-partway-15": {
   "model": "gemini-3.5-flash-lite",
@@ -8452,7 +8452,7 @@
    "requests": 2,
    "eyes_input": 1613
   },
-  "tokens": 17281
+  "tokens": 24098
  },
  "gen-must-stop-partway-16": {
   "model": "gemini-3.5-flash-lite",
@@ -8491,7 +8491,7 @@
    "requests": 3,
    "eyes_input": 1610
   },
-  "tokens": 26104
+  "tokens": 36333
  },
  "gen-must-stop-partway-17": {
   "model": "gemini-3.5-flash-lite",
@@ -8531,7 +8531,7 @@
    "requests": 3,
    "eyes_input": 1618
   },
-  "tokens": 26083
+  "tokens": 36313
  },
  "gen-must-stop-partway-18": {
   "model": "gemini-3.5-flash-lite",
@@ -8565,7 +8565,7 @@
    "requests": 2,
    "eyes_input": 1615
   },
-  "tokens": 17305
+  "tokens": 24122
  },
  "gen-must-stop-partway-19": {
   "model": "gemini-3.5-flash-lite",
@@ -8605,7 +8605,7 @@
    "requests": 3,
    "eyes_input": 1610
   },
-  "tokens": 26092
+  "tokens": 36321
  },
  "gen-must-stop-partway-2": {
   "model": "gemini-3.5-flash-lite",
@@ -8638,7 +8638,7 @@
    "requests": 2,
    "eyes_input": 1610
   },
-  "tokens": 17299
+  "tokens": 24115
  },
  "gen-must-stop-partway-20": {
   "model": "gemini-3.5-flash-lite",
@@ -8674,7 +8674,7 @@
    "requests": 2,
    "eyes_input": 1613
   },
-  "tokens": 17285
+  "tokens": 24103
  },
  "gen-must-stop-partway-3": {
   "model": "gemini-3.5-flash-lite",
@@ -8713,7 +8713,7 @@
    "requests": 3,
    "eyes_input": 1610
   },
-  "tokens": 26126
+  "tokens": 36354
  },
  "gen-must-stop-partway-4": {
   "model": "gemini-3.5-flash-lite",
@@ -8749,7 +8749,7 @@
    "requests": 2,
    "eyes_input": 1615
   },
-  "tokens": 17269
+  "tokens": 24087
  },
  "gen-must-stop-partway-5": {
   "model": "gemini-3.5-flash-lite",
@@ -8782,7 +8782,7 @@
    "requests": 2,
    "eyes_input": 1620
   },
-  "tokens": 17288
+  "tokens": 24105
  },
  "gen-must-stop-partway-6": {
   "model": "gemini-3.5-flash-lite",
@@ -8821,7 +8821,7 @@
    "requests": 3,
    "eyes_input": 1609
   },
-  "tokens": 26144
+  "tokens": 36372
  },
  "gen-must-stop-partway-7": {
   "model": "gemini-3.5-flash-lite",
@@ -8862,7 +8862,7 @@
    "requests": 3,
    "eyes_input": 1608
   },
-  "tokens": 26114
+  "tokens": 36344
  },
  "gen-must-stop-partway-8": {
   "model": "gemini-3.5-flash-lite",
@@ -8903,7 +8903,7 @@
    "requests": 3,
    "eyes_input": 1608
   },
-  "tokens": 26122
+  "tokens": 36352
  },
  "gen-must-stop-partway-9": {
   "model": "gemini-3.5-flash-lite",
@@ -8942,7 +8942,7 @@
    "requests": 3,
    "eyes_input": 1611
   },
-  "tokens": 26163
+  "tokens": 36391
  },
  "gen-recovery-from-refusals-1": {
   "model": "gemini-3.5-flash-lite",
@@ -8961,7 +8961,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8485
+  "tokens": 11890
  },
  "gen-recovery-from-refusals-10": {
   "model": "gemini-3.5-flash-lite",
@@ -9001,7 +9001,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17350
+  "tokens": 24167
  },
  "gen-recovery-from-refusals-11": {
   "model": "gemini-3.5-flash-lite",
@@ -9059,7 +9059,7 @@
    "requests": 4,
    "eyes_input": 3662
   },
-  "tokens": 35383
+  "tokens": 49006
  },
  "gen-recovery-from-refusals-12": {
   "model": "gemini-3.5-flash-lite",
@@ -9078,7 +9078,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8474
+  "tokens": 11879
  },
  "gen-recovery-from-refusals-13": {
   "model": "gemini-3.5-flash-lite",
@@ -9109,7 +9109,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17213
+  "tokens": 24024
  },
  "gen-recovery-from-refusals-14": {
   "model": "gemini-3.5-flash-lite",
@@ -9146,7 +9146,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17309
+  "tokens": 24126
  },
  "gen-recovery-from-refusals-15": {
   "model": "gemini-3.5-flash-lite",
@@ -9165,7 +9165,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8484
+  "tokens": 11890
  },
  "gen-recovery-from-refusals-16": {
   "model": "gemini-3.5-flash-lite",
@@ -9190,7 +9190,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 16958
+  "tokens": 23768
  },
  "gen-recovery-from-refusals-17": {
   "model": "gemini-3.5-flash-lite",
@@ -9215,7 +9215,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 16958
+  "tokens": 23768
  },
  "gen-recovery-from-refusals-18": {
   "model": "gemini-3.5-flash-lite",
@@ -9266,7 +9266,7 @@
    "requests": 3,
    "eyes_input": 1618
   },
-  "tokens": 26233
+  "tokens": 36449
  },
  "gen-recovery-from-refusals-19": {
   "model": "gemini-3.5-flash-lite",
@@ -9297,7 +9297,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17213
+  "tokens": 24024
  },
  "gen-recovery-from-refusals-2": {
   "model": "gemini-3.5-flash-lite",
@@ -9332,7 +9332,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17072
+  "tokens": 23883
  },
  "gen-recovery-from-refusals-20": {
   "model": "gemini-3.5-flash-lite",
@@ -9351,7 +9351,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8485
+  "tokens": 11890
  },
  "gen-recovery-from-refusals-3": {
   "model": "gemini-3.5-flash-lite",
@@ -9370,7 +9370,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8474
+  "tokens": 11879
  },
  "gen-recovery-from-refusals-4": {
   "model": "gemini-3.5-flash-lite",
@@ -9389,7 +9389,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8474
+  "tokens": 11879
  },
  "gen-recovery-from-refusals-5": {
   "model": "gemini-3.5-flash-lite",
@@ -9420,7 +9420,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17213
+  "tokens": 24024
  },
  "gen-recovery-from-refusals-6": {
   "model": "gemini-3.5-flash-lite",
@@ -9439,7 +9439,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8474
+  "tokens": 11879
  },
  "gen-recovery-from-refusals-7": {
   "model": "gemini-3.5-flash-lite",
@@ -9480,7 +9480,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25847
+  "tokens": 36062
  },
  "gen-recovery-from-refusals-8": {
   "model": "gemini-3.5-flash-lite",
@@ -9499,7 +9499,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8484
+  "tokens": 11890
  },
  "gen-recovery-from-refusals-9": {
   "model": "gemini-3.5-flash-lite",
@@ -9518,7 +9518,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8485
+  "tokens": 11890
  },
  "gen-vague-requests-1": {
   "model": "gemini-3.5-flash-lite",
@@ -9598,7 +9598,7 @@
    "requests": 6,
    "eyes_input": 6067
   },
-  "tokens": 53887
+  "tokens": 74378
  },
  "gen-vague-requests-10": {
   "model": "gemini-3.5-flash-lite",
@@ -9697,7 +9697,7 @@
    "requests": 10,
    "eyes_input": 6067
   },
-  "tokens": 91418
+  "tokens": 125472
  },
  "gen-vague-requests-11": {
   "model": "gemini-3.5-flash-lite",
@@ -9785,7 +9785,7 @@
    "requests": 7,
    "eyes_input": 6052
   },
-  "tokens": 63118
+  "tokens": 87013
  },
  "gen-vague-requests-12": {
   "model": "gemini-3.5-flash-lite",
@@ -9828,7 +9828,7 @@
    "requests": 4,
    "eyes_input": 0
   },
-  "tokens": 34464
+  "tokens": 48086
  },
  "gen-vague-requests-13": {
   "model": "gemini-3.5-flash-lite",
@@ -9847,7 +9847,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8481
+  "tokens": 11886
  },
  "gen-vague-requests-14": {
   "model": "gemini-3.5-flash-lite",
@@ -9937,7 +9937,7 @@
    "requests": 8,
    "eyes_input": 6053
   },
-  "tokens": 72010
+  "tokens": 99252
  },
  "gen-vague-requests-15": {
   "model": "gemini-3.5-flash-lite",
@@ -9989,7 +9989,7 @@
    "requests": 5,
    "eyes_input": 0
   },
-  "tokens": 43341
+  "tokens": 60368
  },
  "gen-vague-requests-16": {
   "model": "gemini-3.5-flash-lite",
@@ -10008,7 +10008,7 @@
    "requests": 1,
    "eyes_input": 0
   },
-  "tokens": 8481
+  "tokens": 11886
  },
  "gen-vague-requests-17": {
   "model": "gemini-3.5-flash-lite",
@@ -10033,7 +10033,7 @@
    "requests": 2,
    "eyes_input": 0
   },
-  "tokens": 17084
+  "tokens": 23895
  },
  "gen-vague-requests-18": {
   "model": "gemini-3.5-flash-lite",
@@ -10122,7 +10122,7 @@
    "requests": 8,
    "eyes_input": 3672
   },
-  "tokens": 70805
+  "tokens": 98047
  },
  "gen-vague-requests-19": {
   "model": "gemini-3.5-flash-lite",
@@ -10156,7 +10156,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25665
+  "tokens": 35880
  },
  "gen-vague-requests-2": {
   "model": "gemini-3.5-flash-lite",
@@ -10191,7 +10191,7 @@
    "requests": 2,
    "eyes_input": 1612
   },
-  "tokens": 17249
+  "tokens": 24066
  },
  "gen-vague-requests-20": {
   "model": "gemini-3.5-flash-lite",
@@ -10288,7 +10288,7 @@
    "requests": 10,
    "eyes_input": 6050
   },
-  "tokens": 91373
+  "tokens": 125427
  },
  "gen-vague-requests-3": {
   "model": "gemini-3.5-flash-lite",
@@ -10349,7 +10349,7 @@
    "requests": 5,
    "eyes_input": 0
   },
-  "tokens": 43503
+  "tokens": 60529
  },
  "gen-vague-requests-4": {
   "model": "gemini-3.5-flash-lite",
@@ -10393,7 +10393,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25818
+  "tokens": 36034
  },
  "gen-vague-requests-5": {
   "model": "gemini-3.5-flash-lite",
@@ -10553,7 +10553,7 @@
    "requests": 17,
    "eyes_input": 8991
   },
-  "tokens": 160176
+  "tokens": 218069
  },
  "gen-vague-requests-6": {
   "model": "gemini-3.5-flash-lite",
@@ -10625,7 +10625,7 @@
    "requests": 6,
    "eyes_input": 3629
   },
-  "tokens": 53045
+  "tokens": 73476
  },
  "gen-vague-requests-7": {
   "model": "gemini-3.5-flash-lite",
@@ -10659,7 +10659,7 @@
    "requests": 3,
    "eyes_input": 0
   },
-  "tokens": 25652
+  "tokens": 35867
  },
  "gen-vague-requests-8": {
   "model": "gemini-3.5-flash-lite",
@@ -10726,7 +10726,7 @@
    "requests": 4,
    "eyes_input": 3646
   },
-  "tokens": 35406
+  "tokens": 49051
  },
  "gen-vague-requests-9": {
   "model": "gemini-3.5-flash-lite",
@@ -10883,6 +10883,6 @@
    "requests": 14,
    "eyes_input": 14515
   },
-  "tokens": 133383
+  "tokens": 181057
  }
 }

@@ -376,3 +376,20 @@ def test_the_field_curvature_analysis_is_the_tool_s_own(app, tmp_path, monkeypat
     assert detrended["channels"][1]["sections_um"]["tilt_subtracted"] is True
     assert np.ptp(detrended["channels"][1]["sections_um"]["x"]) < np.ptp(tilted["sections_um"]["x"])
     window.close()
+
+
+
+def test_an_outcome_is_published_only_with_the_display_it_led_to(main):
+    """Found by the live sweep: the outcome "applied" was kept before the copy of the windows was
+    renewed, so a caller polling in between read the old levels next to it."""
+    handles = gui_handles.GuiHandles(main)
+    handles.refresh()
+    seen = []
+    keep = handles.keep
+
+    def keep_and_look(number, outcome):
+        seen.append(handles.display()["camera_window"]["levels"])      # what a poll would read with the outcome
+        keep(number, outcome)
+    handles.keep = keep_and_look
+    handles.perform(1, "set_display", {"levels": [111, 2222]})
+    assert seen == [[111.0, 2222.0]]
