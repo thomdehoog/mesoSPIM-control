@@ -6,6 +6,7 @@ change the instrument), or "not exposed: <why>". The test fails when a control h
 button upstream), when an entry names a call or a key that does not exist, and when the table names
 a control the .ui files no longer have: comprehensive, checked rather than promised. Buttons that
 differ only by a value are one call (the ten jog buttons are move_relative)."""
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -103,7 +104,62 @@ ACQUISITION_MANAGER = {
     **{name: "set_table_view" for name in ("GroupByChannelButton", "GroupByIlluminationButton", "GroupSelectedButton")},
 }
 
-WINDOWS = {"mesoSPIM_MainWindow.ui": MAIN_WINDOW, "mesoSPIM_AcquisitionManagerWindow.ui": ACQUISITION_MANAGER}
+# The other windows designed in .ui files (gui_handles works them).
+CAMERA_WINDOW = {"adjustLevelsButton": "set_display", "overlayCombo": "set_display"}
+TILE_OVERVIEW = {"doubleSpinBox_scale": "set_display"}
+OPTIMIZER = {**{name: "optimize" for name in ("comboBoxMode", "searchAmpDoubleSpinBox", "nPointsSpinBox", "runButton")},
+             "closeButton": "set_windows"}
+OPTIMIZER_RESULTS = {"acceptButton": "finish_optimization", "discardButton": "finish_optimization"}
+
+WINDOWS = {"mesoSPIM_MainWindow.ui": MAIN_WINDOW, "mesoSPIM_AcquisitionManagerWindow.ui": ACQUISITION_MANAGER,
+           "mesoSPIM_CameraWindow.ui": CAMERA_WINDOW, "mesoSPIM_Tile_Overview.ui": TILE_OVERVIEW,
+           "mesoSPIM_Optimizer.ui": OPTIMIZER, "mesoSPIM_Optimizer_Results.ui": OPTIMIZER_RESULTS,
+           "WebcamWindow.ui": {}}
+
+# Controls built in code rather than in a .ui file: the wizards' pages, the table's cell editors,
+# the processor chain window, the Utils tools, the menu actions added in code. Per file, how many
+# controls it builds and the calls that reach what they do; a control added to any of them changes
+# its count and fails the test until it is mapped here.
+SRC = Path(__file__).resolve().parents[2] / "src"
+BUILT = re.compile(r"Qt(?:Widgets)?\.(QPushButton|QToolButton|QCheckBox|QComboBox|QSpinBox|QDoubleSpinBox|QSlider|QLineEdit|"
+                   r"QRadioButton|QAction|QShortcut)\(")
+CODE_BUILT = {
+    "mesoSPIM_MainWindow.py": (4, ["set_processor_chain", "analyse_psf", "analyse_field_curvature"]),   # Plugins, Utils menus
+    "mesoSPIM_ProcessorChainWindow.py": (12, ["get_processor_chain", "set_processor_chain"]),
+    "mesoSPIM_ScriptWindow.py": (3, "not exposed: the script editor runs code"),
+    "utils/delegates.py": (7, ["update_acquisition_row", "get_position"]),           # the table's cell editors
+    "utils/widgets.py": (3, ["update_acquisition_row", "get_position"]),             # their M button and slider
+    "utils/multicolor_acquisition_wizard.py": (36, ["build_tiling_list", "get_position", "move_absolute"]),
+    "utils/filename_wizard.py": (15, ["name_acquisition_rows", "get_writer_parameters", "set_writer_parameters"]),
+    "utils/focus_tracking_wizard.py": (8, ["track_focus", "get_position"]),
+    "utils/image_processing_wizard.py": (1, ["update_acquisition_row"]),
+    "utils/psf_gui_qt.py": (17, ["analyse_psf"]),                                    # and its plots' own ranges
+    "utils/field_curvature_gui_qt.py": (17, ["analyse_field_curvature"]),
+}
+NOT_GUI = ("remote_control", "ai_assistant", "mesospim_viewer")
+
+
+def built_in_code():
+    """{file: number of controls it builds}, for every module of mesoSPIM that builds any."""
+    found = {}
+    for path in sorted(SRC.rglob("*.py")):
+        if any(part in path.parts for part in NOT_GUI):
+            continue
+        count = len(BUILT.findall(path.read_text(encoding="utf-8", errors="ignore")))
+        if count:
+            found[path.relative_to(SRC).as_posix()] = count
+    return found
+
+
+def test_every_control_built_in_code_is_counted_and_reaches_a_call():
+    found = built_in_code()
+    assert found == {name: count for name, (count, _) in CODE_BUILT.items()}, \
+        "controls built in code changed: map the new ones to their calls in CODE_BUILT"
+    for name, (_, calls) in CODE_BUILT.items():
+        if isinstance(calls, str):
+            assert calls.startswith("not exposed: "), name
+        else:
+            assert all(call in COMMANDS for call in calls), (name, calls)
 
 
 def controls(ui):
@@ -132,11 +188,11 @@ def test_every_entry_names_a_call_and_a_key_that_exist():
 
 
 def test_the_window_s_features_are_calls_and_what_is_left_is_named():
-    """Everything the two windows do is a call, but three things on purpose: the jog step boxes
-    (move_relative takes the step), the script editor (it runs code) and closing mesoSPIM."""
+    """Everything the windows designed in .ui files do is a call, but three things on purpose: the jog
+    step boxes (move_relative takes the step), the script editor (it runs code) and closing mesoSPIM."""
     entries = [entry for table in WINDOWS.values() for entry in table.values()]
     calls = {entry.partition(":")[0] for entry in entries if entry != "display" and not entry.startswith("not")}
     left = sorted({entry for entry in entries if entry.startswith("not exposed: ")})
-    assert len(calls) == 46, len(calls)
+    assert len(calls) == 48, len(calls)
     assert left == ["not exposed: closes mesoSPIM", "not exposed: the jog buttons' step; move_relative takes the step itself",
                     "not exposed: the script editor runs code"], left
