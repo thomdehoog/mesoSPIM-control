@@ -20,6 +20,7 @@ Maintainer (2026):
 """
 import importlib.util
 import itertools
+import logging
 import threading
 from pathlib import Path
 
@@ -32,6 +33,8 @@ from .dispatcher import ValidationError
 OVERLAYS = {"none": "Overlay: none", "box": "Box roi", "line": "Line roi", "light_sheet_marker": "LS marker"}
 OVERLAY_OF_WINDOW = {None: "none", "box": "box", "line": "line", "LS marker": "light_sheet_marker"}
 KEPT_OUTCOMES = 50
+
+logger = logging.getLogger(__name__)
 REFRESH_MS = 250
 
 
@@ -68,7 +71,7 @@ class CameraWindowHandle:
         queue = getattr(self.main_window.core, "frame_queue_display", None)
         if shown is not None and queue:
             return max(1, int(round(queue[0].shape[-1] / shown.shape[-1])))
-        return int(self.main_window.state.get("camera_display_live_subsampling", 1) or 1)
+        return int(self.main_window.state["camera_display_live_subsampling"])   # what set_image will use
 
     def frame_size(self):
         return frame_size(self.main_window.core, self.main_window.cfg)
@@ -239,19 +242,27 @@ class GuiHandles(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def refresh(self):
-        shown = self.read()
+        """Renew the copy get_display reads. Reading a window must never stop mesoSPIM (this runs while
+        it starts, and on a timer): a failure is logged and is what get_display then reports."""
+        try:
+            shown = self.read()
+        except Exception as error:
+            logger.exception("Remote Control: reading the windows for get_display failed")
+            shown = {"error": f"reading the windows failed: {type(error).__name__}: {error}"}
         with self.lock:
             self.shown = shown
 
 
 
 def frame_size(core, cfg):
-    """(width, height) of the camera frame: the one on display, else the camera's configured size."""
+    """(width, height) of the camera frame as the windows show it: the frame on display, else the
+    camera's configured size, turned as the camera window turns it (its x_image_width is the
+    configured y_pixels: "flipped to account for image rotation")."""
     queue = getattr(core, "frame_queue_display", None)
     if queue:
         height, width = queue[0].shape[-2:]
     else:
         camera = cfg.camera_parameters
-        height, width = camera["y_pixels"], camera["x_pixels"]
+        width, height = camera["y_pixels"], camera["x_pixels"]
     return int(width), int(height)
 

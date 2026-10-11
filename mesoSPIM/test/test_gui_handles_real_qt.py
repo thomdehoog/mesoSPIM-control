@@ -16,6 +16,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5 import QtWidgets  # noqa: E402
 
 from mesoSPIM.src.mesoSPIM_CameraWindow import mesoSPIM_CameraWindow  # noqa: E402
+from mesoSPIM.src.mesoSPIM_State import mesoSPIM_StateSingleton  # noqa: E402
 from mesoSPIM.src.remote_control import gui_handles  # noqa: E402
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -34,7 +35,9 @@ def main(app):
     cfg = SimpleNamespace(camera_parameters={"x_pixels": 2048, "y_pixels": 2048},
                           startup={"camera_display_live_subsampling": 2},
                           pixelsize={"1x": PIXEL_UM}, ui_options={"dark_mode": False})
-    state = {"state": "idle", "camera_display_live_subsampling": 2, "zoom": "1x", "shutterconfig": "Left"}
+    state = mesoSPIM_StateSingleton()          # mesoSPIM's own state object: a mapping without dict's methods
+    for key, value in {"state": "idle", "camera_display_live_subsampling": 2, "zoom": "1x", "shutterconfig": "Left"}.items():
+        state[key] = value
     frame = (np.arange(2048 * 2048, dtype=np.uint32) % 4000).astype(np.uint16).reshape(2048, 2048)
     core = SimpleNamespace(frame_queue_display=collections.deque([frame]))
     window = SimpleNamespace(cfg=cfg, state=state, core=core, package_directory=str(PACKAGE))
@@ -145,3 +148,35 @@ def test_the_display_names_the_frame_it_is_measured_in(main):
     camera = display["camera_window"]
     assert camera["frame"] == {"width": 2048, "height": 2048, "shown_every": 2, "pixel_um": PIXEL_UM}
     assert "status" in camera and camera["visible"] in (True, False)
+
+
+def test_a_failing_read_is_reported_and_never_stops_mesospim(main):
+    """The copy of what the windows show is a convenience: if reading a window fails, get_display says
+    why and mesoSPIM carries on (the handles are built while mesoSPIM starts)."""
+    handles = gui_handles.GuiHandles(main)
+    main.camera_window.histogram = None                      # a window in a state the handles cannot read
+    handles.refresh()
+    assert "getLevels" in handles.display()["error"]
+
+
+def test_before_the_first_frame_the_display_is_read_from_the_configured_camera(app):
+    """As mesoSPIM starts: the camera window is built, no frame has come yet."""
+    state = mesoSPIM_StateSingleton()
+    for key, value in {"state": "init", "camera_display_live_subsampling": 2, "zoom": "1x", "shutterconfig": "Left"}.items():
+        state[key] = value
+    # a camera that is not square: the window shows its frames turned, x_pixels as the height
+    cfg = SimpleNamespace(camera_parameters={"x_pixels": 2960, "y_pixels": 5056},
+                          startup={"camera_display_live_subsampling": 2},
+                          pixelsize={"1x": PIXEL_UM}, ui_options={"dark_mode": False})
+    window = SimpleNamespace(cfg=cfg, state=state, core=SimpleNamespace(frame_queue_display=collections.deque()),
+                             package_directory=str(PACKAGE))
+    window.camera_window = mesoSPIM_CameraWindow(window)
+    try:
+        handles = gui_handles.GuiHandles(window)
+        handles.refresh()
+        shown = handles.display()
+        assert "error" not in shown, shown.get("error")
+        assert shown["camera_window"]["frame"] == {"width": 5056, "height": 2960, "shown_every": 2, "pixel_um": PIXEL_UM}
+        assert (window.camera_window.x_image_width, window.camera_window.y_image_width) == (5056, 2960)   # as the window has it
+    finally:
+        window.camera_window.close()
