@@ -99,6 +99,11 @@ class QtMicrophone:
         self.audio = QtMultimedia.QAudioInput(source, audio_format)
         self.audio.setBufferSize(BLOCK_SAMPLES * 2 * 4)
         self.device = self.audio.start()
+        if self.device is None:              # Windows' privacy settings or a security program said no
+            self.audio = None
+            raise RuntimeError(f"the microphone {source.deviceName()} could not be opened; check that "
+                               "desktop apps may use it (Windows Settings, Privacy, Microphone) and that "
+                               "no security program blocks Python")
 
         def read():
             data = bytes(self.device.readAll())
