@@ -133,13 +133,13 @@ def main():
     assert chat.isVisible() and chat.windowTitle() == "mesoSPIM AI Assistant — Gemini, gemini-3.5-flash-lite"
     assert not tab.connect_button.isEnabled() and tab.disconnect_button.isEnabled()
     assert not language.isEnabled()
-    # In the window: the transcript on top, Stop microscope right of the input, on its line (Enter
-    # sends); under them Cancel prompt, Clear context and Show tool calls on one line, in this order.
-    stop, entry = chat.stop_button, chat.input
+    # In the window: the transcript on top, then the input (Enter sends) on a line of its own,
+    # since speech is off here; under it Cancel prompt, Clear context, Stop microscope and Show tool
+    # calls on one line, in this order.
+    entry = chat.input
     assert chat.output.mapTo(chat, chat.output.rect().bottomLeft()).y() < entry.mapTo(chat, entry.rect().topLeft()).y()
-    assert stop.mapTo(chat, stop.rect().topLeft()).y() == entry.mapTo(chat, entry.rect().topLeft()).y()
-    assert stop.mapTo(chat, stop.rect().topLeft()).x() > entry.mapTo(chat, entry.rect().topRight()).x()
-    row = (chat.interrupt, chat.clear_button, chat.show_tool_calls)
+    assert not chat.speak_button.isVisible()
+    row = (chat.interrupt, chat.clear_button, chat.stop_button, chat.show_tool_calls)
     middles = {b.mapTo(chat, b.rect().center()).y() for b in row}
     assert max(middles) - min(middles) <= 2 and min(middles) > entry.mapTo(chat, entry.rect().bottomLeft()).y()
     lefts = [b.mapTo(chat, b.rect().topLeft()).x() for b in row]

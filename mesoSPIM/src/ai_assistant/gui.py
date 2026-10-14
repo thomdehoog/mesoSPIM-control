@@ -11,6 +11,10 @@ answer plain under the commands it ran when Show tool calls is on. Images stay o
 frame goes to the vision model only. Enter submits; the input disables during a turn
 (single-flight); Cancel prompt stops the assistant, Stop microscope stops the instrument.
 
+With speech switched on in the setup, Speak (or F2) writes down what you say into the input, on
+this computer (voice.py); Esc throws it away. The words are never sent by speaking: you read them,
+correct them, and press Enter.
+
 Maintainer (2026):
     Thom de Hoog
     Center for Microscopy and Image Analysis
@@ -26,6 +30,7 @@ import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import config
+from . import voice as speech
 from . import skills as skill_files
 from ..remote_control import config as rc_config
 from .assistant import AssistantWorker, Endpoint, offered_commands
@@ -38,6 +43,10 @@ _ORPHANED_THREADS = []          # worker threads still in a model call at exit; 
 
 _BUBBLE = "#2b3b47"      # the operator's own turns only — the answers stay on the tab background
 _DIM = "#9aa7b0"         # tool-call and note text
+_FORMING = "#8a96a3"     # the phrase still being written down while you speak
+_LISTENING_DOT = "#ff4d4d"
+PLACEHOLDER = "Ask the microscope…"
+PLACEHOLDER_SPEAK = "Ask the microscope, or press F2 to speak"
 
 
 def _md_to_html(markdown):
@@ -68,6 +77,7 @@ class _Input(QtWidgets.QPlainTextEdit):
         super().__init__(parent)
         self.setTabChangesFocus(True)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.before_dictation = ""
         palette = self.palette()
         palette.setColor(QtGui.QPalette.PlaceholderText, QtGui.QColor("white"))   # "Ask the microscope…" reads
         self.setPalette(palette)
@@ -76,6 +86,8 @@ class _Input(QtWidgets.QPlainTextEdit):
         return self.toPlainText()
 
     def setText(self, text):
+        """Plain text, in the plain format: a grey italic phrase left by speaking never carries over."""
+        self.setCurrentCharFormat(QtGui.QTextCharFormat())
         self.setPlainText(text)
 
     def keyPressEvent(self, event):
@@ -83,6 +95,65 @@ class _Input(QtWidgets.QPlainTextEdit):
             self.returnPressed.emit()
             return
         super().keyPressEvent(event)
+
+    # --- dictation: what is being spoken, shown in the box as it is written down ---
+    def begin_dictation(self):
+        """Keep what the box holds; the spoken words follow it. Read-only until the speaking ends,
+        so a keystroke never lands in the middle of a phrase being rewritten."""
+        self.before_dictation = self.text()
+        self.setReadOnly(True)
+
+    def show_dictation(self, settled, forming):
+        """The settled phrases plain, the phrase still being worked out in grey italics: it can
+        still change as more of it is heard."""
+        plain = self.dictated(settled)
+        self.setText(plain if not forming else plain + separator(plain))
+        if forming:
+            spoken = QtGui.QTextCharFormat()
+            spoken.setFontItalic(True)
+            spoken.setForeground(QtGui.QColor(_FORMING))
+            cursor = self.textCursor()
+            cursor.movePosition(QtGui.QTextCursor.End)
+            cursor.insertText(forming, spoken)
+        self.moveCursor(QtGui.QTextCursor.End)
+        self.ensureCursorVisible()
+
+    def end_dictation(self, text):
+        """The whole of what was said, plain and editable: read it, correct it, then Enter sends it."""
+        self.setText(self.dictated(text))
+        self.setReadOnly(False)
+        self.moveCursor(QtGui.QTextCursor.End)
+
+    def cancel_dictation(self):
+        """Back to what the box held before the speaking began."""
+        self.setText(self.before_dictation)
+        self.setReadOnly(False)
+        self.moveCursor(QtGui.QTextCursor.End)
+
+    def dictated(self, spoken):
+        """What the box held before, then what was said."""
+        before = self.before_dictation
+        return before + separator(before) + spoken if spoken else before
+
+    def dictation_formats(self):
+        """What the box shows as (plain text, grey italic text), as the operator reads it."""
+        plain, forming = [], []
+        block = self.document().begin()
+        while block.isValid():
+            if block != self.document().begin():
+                plain.append("\n")
+            fragments = block.begin()
+            while not fragments.atEnd():
+                fragment = fragments.fragment()
+                (forming if fragment.charFormat().fontItalic() else plain).append(fragment.text())
+                fragments += 1
+            block = block.next()
+        return "".join(plain), "".join(forming)
+
+
+def separator(text):
+    """A space between what is there and the next words, unless there is nothing or a space already."""
+    return "" if text[-1:] in ("", " ", "\n") else " "
 
 
 def _field_label(text, parent, font, gap=PAIR_GAP):
@@ -207,8 +278,8 @@ class ModelPicker(QtWidgets.QGroupBox):
 
 
 class AssistantWindow(QtWidgets.QWidget):
-    """The chat, in a window of its own: the transcript, the input line with Stop microscope
-    beside it, and under them Cancel prompt, Clear context and Show tool calls. It exists while
+    """The chat, in a window of its own: the transcript, the input with Speak beside it when speech
+    is on, and under them Cancel prompt, Clear context, Stop microscope and Show tool calls. It exists while
     the assistant is connected: Connect in the tab opens it, Disconnect closes it, and closing it
     disconnects. The tab owns the session and the turn; this window is what it shows."""
 
@@ -217,8 +288,13 @@ class AssistantWindow(QtWidgets.QWidget):
         self.tab = tab
         self.setObjectName("AiAssistantWindow")
         self.setWindowTitle("mesoSPIM AI Assistant")
+        # Speak is narrow, so the input keeps its width; the width goes in the style sheet, which
+        # qdarkstyle would otherwise override. Listening, it fills blue: not red, the colour of stop.
         self.setStyleSheet("QPushButton { padding: 3px 9px; }"
-                           "QPushButton#AiAssistantStopButton { color: #ff4d4d; font-weight: bold; }")
+                           "QPushButton#AiAssistantStopButton { color: #ff4d4d; font-weight: bold; }"
+                           "QPushButton#AiAssistantSpeakButton { min-width: 78px; max-width: 78px; }"
+                           'QPushButton#AiAssistantSpeakButton[listening="true"] '
+                           "{ background-color: #26486b; border: 1px solid #3daee9; }")
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
@@ -237,16 +313,18 @@ class AssistantWindow(QtWidgets.QWidget):
         self.status.setVisible(False)                             # shown only while a turn runs
         layout.addWidget(self.status)
 
-        # The token meter: what the last request of the session cost in input tokens. The history
-        # is append-only, so it grows with every turn; past the model's warning it says so, and
-        # past its ceiling no turn starts until Clear context.
+        # The token meter: the session's history is append-only, so every request costs more than
+        # the one before. Below the model's warning that is nobody's concern and the line is not
+        # there; past it the line says so, and past the ceiling no turn starts until Clear context.
         self.meter = QtWidgets.QLabel("", self)
         self.meter.setObjectName("AiAssistantMeter")
         self.meter.setFont(font)
+        self.meter.setWordWrap(True)
+        self.meter.setVisible(False)
         layout.addWidget(self.meter)
 
         self.input = _Input(self)
-        self.input.setPlaceholderText("Ask the microscope…")
+        self.input.setPlaceholderText(PLACEHOLDER)
         self.input.setObjectName("AiAssistantInput")
         self.input.setFont(font)
         self.input.returnPressed.connect(tab.on_submit)
@@ -264,23 +342,56 @@ class AssistantWindow(QtWidgets.QWidget):
         self.show_tool_calls.setFont(font)
         self.show_tool_calls.setChecked(config.SHOW_TOOL_CALLS)
         self.show_tool_calls.toggled.connect(lambda _checked: tab._render())
-        # The two-line input, which Enter sends, with Stop microscope to its right, as tall as it;
-        # under them the other controls on one line.
+        # Speak takes no focus, so the typing stays in the input after a click.
+        self.speak_button = QtWidgets.QPushButton("Speak", self)
+        self.speak_button.setObjectName("AiAssistantSpeakButton")
+        self.speak_button.setFont(font)
+        self.speak_button.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.speak_button.setProperty("listening", False)
+        self.speak_button.clicked.connect(tab.on_speak)
+        self.speak_button.setVisible(False)                       # only with speech switched on
+        # The two-line input, which Enter sends, with Speak to its right, as tall as it; under them
+        # the other controls on one line, Stop microscope among them.
         two_rows = 2 * self.interrupt.sizeHint().height() + 6
         self.input.setFixedHeight(two_rows)
-        self.stop_button.setFixedHeight(two_rows)
+        self.speak_button.setFixedHeight(two_rows)
         entry = QtWidgets.QHBoxLayout()
         entry.addWidget(self.input, 1)
-        entry.addWidget(self.stop_button)
+        entry.addWidget(self.speak_button)
         layout.addLayout(entry)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
-        for widget in (self.interrupt, self.clear_button, self.show_tool_calls):
+        for widget in (self.interrupt, self.clear_button, self.stop_button, self.show_tool_calls):
             buttons.addWidget(widget)
         buttons.addStretch(1)
         layout.addLayout(buttons)
         self.resize(760, 880)                     # room for an answer of some lines above the input
         self.hide()
+
+    def set_speech(self, on):
+        """Speech switched on or off for this session: the Speak button, and the placeholder that
+        names F2. It stays greyed until the speech model has loaded."""
+        self.speak_button.setVisible(on)
+        self.speak_button.setEnabled(False)
+        self.speak_button.setToolTip("Loading the speech model…" if on else "")
+        self.input.setPlaceholderText(PLACEHOLDER_SPEAK if on else PLACEHOLDER)
+
+    def set_listening(self, listening):
+        """The Speak button while the microphone is on: blue, saying so."""
+        self.speak_button.setText("Listening…" if listening else "Speak")
+        self.speak_button.setProperty("listening", listening)
+        self.speak_button.style().unpolish(self.speak_button)
+        self.speak_button.style().polish(self.speak_button)
+
+    def keyPressEvent(self, event):
+        """F2 starts and stops speaking, Esc throws a recording away, wherever the focus is: the
+        input passes both keys on to the window."""
+        if event.key() == QtCore.Qt.Key_F2:
+            self.tab.on_speak()
+        elif event.key() == QtCore.Qt.Key_Escape:
+            self.tab.on_cancel_speech()
+        else:
+            super().keyPressEvent(event)
 
     def closeEvent(self, event):
         """The window's own close button: the operator is done with the assistant."""
@@ -310,6 +421,13 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._blocks = []                       # oldest first: HTML, or a finished answer's turn dict
         self._active = None                     # the running turn: {"tools", "reply", "error"}
         self._tokens = 0                        # the input tokens of the session's last request
+        self.voice = None                       # the microphone and speech engine, while connected with speech on
+        self.voice_ready = False                # the speech model has loaded
+        self.listening = False                  # the microphone is on, its words in the input
+        self.listening_since = QtCore.QElapsedTimer()
+        self.listening_clock = QtCore.QTimer(self)
+        self.listening_clock.setInterval(250)
+        self.listening_clock.timeout.connect(self.show_listening)
         # The done notice: while a run the assistant started is under way, the worker is asked every
         # DONE_CHECK_MS whether it has ended. It never runs a turn.
         self._done_check = QtCore.QTimer(self)
@@ -446,6 +564,17 @@ class AiAssistantGUI(QtWidgets.QWidget):
         options.addWidget(focus_label, 0, 2)
         options.addWidget(self.focus_metric, 0, 3)
         options.setColumnStretch(4, 1)
+        # Speech: the words are written down on this computer, so the box is offered only where the
+        # speech engine is installed; its tooltip says what to install otherwise.
+        self.speech = QtWidgets.QCheckBox("Speak to the assistant (English, transcribed on this computer)", preferences)
+        self.speech.setFont(font)
+        self.speech_missing = speech.missing()
+        self.speech.setToolTip("Speak in the assistant window, or press F2 there: the words appear in the input "
+                               "to read before Enter sends them. Nothing leaves this computer."
+                               if self.speech_missing is None else
+                               f"Needs the speech engine: {self.speech_missing}")
+        self.speech.setEnabled(self.speech_missing is None)
+        options.addWidget(self.speech, 1, 0, 1, 5)
 
         # The coordinate system as the operator sees it: one row per axis, what a positive move
         # does to the sample in the image. "Move it up" then has one meaning for the model.
@@ -520,6 +649,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         """The setup is applied by Connect and read only after it: Disconnect first to change it."""
         for widget in (self.language, self.vision, self.frame_bin, self.focus_metric, *self.axis_boxes.values()):
             widget.setEnabled(enabled)
+        self.speech.setEnabled(enabled and self.speech_missing is None)
 
     # --- connecting ---
     def on_connect(self):
@@ -535,6 +665,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._state == "idle":
             return
         self._release_session()
+        self.stop_voice()
         if self._running:
             self._set_running(False)
         self._blocks, self._active = [], None
@@ -615,6 +746,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
             detail += f"; {interval:g} s between requests"
         if vision is None and not language.vision:
             detail += "; no vision: look gives the numbers only"   # the box above says how to change that
+        if self.speech.isChecked() and self.speech_missing is None:
+            self.start_voice(speech.Voice())
         self._set_connect_state("ready", detail)
 
     def _load_skills(self):
@@ -685,7 +818,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
     # --- input / turn lifecycle ---
     def on_submit(self):
         text = self.chat_window.input.text().strip()
-        if not text or not self.chat_window.input.isEnabled() or self._state != "ready":
+        if not text or self.listening or not self.chat_window.input.isEnabled() or self._state != "ready":
             return
         if self._tokens >= self._ceiling()[1]:                # the session is as large as the model takes
             self._blocks.append(self._note_block(config.CONTEXT_FULL))
@@ -714,15 +847,18 @@ class AiAssistantGUI(QtWidgets.QWidget):
             self._show_tokens(tokens)
 
     def _show_tokens(self, tokens):
-        """The meter: the last request's input tokens, a warning past the model's, and the stop."""
+        """The meter: nothing while the session is small; past the model's warning, the tokens each
+        request now costs and what to do about it."""
         self._tokens = tokens
         warn, ceiling = self._ceiling()
-        text = f"{tokens:,} tokens per request" if tokens else ""
-        if tokens >= ceiling:
-            text += f" · {config.CONTEXT_FULL}"
-        elif tokens >= warn:
-            text += f" · {config.CONTEXT_LARGE}"
-        self.chat_window.meter.setText(text)
+        meter = self.chat_window.meter
+        if tokens and tokens >= ceiling:
+            meter.setText(f"{tokens:,} tokens per request: {config.CONTEXT_FULL}")
+        elif tokens and tokens >= warn:
+            meter.setText(f"{tokens:,} tokens per request: {config.CONTEXT_LARGE}")
+        else:
+            meter.setText("")
+        meter.setVisible(bool(meter.text()))
 
     # --- the done notice ---
     def _on_run_ended(self, text):
@@ -767,6 +903,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         window = self.chat_window
         window.input.setEnabled(not running)
         window.clear_button.setEnabled(not running)   # the memory is cleared between turns
+        window.speak_button.setEnabled(not running and self.voice_ready)   # the next question waits too
         window.status.setText("mesoSPIM is working…" if running else "")
         window.status.setVisible(running)
         if not running:
@@ -805,4 +942,91 @@ class AiAssistantGUI(QtWidgets.QWidget):
         """Called by MainWindow on app exit: release the session as Disconnect does. The
         instrument is the main window's to stop."""
         self._release_session()
+        self.stop_voice()
         self.chat_window.hide()
+
+    # --- speaking ---
+    def start_voice(self, voice):
+        """Speech for this session: the model loads in the background while the window opens, and
+        Speak works once it has."""
+        self.voice, self.voice_ready = voice, False
+        voice.sig_ready.connect(self.on_voice_ready)
+        voice.sig_text.connect(self.on_voice_text)
+        voice.sig_finished.connect(self.on_voice_finished)
+        voice.sig_failed.connect(self.on_voice_failed)
+        self.chat_window.set_speech(True)
+        voice.load()
+
+    def stop_voice(self):
+        """Disconnect: the microphone off and the engine gone; the next Connect loads it afresh."""
+        if self.voice is None:
+            return
+        self.on_cancel_speech()
+        self.voice.close()
+        self.voice, self.voice_ready = None, False
+        self.chat_window.set_speech(False)
+
+    def on_voice_ready(self):
+        self.voice_ready = True
+        button = self.chat_window.speak_button
+        button.setEnabled(not self._running)
+        button.setToolTip("Speak, then press Speak again (or F2) and read the words before Enter sends them. "
+                          "Esc throws them away.")
+
+    def on_speak(self):
+        """Speak or F2: start listening, or stop and leave the words in the input."""
+        if self.listening:
+            self.listening = False
+            self.listening_clock.stop()
+            self.voice.end()                     # on_voice_finished brings the last phrase
+            return
+        if not self.voice_ready or self._running or self._state != "ready":
+            return
+        self.chat_window.input.begin_dictation()
+        if not self.voice.begin():               # no microphone: on_voice_failed has said so
+            self.chat_window.input.cancel_dictation()
+            return
+        self.listening = True
+        self.chat_window.set_listening(True)
+        self.listening_since.start()
+        self.listening_clock.start()
+        self.show_listening()
+
+    def on_cancel_speech(self):
+        """Esc: the recording is thrown away and the input is as it was."""
+        if not self.listening:
+            return
+        self.listening = False
+        self.listening_clock.stop()
+        self.voice.cancel()
+        self.chat_window.input.cancel_dictation()
+        self.end_listening()
+
+    def show_listening(self):
+        """The status line while listening: a red dot, how long, and how to stop."""
+        seconds = self.listening_since.elapsed() // 1000
+        status = self.chat_window.status
+        status.setText(f'<span style="color:{_LISTENING_DOT};">&#9679;</span>&nbsp; {seconds // 60}:{seconds % 60:02d}'
+                       f'&nbsp;&nbsp; <span style="color:{_DIM};">press Speak or F2 to stop, Esc to cancel</span>')
+        status.setVisible(True)
+
+    def on_voice_text(self, settled, forming):
+        if self.listening:
+            self.chat_window.input.show_dictation(settled, forming)
+
+    def on_voice_finished(self, text):
+        self.chat_window.input.end_dictation(text)
+        self.end_listening()
+
+    def on_voice_failed(self, message):
+        """The model would not load, or there is no microphone: said in the transcript."""
+        if not self.voice_ready:
+            self.chat_window.speak_button.setToolTip(f"Speech is not available: {message}")
+        self._blocks.append(self._note_block(f"Speech: {message}"))
+        self._render()
+
+    def end_listening(self):
+        self.chat_window.set_listening(False)
+        self.chat_window.status.setText("")
+        self.chat_window.status.setVisible(False)
+        self.chat_window.input.setFocus()

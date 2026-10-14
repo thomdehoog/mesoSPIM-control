@@ -43,8 +43,9 @@ def _run_pytest(paths, environment=None, show_output=False):
 
 
 def _pyqt():
-    assistant = TESTS.parent / "ai_assistant" / "test_real_pyqt_assistant_smoke.py"
-    for script in (TESTS / "test_real_pyqt_smoke.py", TESTS / "test_real_pyqt_transport_smoke.py", assistant):
+    assistant = TESTS.parent / "ai_assistant"
+    for script in (TESTS / "test_real_pyqt_smoke.py", TESTS / "test_real_pyqt_transport_smoke.py",
+                   assistant / "test_real_pyqt_assistant_smoke.py", assistant / "test_real_pyqt_voice.py"):
         result = subprocess.call([sys.executable, str(script)], cwd=REPOSITORY, env=os.environ.copy())
         if result:
             return result
