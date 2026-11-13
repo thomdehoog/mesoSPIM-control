@@ -118,6 +118,40 @@ def test_a_page_left_open_is_turned_away_once_the_viewer_has_stopped(tiles):
         line.close()
 
 
+def test_a_chunk_is_found_with_one_question_to_the_disk_and_links_stay_inside(tmp_path):
+    """Every chunk of a picture is looked up, so the lookup asks the disk once about the
+    file and remembers what it found out about the folder. A link is still followed only
+    if it stays inside the store."""
+    import os
+
+    store = tmp_path / "store"
+    (store / "0" / "c").mkdir(parents=True)
+    (store / "0" / "c" / "1").write_bytes(b"chunk")
+    (tmp_path / "secret").write_bytes(b"not for the page")
+    stores = Stores()
+    key = stores.register(store)
+    assert stores.file(key, "0/c/1") == (store / "0" / "c" / "1").resolve()
+    assert stores.file(f"{key}.4", "0/c/1") is not None, "the same store under a new address"
+    assert stores.file(key, "0/c/2") is None, "not written yet"
+    assert stores.file(key, "0/c") is None and stores.file(key, "0/c/") is None, "a folder is not a file"
+    assert stores.file(key, "../secret") is None and stores.file("9", "0/c/1") is None
+    (store / "0" / "c" / "2").write_bytes(b"landed")
+    assert stores.file(key, "0/c/2") is not None, "found as soon as it is there"
+    if hasattr(os, "symlink"):
+        try:
+            os.symlink(tmp_path / "secret", store / "0" / "c" / "out")
+            os.symlink(store / "0" / "c" / "1", store / "0" / "c" / "in")
+            os.symlink(tmp_path, store / "away", target_is_directory=True)
+        except OSError:
+            return  # Windows without the right to make links
+        assert stores.file(key, "0/c/out") is None, "a link out of the store"
+        assert stores.file(key, "0/c/in") is not None, "a link that stays inside"
+        assert stores.file(key, "away/secret") is None, "a linked folder that leads out"
+    # A guard holds a file back however it is asked for.
+    stores.guard(store, lambda file: file.endswith("/1"))
+    assert stores.file(key, "0/c/1") is None and stores.file(key, "0/c/2") is not None
+
+
 def test_the_page_itself_is_served_from_the_build(viewers):
     view = viewers()
     url = view.start()

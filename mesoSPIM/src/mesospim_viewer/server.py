@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import stat
 import sys
 import threading
 import time
@@ -175,6 +176,8 @@ class Stores:
         self._roots: dict[str, Path] = {}
         self._guards: dict[str, Callable[[str], bool]] = {}
         self._next = 0
+        # Folders of the stores that were found to lie inside their store: (key, folder) -> path.
+        self._folders: dict[tuple[str, str], Path] = {}
 
     def register(self, root: Path) -> str:
         root = root.resolve()
@@ -226,6 +229,53 @@ class Stores:
             return None
         return target
 
+    def file(self, key: str, relative: str) -> Path | None:
+        """The file ``relative`` of a store, if the page may have it and it is there.
+
+        This is what every request for a chunk goes through, thousands of times while
+        the operator moves through a dataset, so it asks the disk as little as it can:
+        one question about the file itself. :meth:`resolve` follows the whole path each
+        time to make sure it does not lead out of the store, which on a network drive
+        means several round trips per chunk. Here that check is made once per folder
+        and remembered, and the file is only looked at to see that it is an ordinary
+        file. A link in the last place is the rare case and takes the slow, full check.
+        """
+        key = key.partition(".")[0]
+        with self._lock:
+            root = self._roots.get(key)
+            guard = self._guards.get(key)
+        if root is None or not relative or not plain_path(relative):
+            return None
+        if guard is not None and guard(relative):
+            return None
+        folder, _, name = relative.rpartition("/")
+        if not name:
+            return None
+        inside = self._folders.get((key, folder))
+        if inside is None:
+            inside = (root / folder).resolve() if folder else root
+            try:
+                inside.relative_to(root)
+            except ValueError:
+                return None
+            # Only a folder that exists is remembered: one that is still to be written
+            # could yet turn out to be something else.
+            if inside.is_dir():
+                if len(self._folders) > 50_000:
+                    self._folders.clear()
+                self._folders[(key, folder)] = inside
+        target = inside / name
+        try:
+            kind = os.lstat(target).st_mode
+        except OSError:
+            return None
+        if stat.S_ISREG(kind):
+            return target
+        if stat.S_ISLNK(kind):
+            target = self.resolve(key, relative)
+            return target if target is not None and target.is_file() else None
+        return None
+
 
 def plain_path(relative: str) -> bool:
     """Whether a path asked for by the page is an ordinary path below a folder.
@@ -250,6 +300,15 @@ def _content_type(path: Path) -> str:
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server: "ViewServer"
+    # An answer is a few header lines and then the bytes, written one after the other.
+    # Left alone, the operating system holds the second, small piece back until the page
+    # has acknowledged the first, and the page takes its time to do that (40 ms on Linux,
+    # up to 200 ms on Windows) because it is waiting for the rest. Every chunk of a
+    # picture, every plane of the live view and every update of the panel arrived that
+    # much late. So: each piece is sent at once (no "Nagle" delay), and the pieces of a
+    # small answer are gathered and sent together.
+    disable_nagle_algorithm = True
+    wbufsize = 64 * 1024
 
     # -- routing ---------------------------------------------------------------
 
@@ -323,8 +382,8 @@ class Handler(BaseHTTPRequestHandler):
             pieces = route[len("/data/") :].split("/", 1)
             key = pieces[0]
             relative = pieces[1] if len(pieces) > 1 else ""
-            target = self.server.stores.resolve(key, relative)
-            if target is None or not target.is_file():
+            target = self.server.stores.file(key, relative)
+            if target is None:
                 self._send_empty(HTTPStatus.NOT_FOUND)
                 return
             self._send_file(target, head=head, cache="no-cache")
