@@ -280,6 +280,109 @@ def test_a_description_file_in_use_is_tried_again(tmp_path):
     assert array.shape == (1, 1, 2, 8, 8) and not failures
 
 
+def _rows(folder: Path, *rows) -> AcquisitionList:
+    """An acquisition table: one row per (x_pos, laser, filter)."""
+    return AcquisitionList([
+        Acquisition(
+            x_pos=x_pos, y_pos=200.0, z_start=10.0, z_end=10.0 + 5.0 * (PLANES - 1), z_step=5.0, planes=PLANES,
+            laser=laser, filter=filter_name, zoom='1x', shutterconfig='Left',
+            folder=str(folder), filename='Sample.ome.zarr', image_writer_plugin=OMEZarrWriterMPTCZYX.name(),
+        )
+        for x_pos, laser, filter_name in rows
+    ])
+
+
+def _run(writer, acq, acq_list, value: int, planes: int = PLANES, expected: int = PLANES) -> None:
+    """Write one stack of planes that all hold ``value`` (plus the plane number)."""
+    request = WriteRequest(
+        uri=os.path.join(acq['folder'], acq['filename']), shape=(expected, Y, X), dtype='uint16', axes='ZYX',
+        x_res=1.0, y_res=1.0, z_res=5.0, num_tiles=1, num_channels=1, num_rotations=1, num_shutters=1,
+        acq=acq, acq_list=acq_list, writer_config_file_values=SMALL_CHUNKS,
+    )
+    writer.open(request)
+    for z in range(planes):
+        writer.write_frame(WriteImage(
+            image=np.full((X, Y), value + z, dtype=np.uint16), current_image_counter=z, tile_number=0,
+            laser=acq['laser'], shutter=acq['shutterconfig'], rot=acq['rot'],
+            x_res=1.0, y_res=1.0, z_res=5.0, acq=acq, acq_list=acq_list,
+        ))
+    writer.finalize(FinalizeImage(acq=acq, acq_list=acq_list))
+    writer._wait_for_background_writers()
+
+
+def test_one_laser_with_two_filters_is_two_channels(tmp_path):
+    """Told apart by the laser alone, the second filter's stack was written over the first."""
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '488 nm', '515LP'), (100.0, '561 nm', 'Empty'))
+    assert OMEZarrWriterMPTCZYX.channels_of(table)[1] == ['488 Empty', '488 515LP', '561']
+    writer = OMEZarrWriterMPTCZYX()
+    metadata_files = []
+    for value, acq in zip((1000, 2000, 3000), table):
+        _run(writer, acq, table, value)
+        metadata_files.append(Path(writer.metadata_file).name)
+    root = zarr.open_group(tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr', mode='r')
+    channels = root.attrs['ome']['omero']['channels']
+    assert [channel['label'] for channel in channels] == ['488 Empty', '488 515LP', '561']
+    assert channels[0]['color'] == channels[1]['color'] == '00FF66', "the colour goes by the laser"
+    assert root['0'].shape[:2] == (1, 3)
+    assert [int(root['0'][0, c, 0, 0, 0]) for c in range(3)] == [1000, 2000, 3000]
+    # A metadata file's name holds the channel; a filter's name must not break it.
+    assert 'Ch488_515LP_meta' in metadata_files[1] and not any(' ' in name for name in metadata_files)
+
+
+def test_rows_run_one_at_a_time_land_where_a_full_run_puts_them(tmp_path):
+    """'Run selected acquisition' runs a list of one row. Counted within that list every
+    row was tile 0, channel 0, and each was written over the one before. Its place is now
+    looked up in the whole table, which mesoSPIM keeps in its shared state."""
+    from mesoSPIM.src.mesoSPIM_State import mesoSPIM_StateSingleton
+
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '561 nm', 'Empty'), (900.0, '488 nm', 'Empty'),
+                  (900.0, '561 nm', 'Empty'))
+    other = _rows(tmp_path, (5000.0, '640 nm', 'Empty'))
+    other[0]['filename'] = 'Another.ome.zarr'      # a row saved elsewhere does not count
+    whole = AcquisitionList(list(table) + list(other))
+    state = mesoSPIM_StateSingleton.instance or mesoSPIM_StateSingleton()
+    before = state['acq_list']
+    state['acq_list'] = whole
+    try:
+        writer = OMEZarrWriterMPTCZYX()
+        for value, row in ((3000, 2), (2000, 1), (4000, 3), (1000, 0)):     # one row at a time, in any order
+            _run(writer, whole[row], AcquisitionList([whole[row]]), value)
+    finally:
+        state['acq_list'] = before
+    acquisition = tmp_path / 'Sample.ome.zarr'
+    assert sorted(p.name for p in acquisition.iterdir() if p.is_dir()) == [
+        'Mag1_Tile0_Sh0_Rot0.ome.zarr', 'Mag1_Tile1_Sh0_Rot0.ome.zarr']
+    for tile, values in enumerate(((1000, 2000), (3000, 4000))):
+        root = zarr.open_group(acquisition / f'Mag1_Tile{tile}_Sh0_Rot0.ome.zarr', mode='r')
+        assert [channel['label'] for channel in root.attrs['ome']['omero']['channels']] == ['488', '561']
+        assert [int(root['0'][0, c, 0, 0, 0]) for c in range(2)] == list(values)
+
+
+def test_a_stack_stopped_in_a_later_channel_ends_in_empty_planes_and_is_noted(tmp_path):
+    """Stop in the second channel at plane 11 of 20, with chunks 8 planes deep. The chunk
+    being filled was completed with five copies of the last plane, which looked like data.
+    They are empty now, and the store says which stack is incomplete."""
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '561 nm', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    _run(writer, table[0], table, 1000)
+    _run(writer, table[1], table, 2000, planes=11)
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    root = zarr.open_group(store, mode='r')
+    stack = root['0'][0, 1]
+    assert stack.shape[0] == PLANES
+    assert [int(plane[0, 0]) for plane in stack[:11]] == [2000 + z for z in range(11)]
+    assert not stack[11:].any(), "nothing after the last real plane looks like data"
+    assert np.array_equal(root['0'][0, 0, :, 0, 0], 1000 + np.arange(PLANES)), "the first channel is untouched"
+    assert root.attrs['mesospim_incomplete_stacks'] == [
+        {'t': 0, 'c': 1, 'planes_written': 11, 'planes_expected': PLANES}]
+
+    # Acquired again in full, the stack is whole and the note is gone.
+    _run(OMEZarrWriterMPTCZYX(), table[1], table, 2000)
+    root = zarr.open_group(store, mode='r')
+    assert np.array_equal(root['0'][0, 1, :, 0, 0], 2000 + np.arange(PLANES))
+    assert 'mesospim_incomplete_stacks' not in root.attrs
+
+
 def test_the_plugin_registers_beside_the_mp_writer():
     from mesoSPIM.src.plugins.ImageWriterApi import ImageWriter
     assert isinstance(OMEZarrWriterMPTCZYX(), ImageWriter)

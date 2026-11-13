@@ -12,6 +12,7 @@ from mesoSPIM.src.plugins.ImageWriterApi import (
     WriterCapabilities, WriteRequest, API_VERSION, FileNaming, FinalizeImage
 )
 from mesoSPIM.src.plugins.ImageWriters.OmeZarrWriterMP import OMEZarrWriterMP
+from mesoSPIM.src.utils.acquisitions import AcquisitionList
 
 # Install zarr via pip if needed
 from mesoSPIM.src.plugins.utils import install_and_import
@@ -32,7 +33,7 @@ from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_wri
 # Only a mark at the end of the name counts, with nothing but suffixes ('.ome', '.zarr')
 # after it. A sample called 'Mouse_Time2h' keeps its name: there the digits are followed
 # by more of the name.
-_TIME_SUFFIX = re.compile(r'_Time(\d+)(?=(\.[A-Za-z][A-Za-z0-9]*)*$)')
+_TIME_SUFFIX = re.compile(r'_Time(\d+)(?=(?:\.[A-Za-z][A-Za-z0-9]*)*$)')
 
 
 class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
@@ -46,8 +47,12 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
     Layout
         <folder>/<Sample>.ome.zarr/Mag{mag}_Tile{tile}_Sh{shutter}_Rot{rot}.ome.zarr
-    Every channel of a tile is one index along c, in the order the lasers appear in the
-    acquisition list, and every time point of a time lapse is one index along t. The
+    Every channel of a tile is one index along c, and every time point of a time lapse is
+    one index along t. A channel is a laser line together with its filter, in the order
+    they first appear in the acquisition table; it is named after the laser ("488"), with
+    the filter added when a laser is used with more than one. Tiles and channels are
+    counted over all rows of the table that are saved under the same name, so a single row
+    run on its own (Run selected acquisition) lands at the same place as in a full run. The
     '_Time###' suffix mesoSPIM appends to file names between time points is read to find t
     and stripped from the path, so all time points of a run land in the same stores.
     Channel names and colours go into the omero block, the stage position into the
@@ -177,6 +182,58 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         '''"488 nm" -> "488"'''
         return laser[:-3] if laser.endswith(' nm') else laser
 
+    def rows_of_this_acquisition(self, acq, acq_list) -> AcquisitionList:
+        '''All rows of the acquisition table that are saved under the same name as ``acq``.
+
+        These rows together make up one acquisition on disk, and a stack's tile number and
+        channel number are its place among them. They are looked up in the whole table as
+        the operator sees it, not only in the list that is being run. "Run selected
+        acquisition" runs a list of a single row: counted within that list alone, every
+        row would be tile 0 and channel 0, and each would be written over the one before.
+
+        The whole table is mesoSPIM's own (the program's shared state). Where there is
+        none, as in a test or a script that drives the writer directly, or where ``acq``
+        is not one of its rows, the list that was handed over is used.
+        '''
+        table = acq_list
+        try:
+            from mesoSPIM.src.mesoSPIM_State import mesoSPIM_StateSingleton
+            state = mesoSPIM_StateSingleton.instance   # the one that exists; calling the class would reset it
+            whole = state['acq_list'] if state is not None else None
+            if whole is not None and any(row is acq or row == acq for row in whole):
+                table = whole
+        except Exception:
+            logger.debug(f'{self.name()}: the whole acquisition table could not be read', exc_info=True)
+
+        def saved_at(row) -> str:
+            return self.split_time_index(str(row['folder']) + '/' + str(row['filename']))[0]
+
+        here = saved_at(acq)
+        rows = [row for row in table if saved_at(row) == here]
+        return AcquisitionList(rows) if rows else acq_list
+
+    @classmethod
+    def channels_of(cls, rows) -> tuple[list[tuple[str, str]], list[str]]:
+        '''The channels of an acquisition and their names, in the order they first appear.
+
+        A channel is a laser line together with its filter. Two rows with the same laser
+        and different filters are two channels; told apart by the laser alone, the second
+        would be written over the first. A channel is named after its laser ("488"). Only
+        where a laser is used with more than one filter is the filter added ("488 Empty"),
+        so the usual acquisition keeps its short names.
+        '''
+        channels: list[tuple[str, str]] = []
+        for row in rows:
+            channel = (str(row['laser']), str(row['filter']))
+            if channel not in channels:
+                channels.append(channel)
+        lasers = [laser for laser, _filter in channels]
+        labels = [
+            cls.channel_label(laser) if lasers.count(laser) == 1 else f'{cls.channel_label(laser)} {filter_name}'
+            for laser, filter_name in channels
+        ]
+        return channels, labels
+
     def open(self, req: WriteRequest) -> None:
         assert self.compatible_suffix(req), f'URI suffix not compatible with {self.name()}'
 
@@ -219,15 +276,22 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         rot = acq['rot']
         shutter_id = acq['shutterconfig']
         shutter_id = 0 if shutter_id == 'Left' else 1
-        tile = acq_list.get_tile_index(acq)
+        # The stack's place in its acquisition: which tile, and which channel of that tile.
+        rows = self.rows_of_this_acquisition(acq, acq_list)
+        tile = rows.get_tile_index(acq)
         group_name = f'Mag{mag}_Tile{tile}_Sh{shutter_id}_Rot{rot}.ome.zarr'
         self.omezarr_group_name = group_name
 
         # Where this stack lands: the store of its tile, at (t, c)
         self.acquisition_path, time_index = self.split_time_index(req.uri)
-        lasers = acq_list.get_unique_attr_list('laser')
-        channel_index = lasers.index(acq['laser'])
-        self.channel_label_of_this_stack = self.channel_label(acq['laser'])
+        channels, channel_labels = self.channels_of(rows)
+        channel_index = channels.index((str(acq['laser']), str(acq['filter'])))
+        self.channel_label_of_this_stack = channel_labels[channel_index]
+        # For the Data viewer, so that its preview of this stack carries the same tile
+        # number and channel names as the store on disk.
+        self.tile_index_of_this_stack = tile
+        self.tile_count_of_this_acquisition = rows.get_n_tiles()
+        self.channel_labels_of_this_acquisition = tuple(channel_labels)
         self.current_acquire_file_path = self.acquisition_path + '/' + self.omezarr_group_name
         self.metadata_file_path = req.uri + '_' + self.omezarr_group_name + '_meta.txt'
 
@@ -246,7 +310,7 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
         # ZARR Writer setup
         Z_EST, Y, X = (req.shape[0], req.shape[2], req.shape[1])
-        self._warn_if_store_does_not_fit(self.current_acquire_file_path, n_channels=len(lasers), planes=Z_EST)
+        self._warn_if_store_does_not_fit(self.current_acquire_file_path, n_channels=len(channels), planes=Z_EST)
 
         xy_levels = compute_xy_only_levels(px_size_zyx)
         if generate_multiscales:
@@ -269,9 +333,10 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         tczyx = TCZYX(
             t=time_index,
             c=channel_index,
-            n_channels=len(lasers),
-            channel_labels=tuple(self.channel_label(laser) for laser in lasers),
-            channel_colors=tuple(CHANNEL_COLORS.get(self.channel_label(laser), '') for laser in lasers),
+            n_channels=len(channels),
+            channel_labels=tuple(channel_labels),
+            # The colour goes by the laser line, with or without a filter in the name.
+            channel_colors=tuple(CHANNEL_COLORS.get(self.channel_label(laser), '') for laser, _filter in channels),
         )
 
         # Setup multiprocessing ring buffer
@@ -392,9 +457,11 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         One metadata file per stack: the store name says which tile, the suffix which channel,
         and the time index stays in req.uri.
         """
-        self.metadata_file = self.req.uri + f'_{self.omezarr_group_name}_Ch{self.channel_label_of_this_stack}_meta.txt'
+        # A channel name may hold a filter's name, with spaces or a slash: not in a file name.
+        channel = re.sub(r'[^A-Za-z0-9.-]+', '_', self.channel_label_of_this_stack)
+        self.metadata_file = self.req.uri + f'_{self.omezarr_group_name}_Ch{channel}_meta.txt'
         self.metadata_file_describes_this_path = Path(self.current_acquire_file_path).as_posix()
 
         # Placeholder prior to adding data processing plugins
-        path = Path(self.req.uri + f'_{self.omezarr_group_name}_Ch{self.channel_label_of_this_stack}')
+        path = Path(self.req.uri + f'_{self.omezarr_group_name}_Ch{channel}')
         self.MIP_path = path.with_name('MAX_' + path.name + '.tif').as_posix()

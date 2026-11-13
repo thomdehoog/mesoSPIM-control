@@ -96,6 +96,8 @@ def test_a_file_name_without_a_time_index_is_the_first_time_point():
     assert time_point_of("brain.ome.zarr") == 0
     assert time_point_of("") == 0
     assert time_point_of("brain_Timeless.tif") == 0
+    assert time_point_of("Mouse_Time2h.ome.zarr") == 0, "'_Time' inside the sample's own name"
+    assert time_point_of("Mouse_Time2h.ome_Time005.zarr") == 5
     assert time_point_of("/data/run_Time007/brain.ome.zarr") == 0
 
 
@@ -198,6 +200,28 @@ def test_the_one_store_per_tile_writer_names_the_tile_and_the_acquisitions_folde
     assert stack.store == Path("/data/session/brain.ome.zarr/Mag2x_Tile1_Sh0_Rot0.ome.zarr")
     assert stack.folder == Path("/data/session/brain.ome.zarr")
     assert (stack.acquisition, stack.time_point) == ("brain", 0)
+
+
+def test_the_preview_takes_tile_and_channel_names_from_the_one_store_per_tile_writer():
+    """That writer counts tiles and channels over the whole acquisition table and names a
+    channel after its laser and, where needed, its filter. Run as a single row, the list
+    handed over holds one row only; the preview still has to carry the names the store
+    on disk has, or it would be shown as a channel of its own beside the real one."""
+    whole = two_tiles_two_lasers("brain.ome.zarr")
+    one_row = AcquisitionList([whole[3]])
+    writer = SimpleNamespace(
+        current_acquire_file_path="/data/session/brain.ome.zarr/Mag2x_Tile1_Sh0_Rot0.ome.zarr",
+        acquisition_path="/data/session/brain.ome.zarr",
+        channel_label_of_this_stack="561 Empty", channel_labels_of_this_acquisition=("488", "561 Empty", "561 LP"),
+        tile_index_of_this_stack=1, tile_count_of_this_acquisition=2,
+    )
+    stack = describe_stack(a_core(writer), whole[3], one_row, (2048, 2048))
+    assert (stack.channel, stack.channels, stack.channel_index) == ("561 Empty", ("488", "561 Empty", "561 LP"), 1)
+    assert (stack.tile, stack.tiles) == ("Tile 2", 2)
+    # Any other writer leaves the naming to the list that is run, as before.
+    plain = SimpleNamespace(current_acquire_file_path="/data/session/brain.ome.zarr/Mag2x_Tile0_Ch561.ome.zarr")
+    stack = describe_stack(a_core(plain), whole[3], one_row, (2048, 2048))
+    assert (stack.channel, stack.channels, stack.tile, stack.tiles) == ("561", ("561",), "Tile 1", 1)
 
 
 def test_a_time_lapse_into_one_store_per_tile_is_one_acquisition_with_time_points():

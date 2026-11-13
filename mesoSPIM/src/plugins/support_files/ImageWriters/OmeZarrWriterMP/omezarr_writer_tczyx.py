@@ -294,6 +294,59 @@ class Live3DPyramidWriterTCZYX(Live3DPyramidWriter):
         self.worker.start()
 
 
+    # What a stack that was cut short leaves behind, under this name in the store's attributes.
+    INCOMPLETE = "mesospim_incomplete_stacks"
+
+    def close_sync(self):
+        super().close_sync()
+        self._mark_a_stack_cut_short()
+
+    def _finalize(self):
+        super()._finalize()
+        self._mark_a_stack_cut_short()
+
+    def _mark_a_stack_cut_short(self) -> None:
+        """Tidy up after a stack that ended early, for example because Stop was pressed.
+
+        The first stack of a tile is simply trimmed to the planes it got. A later stack
+        (another channel, a later time point) lands in a store whose depth is already
+        fixed, and two things were left in it that look like data but are not. The
+        pipeline fills up its last, partly filled chunk with copies of the last plane, so
+        that it can write the chunk in one go; and the planes after that chunk were never
+        written. The copies are replaced by empty planes here, so that everything after
+        the last real plane reads as zero, which no camera delivers.
+
+        The store also notes which stack is incomplete and how many planes it holds,
+        under ``mesospim_incomplete_stacks`` in its attributes. That covers a stack that
+        was stopped as well as one that did not fit a store left by an earlier, shorter
+        run. A full stack written to the same place later takes the note away again.
+        """
+        first = self.arrs[0]
+        t, c = first.t, first.c
+        depth = first.array.shape[2]                  # after the trim, for a store this stack created
+        planes = min(self.z_counts[0], depth)         # the planes of this stack the store holds
+        expected = int(self.spec.z_size_estimate)     # the planes the stack was to have
+        cut_short = planes < expected
+        if not first.fresh and planes < depth:
+            for level, window in enumerate(self.arrs):
+                written, chunk = self.z_counts[level], self.zc[level]
+                padded_to = min(window.array.shape[2], -(-written // chunk) * chunk)
+                if padded_to > written:
+                    window.array[t, c, written:padded_to] = 0
+        try:
+            noted = [dict(entry) for entry in self.root.attrs.get(self.INCOMPLETE, [])]
+        except Exception:
+            noted = []
+        kept = [entry for entry in noted if (entry.get("t"), entry.get("c")) != (t, c)]
+        if cut_short:
+            kept.append({"t": t, "c": c, "planes_written": int(planes), "planes_expected": expected})
+        if kept != noted:
+            if kept:
+                when_free(lambda: self.root.attrs.update({self.INCOMPLETE: kept}))
+            else:
+                when_free(lambda: self.root.attrs.pop(self.INCOMPLETE, None))
+
+
 def omezarr_writer_worker_tczyx(
     shm_name: str,
     frame_shape: tuple[int, int],

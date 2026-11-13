@@ -38,7 +38,10 @@ INSTALL_HINT = (
 
 # The time index mesoSPIM writes into file names while running a time lapse
 # (see mesoSPIM_AcquisitionManagerWindow.append_time_index_to_filenames).
-_TIME_SUFFIX = re.compile(r'_Time(\d+)')
+# Only a mark at the end of the name counts, with nothing but endings ('.ome', '.zarr')
+# after it: a sample called 'Mouse_Time2h' keeps its name. The same rule as the
+# MP_OME_Zarr_TCZYX_Writer uses, so both read a file name alike.
+_TIME_SUFFIX = re.compile(r'_Time(\d+)(?=(?:\.[A-Za-z][A-Za-z0-9]*)*$)')
 
 
 def prepare_qt() -> None:
@@ -187,17 +190,27 @@ def describe_stack(core, acq, acq_list, frame_shape):
         if len(name) < 3:
             name = Path(str(acq['folder']).rstrip('/\\')).name or 'Acquisition'
     tile = acq_list.get_tile_index(acq)
+    tiles = int(acq_list.get_n_tiles())
+    channel, channels = label(acq['laser']), tuple(lasers)
+    # A writer that decides itself where a stack lands says so (the one-store-per-tile
+    # writer: which tile, and what its channels are called). The preview then carries
+    # the same tile number and channel names as the store it will be replaced by.
+    if store is not None and getattr(writer, 'channel_labels_of_this_acquisition', None):
+        channel = writer.channel_label_of_this_stack
+        channels = tuple(writer.channel_labels_of_this_acquisition)
+        tile = int(writer.tile_index_of_this_stack)
+        tiles = int(writer.tile_count_of_this_acquisition)
     return Stack(
         acquisition=name,
-        channel=label(acq['laser']),
-        channels=tuple(lasers),
+        channel=channel,
+        channels=channels,
         planes=int(acq.get_image_count()),
         frame=(int(frame_shape[0]), int(frame_shape[1])),
         voxel_um=(float(acq['z_step']), pixel, pixel),
         origin_um=(float(acq['z_start']), float(acq['y_pos']), float(acq['x_pos'])),
         time_point=time_point_of(acq['filename']) if (shared or store is None) else 0,
         tile=f'Tile {tile + 1}',
-        tiles=int(acq_list.get_n_tiles()),
+        tiles=tiles,
         folder=folder,
         store=store,
     )

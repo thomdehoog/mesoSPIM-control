@@ -165,12 +165,22 @@ MP_OME_Zarr_TCZYX_Writer
 The multi-process writer with a different layout on disk: **one
 ``(t, c, z, y, x)`` store per tile** inside the acquisition's ``.ome.zarr``
 group, at ``Mag{mag}_Tile{tile}_Sh{shutter}_Rot{rot}.ome.zarr``. Every channel
-of a tile is one index along ``c`` (in laser order), and every time point of a
-timelapse is appended along ``t`` of the same store -- the ``_Time###`` suffix
-mesoSPIM puts on file names between time points is read for ``t`` and stripped
-from the path. Channel names and colours go into the ``omero`` block, the stage
-position into the coordinate transformations. A viewer opens each tile as one
-multichannel, multi-time-point image.
+of a tile is one index along ``c``, and every time point of a timelapse is
+appended along ``t`` of the same store -- the ``_Time###`` suffix mesoSPIM puts
+on file names between time points is read for ``t`` and stripped from the path.
+Channel names and colours go into the ``omero`` block, the stage position into
+the coordinate transformations. A viewer opens each tile as one multichannel,
+multi-time-point image.
+
+A channel is a laser line together with its filter, in the order they first
+appear in the acquisition table. It is named after the laser (``488``). When
+one laser is used with more than one filter, the filter is added to the name
+(``488 515LP``), so the two are kept apart.
+
+Tiles and channels are counted over all rows of the acquisition table that are
+saved under the same file name. A single row run on its own with *Run selected
+acquisition* therefore lands in the same store, at the same channel, as it
+would in a run of the whole list.
 
 No chunk or shard spans a channel or a time point: every one covers exactly one
 ``(t, c)``, so a later stack only ever adds files and nothing on disk is
@@ -198,23 +208,18 @@ Not supported by this writer: the BigStitcher XML and ``write_cache``.
 
 .. note::
 
-   Three things are worth knowing before you rely on this writer, because each
-   of them can overwrite or shorten data without stopping the acquisition:
+   **Use a new file name after a Stop.** A store keeps the depth it was created
+   with. If a run is stopped during the first stack of a tile and then started
+   again under the same name, the old, shorter store is reused and the new
+   stacks are cut to its depth. The same happens when the channels of a tile
+   have different z ranges. mesoSPIM writes an error to its log when it sees
+   this, but it does not stop the acquisition.
 
-   * **Run the whole acquisition list.** A tile's place in the store, and a
-     channel's place along ``c``, are worked out from the list that is being
-     run. *Run selected acquisition* runs a list of one row, so every row
-     would be written as tile 0, channel 0, each over the one before.
-   * **One row per laser for each tile.** A channel is recognised by its
-     laser line. Two rows of the same tile with the same laser and different
-     filters share one channel, and the second replaces the first. Use the
-     ``MP_OME_Zarr_Writer`` for that kind of acquisition.
-   * **Use a new file name after a Stop.** A store keeps the depth it was
-     created with. If a run is stopped and then started again under the same
-     name, the old, shorter store is reused and the new stacks are cut to its
-     depth. The same happens when the channels of a tile have different z
-     ranges. mesoSPIM writes an error to its log when it sees this, but it
-     does not stop the acquisition.
+   A stack that ends early, or that did not fit, is marked in the store itself.
+   Everything after its last real plane is empty (zero), and the store's
+   attributes list it under ``mesospim_incomplete_stacks`` with its time point,
+   its channel and the number of planes it holds. Acquiring that stack again
+   in full removes the entry.
 
 H5_BDV_Writer
 ----------------
