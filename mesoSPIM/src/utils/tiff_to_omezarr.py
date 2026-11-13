@@ -720,6 +720,8 @@ def convert(sources: list, out_path, opts: dict,
             + (f' channel {src.channel_in_file}' if src.channel_in_file is not None else '')
             + f' -> {src.name}: {z}x{y}x{x} (z,y,x), voxel {voxel} um ({src.voxel_source or "entered"}), '
               f'{levels} levels, level-0 chunks {base}')
+        # '488nm' is saved as '488', the name the microscope's own writers give that channel.
+        channel_name = re.sub(r'^(\d+)\s*nm$', r'\1', src.channel_label.strip(), flags=re.I)
         writer = ozw.Live3DPyramidWriter(
             ozw.PyramidSpec(z_size_estimate=z, y=y, x=x, levels=levels),
             voxel_size=voxel,
@@ -732,6 +734,10 @@ def convert(sources: list, out_path, opts: dict,
             async_close=False,
             translation=src.translation_zyx_um,
             ome_version=ome_version,
+            # Each store holds one channel. Saying which one lets viewers such as the
+            # Data viewer show the channels as separate rows, as for data from the microscope.
+            channel_label=channel_name,
+            channel_color=ozw.CHANNEL_COLORS.get(channel_name),
         )
         reader = PlaneReader(src)
         reader.signed = opts['signed_integers']
