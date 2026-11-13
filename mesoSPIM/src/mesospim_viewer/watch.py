@@ -317,8 +317,24 @@ class Library:
         can take long on a slow or stalled network drive, and the window is closed from
         mesoSPIM's own window, which would stand still for as long. The look sees the
         mark set here before its next acquisition and stops there.
+
+        The stacks that were shown from the camera's frames are let go as well. They are
+        kept in memory, up to a gigabyte of them, and a closed window is not shown again.
         """
         self._closed = True
+        # Without waiting: if a look is going on right now, it lets them go itself.
+        if self._lock.acquire(blocking=False):
+            try:
+                self._let_previews_go()
+            finally:
+                self._lock.release()
+
+    def _let_previews_go(self) -> None:
+        """Forget every stack held in memory. Only for a library that is closed."""
+        self._retiring = []
+        for dataset in self.datasets:
+            dataset.previews.clear()
+            dataset.running = None
 
     # -- what is on offer ----------------------------------------------------------
 
@@ -545,6 +561,7 @@ class Library:
             self._list_watched()
             for dataset in list(self.datasets):
                 if self._closed:
+                    self._let_previews_go()
                     return  # closed while this look was going on
                 # A run paused by Live off is left where it is, on disk too.
                 if dataset.shown and (self.collecting or not dataset.in_run):

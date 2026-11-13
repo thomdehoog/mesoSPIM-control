@@ -106,6 +106,29 @@ def test_a_stack_that_begins_is_listed_shown_and_given_a_preview(library, tmp_pa
     assert follow(view) == {}, "no plane yet: nowhere to look"
 
 
+def test_closing_lets_the_stacks_held_in_memory_go(library, tmp_path):
+    """A stack shown from the camera's frames is kept in memory, up to a gigabyte of
+    them. A closed window is only hidden and is not shown again, so on closing they are
+    let go, and the stopped viewer no longer serves them."""
+    library.watch(tmp_path)
+    view = library.viewer
+    library.begin_stack(a_stack(tmp_path))
+    feed(library, range(8))
+    assert any(dataset.previews for dataset in library.datasets)
+    assert view._server.live, "the page reads the stack from memory through the server"
+    server = view._server
+    library.close()
+    assert not any(dataset.previews for dataset in library.datasets)
+    assert all(dataset.running is None for dataset in library.datasets)
+    view.stop()
+    assert not server.live
+    # What mesoSPIM still sends for the stack that was running is passed over.
+    library.add_plane(9, a_frame())
+    library.end_stack()
+    library.end_run()
+    assert not any(dataset.previews for dataset in library.datasets)
+
+
 def test_a_run_that_begins_is_shown_in_place_of_the_newest(library, tmp_path):
     older = an_acquisition(tmp_path, "run_a")
     write_tile(older / TILE.format(0), origin_um=(0, 0, 0), seed=1)

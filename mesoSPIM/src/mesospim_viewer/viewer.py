@@ -112,6 +112,8 @@ class Viewer:
             server, self._server = self._server, None
         if server is not None:
             server.stopped = True
+            # The stacks shown from memory are served from here; a stopped viewer shows nothing.
+            server.live.clear()
             server.shutdown()
             server.server_close()
 

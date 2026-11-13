@@ -32,6 +32,9 @@ import "./panel.css";
 
 export const SEPARATOR = " · "; // between acquisition and channel in a layer's name (state.py)
 
+// How long a click in the list waits for the place it asks for to be known.
+const GO_WITHIN_MS = 6000;
+
 const ICONS = {
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.3A11 11 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.7"/><path d="M6.6 6.6A16 16 0 0 0 2 12s3.5 6 10 6a10 10 0 0 0 4.2-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
@@ -178,10 +181,20 @@ function acquisitionsCard(viewer, post) {
   card.appendChild(empty);
   let entries = [];
   let wasLive = new Set();
-  let wanted = null; // where to go once Python says where it is: { name, position }
+  // Where to go once Python says where it is: { name, position, until }. A click on an
+  // acquisition that is not shown yet cannot be followed at once: its place is known
+  // only after Python has put it on screen. So the wish is kept, but only for a few
+  // seconds. Kept without an end, it used to fire on some later, unrelated update and
+  // take the view away from where the operator had moved it meanwhile.
+  let wanted = null;
+  let trying = null;
   let framedAt = null; // the position the view went to, marked until Fit frames everything again
   const go = () => {
     if (wanted === null) return;
+    if (performance.now() > wanted.until) {
+      wanted = null;
+      return;
+    }
     const entry = entries.find((one) => one.name === wanted.name);
     if (!entry) {
       wanted = null;
@@ -205,8 +218,16 @@ function acquisitionsCard(viewer, post) {
   const pick = (entry, position = null) => {
     select(entry.name);
     if (!entry.shown) post("/api/show", { name: entry.name, visible: true });
-    wanted = { name: entry.name, position };
+    wanted = { name: entry.name, position, until: performance.now() + GO_WITHIN_MS };
     go();
+    // The list is told of a new acquisition just before its layers are put on screen, so
+    // the first try may come a moment too early: it is tried again until it works or the
+    // few seconds are over.
+    clearInterval(trying);
+    trying = setInterval(() => {
+      go();
+      if (wanted === null) clearInterval(trying);
+    }, 250);
   };
   const draw = () => {
     count.textContent = entries.length ? String(entries.length) : "";

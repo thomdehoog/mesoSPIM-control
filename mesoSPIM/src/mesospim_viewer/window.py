@@ -240,6 +240,13 @@ def make_window_class():
             if self._polling is not None:
                 self._polling.join(timeout=1.0)
             self.viewer.stop()
+            # A closed window is only hidden, and its page would go on running unseen:
+            # asking the stopped viewer for news and holding the picture's memory on the
+            # graphics card. An empty page in its place lets all of that go.
+            try:
+                self.web.setHtml("")
+            except Exception:  # noqa: BLE001 -- closing must not fail over this
+                pass
             super().closeEvent(event)
 
     return DataViewerWindow
