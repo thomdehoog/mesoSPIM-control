@@ -20,12 +20,23 @@ function pathOf(url) {
   }
 }
 
+// The path of each chunk source, worked out once: a source's address never changes.
+// Late in a run of 200 tiles the engine holds some 3000 sources, and they are gone
+// through for every plane that is followed. Taking each address apart every time cost
+// 4.5 ms a go; remembered, it is a look-up.
+const paths = new WeakMap();
+
 /** Every chunk source the engine holds, with the path part of its address. */
 function* chunkSources(viewer) {
   for (const source of viewer.chunkManager.memoize.map.values()) {
     const url = source?.parameters?.url;
     if (typeof url !== "string" || source.rpcId == null || !source.rpc) continue;
-    yield [source, pathOf(url)];
+    let path = paths.get(source);
+    if (path === undefined) {
+      path = pathOf(url);
+      paths.set(source, path);
+    }
+    yield [source, path];
   }
 }
 

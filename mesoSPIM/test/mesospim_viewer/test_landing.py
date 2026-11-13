@@ -170,7 +170,9 @@ def test_a_thorough_look_finds_a_file_whose_folders_time_did_not_move(tmp_path):
     tile = Slabs(tmp_path / "tile.ome.zarr", version="0.4")  # zarr v2: every chunk in one folder
     first = tile.write(0, only=2)
     folder = tile.path / "0"
-    long_ago = time.time() - 100 * HOT_S
+    # Older than "recent", so nothing lists the folder again for being fresh; not so old
+    # that the first look forgets the files' times (COLD_S), which is another test.
+    long_ago = time.time() - 5 * HOT_S
 
     def age(names) -> None:
         for name in names:
@@ -188,6 +190,26 @@ def test_a_thorough_look_finds_a_file_whose_folders_time_did_not_move(tmp_path):
     assert sorted(landing.look(now=3.0, thorough=True)) == sorted(added)
     assert landing.look(now=4.0, thorough=True) == [], "each file once"
     assert landing.count == 4
+
+
+def test_the_first_look_at_a_finished_store_keeps_counts_not_every_files_time(tmp_path):
+    """A store opened from disk was written long ago. Its first look lists everything; what
+    is kept of it afterwards is a count per folder, not the time and size of every file.
+    For a large acquisition that was hundreds of megabytes, held for as long as it was open."""
+    tile = Slabs(tmp_path / "tile.ome.zarr")
+    files = tile.write(0) + tile.write(1)
+    long_ago = time.time() - 10 * COLD_S
+    for folder, _, names in os.walk(tile.path):
+        for name in names:
+            os.utime(os.path.join(folder, name), (long_ago, long_ago))
+    landing = Landing(tile.path)
+    assert sorted(landing.look(now=0.0)) == sorted(files)
+    assert landing.count == len(files)
+    kept = [folder for folder in landing._folders.values() if folder.count and folder.files is not None]
+    assert kept == [], "no folder of an old store keeps its files' times"
+    # A file that lands later is still told from the old ones: it is newer than they are.
+    more = tile.write(2)
+    assert sorted(landing.look(now=1.0, thorough=True)) == sorted(more)
 
 
 def test_what_is_remembered_of_a_quiet_folder_shrinks_to_a_count(tmp_path):

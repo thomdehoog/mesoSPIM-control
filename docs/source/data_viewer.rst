@@ -41,7 +41,7 @@ the viewer afterwards.
   planes or time points yourself, the view stays where you put it and the
   button reads **Back to live**; press it to follow again.
 * The view zooms out to show every tile as tiles arrive, until you pan or zoom.
-  After that a **Fit** button appears; press it to see everything again.
+  After that the **Fit** button lights up; press it to see everything again.
   Zooming into the tile that is being acquired does not stop the planes from
   coming.
 * The contrast of each channel sets itself from what is on screen while the
@@ -60,25 +60,42 @@ What is on screen
 * **Depth (Z) slider** and **time (T) slider** along the bottom, each only
   when there is more than one plane or time point. The Z slider shows the
   depth in micrometres and the plane number.
+* **Fit**, beside the 2D / 3D switch: shows every tile again. It is dimmed
+  while the view already shows everything.
 * **Under the pointer**: the position in micrometres and the value of each
-  channel, bottom right.
+  channel, beside the channel's colour, in the top right corner.
 * **Panel** on the right, foldable:
 
-  * *1 Load data*: **Open from folder…** adds a saved acquisition, and the
-    square **Live** switch decides whether what the microscope acquires comes
-    in. With Live on, a run that starts appears at the top of the list, marked
-    **Live**, and turns **Saved** when it ends. With Live off, nothing new comes
-    in, and a run being shown is marked **Paused** until Live is on again.
-  * *2 Acquisitions*: those of the watched folder, newest first, and the
+  * In its head, two small buttons. **Open…** adds a saved acquisition, and
+    **Live** decides whether what the microscope acquires comes in. With Live
+    on, a run that starts appears at the top of the list, marked **Live**, and
+    turns **Saved** when it ends. With Live off, nothing new comes in, and a
+    run being shown is marked **Paused** until Live is on again.
+  * *Acquisitions*: those of the watched folder, newest first, and the
     datasets you opened, each a bar with an eye, its name, one line about it
     and Live, Saved or Paused. The eye shows or hides it, so several can be
-    shown together. A click on the bar selects it, folds out its positions (one
-    acquisition's at a time; the arrow folds them away) and takes the view to
-    all of it; a click on a position takes the view to that tile. The × takes a
-    saved acquisition off the list; its files stay on disk.
-  * *3 Channels*: the selected acquisition's channels, one row each, with an
-    eye, a colour swatch, **Auto**, and the contrast with its histogram.
-  * *3D view*, in 3D only: the projection (max, blend, min), the detail, the
+    shown together, side by side where they lie. A click on the bar selects it,
+    folds out the map of its positions (one acquisition's at a time; the arrow
+    folds it away) and takes the view to all of it. The × takes a saved
+    acquisition off the list; its files stay on disk. It shows for the
+    acquisition you are on.
+  * *The map of the positions*: every tile of the selected acquisition as a
+    cell, where it lies on the stage. This works the same for four tiles and
+    for four hundred. A dashed frame marks the part of the specimen that is on
+    screen. During a run the cells show how far it has got: filled when
+    acquired, green while being acquired, dashed while still to come. A click
+    on a cell takes the view to that tile.
+  * *The map and the picture answer each other.* Point at a cell, and a box
+    is drawn around that tile in the picture. Point at a tile in the picture,
+    and its cell lights up, with its name under the map. A click on a tile in
+    the picture selects it, and with it its acquisition, so the channels below
+    become that acquisition's; the view stays where it is. Dragging still
+    moves the picture: only a press and release in one place is a click. A
+    click where no tile lies takes the selection off again.
+  * *Channels*: the selected acquisition's channels, one row each, with an
+    eye, a colour swatch, **Auto**, and the contrast with a thin strip of its
+    histogram. A click on the channel's name opens the histogram larger.
+  * *3D view*, in 3D only, above the channels: the projection (max, blend, min), the detail, the
     gain, where to look from, and whether to draw the plane the Z slider moves.
     **Detail** sets how sharply the volume is drawn for what is on screen, from
     fast to as fine as the screen; beside it, the size of a voxel of the copy of
@@ -203,18 +220,22 @@ two tiles and two lasers. Each stack should fill in as it is acquired, and a
 time lapse of a few time points should extend the T slider. In the panel,
 while it runs and after:
 
-1. The run comes in at the top, marked **Live**, opened, with its positions:
-   the tile being acquired says *acquiring*, the others *next*. With the list
-   going laser by laser, a tile with one laser done says *1 of 2 channels*.
+1. The run comes in at the top, marked **Live**, opened, with the map of its
+   positions. All tiles of the run are on the map from the first stack on:
+   the one being acquired is green, the ones still to come are dashed. Point
+   at a cell to read its state under the map; with the list going laser by
+   laser, a tile with one laser done says *1 of 2 channels*.
 2. At the end it turns **Saved**, its line says how many positions and which
    channels, and it has a ×.
-3. A click on an earlier acquisition selects it: its positions fold out, the
-   other's fold away, the channels below become its own, and the view goes to
-   it. A click on one of its positions goes to that tile; **Fit** goes back.
+3. A click on an earlier acquisition selects it: its map folds out, the
+   other's folds away, the channels below become its own, and the view goes to
+   it. A click on a cell of the map goes to that tile; **Fit** goes back.
+   Pointing at a tile in the picture boxes it and lights its cell; a click on
+   it selects it without moving the view.
 4. **Live** off, and a short run: it does not appear. **Live** on again: it
    appears, **Saved**. **Live** off during a run: it reads **Paused**; on again,
    it goes on.
-5. **Open from folder…** adds a saved acquisition; the × takes one off the list
+5. **Open…** adds a saved acquisition; the × takes one off the list
    (its files stay on disk). File > Exit closes the Data viewer with mesoSPIM.
 
 Checks that need the microscope PC
@@ -247,7 +268,7 @@ Then by hand, in demo mode with the Data viewer open:
    ``'ome_version': '0.5'`` and its default ``'shards'``, run two tiles, and
    wait until the run turns **Saved**. The tiles must stay visible, sharp when
    zoomed in. Close the window, open it again and load the run with
-   **Open from folder…**: it must appear again. (The window's old browser
+   **Open…**: it must appear again. (The window's old browser
    could not read shards before; a current browser always could, so this is
    the one place that shows it.)
 2. **The writer's own settings in the wizard.** In the file-naming wizard

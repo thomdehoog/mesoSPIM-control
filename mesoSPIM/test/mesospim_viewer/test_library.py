@@ -257,6 +257,140 @@ def test_a_tile_gone_quiet_is_looked_at_seldom_but_then_all_of_it(library, tmp_p
     assert landed(view)[1:] == [("data/0", more)]
 
 
+def _listings(monkeypatch) -> list[str]:
+    """Every folder that is listed from here on, by its name: what looking at the disk costs."""
+    import os as _os
+
+    listed: list[str] = []
+    real = _os.scandir
+
+    def counted(path):
+        listed.append(str(path))
+        return real(path)
+
+    monkeypatch.setattr("mesoSPIM.src.mesospim_viewer.landing.os.scandir", counted)
+    return listed
+
+
+def test_a_tile_that_is_whole_is_not_listed_again_only_its_description_is_read(library, tmp_path, monkeypatch):
+    """Every stack of the tile is on disk. Nothing more can land in it, so its folders are
+    not listed again, however long the run goes on: with two hundred finished tiles those
+    listings kept the acquisition's drive busy without a pause. Only the store's own
+    description is still read, because a time lapse makes the store grow by a time point."""
+    tile = Slabs(an_acquisition(tmp_path, "run") / TILE.format(0), planes=16, slab=8, channels=("488",))
+    tile.write_stack()
+    library.watch(tmp_path)
+    view = library.viewer
+    library.clock.tick(AWAKE_S + 1)
+    library.poll()
+    assert library.datasets[0].tiles[tile.path.resolve()].whole()
+    listed = _listings(monkeypatch)
+    for _ in range(12):   # an hour of looks at a finished tile of the newest acquisition
+        library.clock.tick(300)
+        library.poll()
+    assert [path for path in listed if str(tile.path.resolve()) in path] == [], "not one of its folders was listed"
+    # A time point appended is seen all the same, and its files are followed as they land.
+    tile.create(timepoints=2)
+    library.clock.tick(DOZING_S + 1)
+    library.poll()
+    assert sources(view, "run") == {"store-0": "data/0.1/"}, "the store is given to the page anew: it has grown"
+    files = tile.write(0, t=1)
+    library.clock.tick()
+    library.poll()
+    assert landed(view) == [("data/0", files)]
+
+
+def test_the_tiles_of_a_run_the_microscope_feeds_are_left_alone_until_it_writes_them(library, tmp_path, monkeypatch):
+    """The microscope says which tile it acquires next. The other tiles of its run, even
+    ones that are not whole yet (their second channel is still to come), are not probed
+    every fifteen seconds meanwhile: nothing lands in them before their turn."""
+    from .test_feed import a_stack, feed
+
+    acquisition = an_acquisition(tmp_path, "run")
+    waiting = Slabs(acquisition / TILE.format(0), planes=16, slab=8)   # two channels, one written
+    waiting.write_stack(c=0)
+    library.watch(tmp_path)
+    library.poll()
+    library.clock.tick(AWAKE_S + 1)
+    library.poll()
+    library.begin_stack(a_stack(tmp_path, tile=1, planes=16))   # the microscope is on another tile
+    feed(library, range(0, 4))
+    library.poll()
+    listed = _listings(monkeypatch)
+    for _ in range(8):
+        library.clock.tick(DOZING_S)
+        library.poll()
+    assert [path for path in listed if str(waiting.path.resolve()) in path] == []
+    # Its turn comes: the microscope says so, and the tile is watched at once.
+    library.end_stack()
+    library.begin_stack(a_stack(tmp_path, tile=0, channel="561", planes=16))
+    held = waiting.write(0, c=1)
+    library.clock.tick()
+    library.poll()
+    assert any(str(waiting.path.resolve()) in path for path in listed), "watched from the moment it is written"
+    assert status(library.viewer.url + "data/0/" + held[0]) == 404, "and its new stack is held back for its preview"
+
+
+def test_a_look_that_takes_long_lets_the_microscope_and_the_operator_in_between_tiles(viewers, tmp_path, monkeypatch):
+    """Listing a large tile on a network drive can take seconds. A look goes tile by tile
+    and makes way in between, so a frame from the camera or a click in the list waits for
+    one tile at most, not for the whole acquisition."""
+    import threading
+
+    from mesoSPIM.src.mesospim_viewer import Library
+
+    from .test_feed import a_frame, a_stack
+
+    a_run(tmp_path, "run", tiles=6)
+    library = Library(viewers(), look_budget_s=None)
+    library.watch(tmp_path)
+    library.poll()
+    library.begin_stack(a_stack(None, name="other"))
+    real = library._look_at
+
+    def slow(*args, **kwargs):
+        time.sleep(0.15)   # a slow drive: every tile takes this long to look at
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(library, "_look_at", slow)
+    look = threading.Thread(target=library.poll)
+    look.start()
+    time.sleep(0.05)   # the look is under way
+    began = time.perf_counter()
+    library.add_plane(0, a_frame())
+    waited = time.perf_counter() - began
+    look.join()
+    assert waited < 0.45, f"a frame waited {waited:.2f} s behind a look of 0.9 s"
+
+
+def test_a_look_past_its_time_leaves_the_tiles_in_no_hurry_for_the_next(viewers, tmp_path, monkeypatch):
+    """Twenty tiles to take in, and a drive on which each takes a while. One look takes in
+    what it can in its time and the next carries on: the tiles appear a few at a time, and
+    no single look holds everything else up for the whole acquisition."""
+    from mesoSPIM.src.mesospim_viewer import Library
+
+    a_run(tmp_path, "run", tiles=6)
+    library = Library(viewers(), look_budget_s=0.2)
+    real = library._add_tile
+
+    def slow(*args, **kwargs):
+        time.sleep(0.12)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(library, "_add_tile", slow)
+    library.watch(tmp_path)   # shows the newest acquisition, and with it looks at all of it once
+    dataset = library.datasets[0]
+    dataset.tiles.clear()     # as if nothing of it had been taken in yet
+    taken = []
+    for _ in range(6):
+        library.poll()
+        taken.append(len(dataset.tiles))
+        if taken[-1] == 6:
+            break
+    assert taken[0] < 6, f"one look took in all six tiles although each took 0.12 s: {taken}"
+    assert taken[-1] == 6 and taken == sorted(taken), f"the next looks carried on: {taken}"
+
+
 def test_a_dataset_opened_from_disk_is_hardly_looked_at_once_it_is_quiet(library, tmp_path):
     tile = Slabs(tmp_path / "old.ome.zarr")
     tile.write(0)

@@ -33,6 +33,7 @@ import random
 import re
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -60,6 +61,16 @@ DOZING_THOROUGH_S = 120.0
 RECENT_S = 3600.0
 # Any other is *asleep*: probed seldom, never listed whole.
 ASLEEP_S = 300.0
+# A tile whose stack is being acquired right now, and shown from the camera's frames,
+# is looked at on disk only this often. Its files are kept from the page until the
+# stack is whole, so looking every second would load the acquisition's drive with
+# hundreds of requests a second that change nothing on screen. Once the microscope
+# has finished the stack the tile is looked at every second again, to hand it over.
+FED_EVERY_S = 10.0
+# One look at the disk takes about this long at most before the tiles that are in no
+# hurry are left for the next look. A large acquisition is then gone through over
+# several looks, and the looks stay short.
+LOOK_BUDGET_S = 0.5
 # A probe looks this many folders deep: far enough to see a new time point or
 # channel begin in a tile's finest copy.
 PROBE_DEPTH = 4
@@ -223,6 +234,18 @@ class Tile:
             return True
         return self.landing.grew and now - self.landing.changed_at < AWAKE_S
 
+    def whole(self) -> bool:
+        """Whether every stack the store has room for is on disk in full: each time point
+        of each channel. Nothing more can land in such a tile unless the store itself
+        grows (a time point appended), and that shows in its description."""
+        progress = self.progress
+        if progress is None:
+            return False
+        names = [axis.name for axis in self.store.axes]
+        points = self.store.shape[names.index("t")] if "t" in names else 1
+        channels = self.store.shape[names.index("c")] if "c" in names else 1
+        return all(progress.complete((point, channel)) for point in range(points) for channel in range(channels))
+
     def recent(self) -> bool:
         """Whether its newest file is young enough for more to follow."""
         return not self.landing.holds_data or time.time() - self.landing.newest_s < RECENT_S
@@ -275,9 +298,22 @@ class Dataset:
 class Library:
     """The acquisitions on offer, which of them are shown, and keeping them up to date."""
 
-    def __init__(self, viewer: Viewer, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        viewer: Viewer,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        look_budget_s: float | None = LOOK_BUDGET_S,
+    ) -> None:
         self.viewer = viewer
         self.clock = clock
+        # How long one look at the disk may take before tiles in no hurry are left for
+        # the next; None for no limit (a test that moves the clock itself).
+        self.look_budget_s = look_budget_s
+        # How many callers are waiting for a look to make way: the microscope with a
+        # frame or a stack, the operator with a click (see poll).
+        self._waiting = 0
+        self._waiting_lock = threading.Lock()
         self.datasets: list[Dataset] = []
         self.watched: Acquisitions | None = None
         self._top: Path | None = None  # the newest acquisition of the watched folder
@@ -508,7 +544,7 @@ class Library:
 
     def show(self, name: str, visible: bool = True, only: bool = False) -> None:
         """Tick an acquisition on or off; ``only`` shows it alone."""
-        with self._lock:
+        with self._in_turn():
             dataset = self.dataset(name)
             if dataset is None:
                 return
@@ -552,69 +588,161 @@ class Library:
 
     # -- one look at the disk ----------------------------------------------------------
 
+    @contextmanager
+    def _in_turn(self):
+        """Hold the library for a caller that must not be kept waiting: the microscope
+        handing over a frame or a stack, the operator's click in the list.
+
+        A look at the disk (poll) can take long for a large acquisition on a slow drive.
+        It works tile by tile and lets go of the library in between; this tells it that
+        somebody is waiting, so that it really makes way and does not simply carry on.
+        """
+        with self._waiting_lock:
+            self._waiting += 1
+        try:
+            self._lock.acquire()
+        finally:
+            with self._waiting_lock:
+                self._waiting -= 1
+        try:
+            yield
+        finally:
+            self._lock.release()
+
+    def _make_way(self) -> None:
+        """Between two tiles of a look, with the library let go: wait a moment for
+        whoever is waiting to take their turn."""
+        until = time.monotonic() + 0.2
+        while self._waiting and time.monotonic() < until:
+            time.sleep(0.0005)
+
     def poll(self) -> None:
-        """Bring the list and the viewer up to date with the disk."""
+        """Bring the list and the viewer up to date with the disk.
+
+        The disk is looked at tile by tile, and the library is let go between two tiles.
+        The camera's frames and the operator's clicks need it too, and listing a large
+        tile on a network drive can take seconds: held for the whole look, the live view
+        stood still and the list did not answer for as long as the look took.
+        """
         with self._lock:
             if self._closed:
                 return
             now = self.clock()
             self._list_watched()
-            for dataset in list(self.datasets):
+            datasets = list(self.datasets)
+        began = time.monotonic()
+        for dataset in datasets:
+            with self._lock:
                 if self._closed:
                     self._let_previews_go()
                     return  # closed while this look was going on
                 # A run paused by Live off is left where it is, on disk too.
-                if dataset.shown and (self.collecting or not dataset.in_run):
-                    self._look(dataset, now)
+                wanted = dataset in self.datasets and dataset.shown and (self.collecting or not dataset.in_run)
+                paths = dataset.tile_paths() if wanted else []
+            for path in paths:
+                self._make_way()
+                with self._lock:
+                    if self._closed:
+                        self._let_previews_go()
+                        return
+                    if dataset not in self.datasets or not dataset.shown:
+                        break  # taken off the list or hidden while this look was going on
+                    hurried = self.look_budget_s is not None and time.monotonic() - began > self.look_budget_s
+                    self._look_at(dataset, path, now, hurried=hurried)
+        with self._lock:
+            if self._closed:
+                return
             self._hand_over(now)
             self._offer()
             self._point(now)
 
     def _look(self, dataset: Dataset, now: float) -> None:
+        """Look at every tile of an acquisition in one go (for one just shown or opened)."""
         for path in dataset.tile_paths():
-            tile = dataset.tiles.get(path)
-            if tile is None:
+            self._look_at(dataset, path, now)
+
+    def _look_at(self, dataset: Dataset, path: Path, now: float, *, hurried: bool = False) -> None:
+        """Look at one tile on disk, as closely as its state calls for.
+
+        ``hurried``: this look has taken long already, and only what cannot wait is done.
+        A tile that is being written cannot wait; a new tile and a quiet one can.
+        """
+        tile = dataset.tiles.get(path)
+        if tile is None:
+            if not hurried:
                 self._add_tile(dataset, path, now)
-                continue
-            if tile.awake(now):
-                thorough = now - tile.listed_at >= AWAKE_THOROUGH_S
-                depth = None
+            return
+        only_its_shape = False
+        if tile.awake(now):
+            # The stack the microscope is acquiring into this tile right now is on
+            # screen from the camera's frames, and its files are kept from the page
+            # until it is whole: there is nothing to gain from watching them land.
+            # An earlier stack of the same tile that is waiting to be handed over
+            # from its preview is another matter: that needs the tile looked at.
+            mine = [held for held in dataset.previews if held.store == path and not held.released]
+            fed = (
+                dataset.running is not None
+                and any(held.ended is None for held in mine)
+                and not any(held.ended is not None for held in mine)
+            )
+            if fed and now - tile.looked_at < FED_EVERY_S:
+                return
+            thorough = not fed and now - tile.listed_at >= AWAKE_THOROUGH_S
+            depth = None
+        else:
+            if hurried:
+                return
+            # May it still be growing? The newest acquisition of the watched
+            # folder may, and so may one the microscope is running, or one
+            # whose files are young; one opened from last year hardly.
+            growing = dataset.path == self._top or dataset.in_run or tile.recent()
+            if dataset.in_run and dataset.previews:
+                # The microscope says which tile it writes next (begin_stack wakes
+                # it), so the others of its run need no watching: a glance now and
+                # then is enough, in case something reached them by another road.
+                every = ASLEEP_S
+                only_its_shape = True
+            elif tile.whole():
+                # Every stack it has room for is there. Only the store itself can
+                # still grow, by a time point, and its description says when.
+                every = DOZING_S if growing else ASLEEP_S
+                only_its_shape = True
             else:
-                # May it still be growing? The newest acquisition of the watched
-                # folder may, and so may one the microscope is running, or one
-                # whose files are young; one opened from last year hardly.
-                growing = dataset.path == self._top or dataset.in_run or tile.recent()
-                if now - tile.looked_at < (DOZING_S if growing else ASLEEP_S):
-                    continue
-                thorough = growing and now - tile.listed_at >= DOZING_THOROUGH_S
-                depth = None if thorough else PROBE_DEPTH
-            tile.looked_at = now
-            if thorough:
-                tile.listed_at = now
-            try:
-                store = read_store(path)
-            except NotAStore:
-                continue
-            if store.shape != tile.store.shape:
-                tile.describe(store)
-                tile.woken_at = now
-                self.viewer.add(path, layer=dataset.name, channel=channel_of(store), measure=False)
-            files = tile.landing.look(now, thorough=thorough, depth=depth)
-            if not files:
-                continue
+                every = DOZING_S if growing else ASLEEP_S
+            if now - tile.looked_at < every:
+                return
+            thorough = growing and not only_its_shape and now - tile.listed_at >= DOZING_THOROUGH_S
+            depth = None if thorough else PROBE_DEPTH
+        tile.looked_at = now
+        if thorough:
+            tile.listed_at = now
+        try:
+            store = read_store(path)
+        except NotAStore:
+            return
+        if store.shape != tile.store.shape:
+            tile.describe(store)
             tile.woken_at = now
-            if tile.progress is None:
-                tile.describe(store)
-            if tile.progress is not None:
-                tile.progress.add(files)
-            kept = [file for file in files if tile.held_back(file)] if tile.held else []
-            if kept:
-                for held in dataset.previews:
-                    if held.store == path and not held.released and held.stack in tile.held:
-                        held.files.extend(f for f in kept if tile.progress.stack_of(f) == held.stack)
-                kept_back = set(kept)
-                files = [file for file in files if file not in kept_back]
-            self.viewer.landed(path, files)
+            self.viewer.add(path, layer=dataset.name, channel=channel_of(store), measure=False)
+            only_its_shape = False
+        if only_its_shape:
+            return
+        files = tile.landing.look(now, thorough=thorough, depth=depth)
+        if not files:
+            return
+        tile.woken_at = now
+        if tile.progress is None:
+            tile.describe(store)
+        if tile.progress is not None:
+            tile.progress.add(files)
+        kept = [file for file in files if tile.held_back(file)] if tile.held else []
+        if kept:
+            for held in dataset.previews:
+                if held.store == path and not held.released and held.stack in tile.held:
+                    held.files.extend(f for f in kept if tile.progress.stack_of(f) == held.stack)
+            kept_back = set(kept)
+            files = [file for file in files if file not in kept_back]
+        self.viewer.landed(path, files)
 
     def _add_tile(self, dataset: Dataset, path: Path, now: float) -> None:
         try:
@@ -658,7 +786,7 @@ class Library:
 
     def begin_stack(self, stack: Stack) -> None:
         """The microscope is about to acquire a stack: show it from memory as it comes."""
-        with self._lock:
+        with self._in_turn():
             if self._closed or not self.collecting:
                 return
             now = self.clock()
@@ -698,6 +826,9 @@ class Library:
             if tile is not None:
                 held.stack = tile.stack_key(stack.time_point, stack.channel_index)
                 tile.woken_at = now
+                # Looked at with the very next look: a time point appended changes the
+                # store's shape, and the page has to be given the store anew.
+                tile.looked_at = -1e9
                 tile.landing.wake(now)
                 if tile.progress is not None:
                     # Whatever an earlier try left of this stack is written over.
@@ -720,7 +851,7 @@ class Library:
 
     def add_plane(self, index: int, frame) -> None:
         """A frame of the stack being acquired: its plane number and its pixels as written."""
-        with self._lock:
+        with self._in_turn():
             if self._closed or not self.collecting:
                 return
             now = self.clock()
@@ -745,7 +876,7 @@ class Library:
 
     def end_stack(self) -> None:
         """The microscope has acquired the stack; the writer may still be saving it."""
-        with self._lock:
+        with self._in_turn():
             now = self.clock()
             for dataset in self.datasets:
                 if dataset.running is None:
@@ -760,7 +891,7 @@ class Library:
 
     def end_run(self) -> None:
         """The microscope has finished the whole run: nothing more is coming."""
-        with self._lock:
+        with self._in_turn():
             self.end_stack()
             for dataset in self.datasets:
                 if dataset.in_run:

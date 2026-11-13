@@ -58,7 +58,7 @@ class AcquisitionList(list):
 def a_row(filename: str, *, laser: str = "488 nm", x: float = 0.0, y: float = 0.0) -> Acquisition:
     return Acquisition(
         filename=filename, folder="/data/session", laser=laser, zoom="2x",
-        x_pos=x, y_pos=y, z_start=100.0, z_end=1100.0, z_step=5.0,
+        x_pos=x, y_pos=y, z_start=100.0, z_end=1100.0, z_step=5.0, rot=0,
     )
 
 
@@ -222,6 +222,36 @@ def test_the_preview_takes_tile_and_channel_names_from_the_one_store_per_tile_wr
     plain = SimpleNamespace(current_acquire_file_path="/data/session/brain.ome.zarr/Mag2x_Tile0_Ch561.ome.zarr")
     stack = describe_stack(a_core(plain), whole[3], one_row, (2048, 2048))
     assert (stack.channel, stack.channels, stack.tile, stack.tiles) == ("561", ("561",), "Tile 1", 1)
+
+
+def test_a_stack_says_where_every_tile_of_the_run_lies():
+    """From the acquisition table: each tile once, in the order they are acquired, with its
+    extent in micrometres. The panel draws its map of the run from this."""
+    rows = two_tiles_two_lasers()
+    stack = describe_stack(a_core(), rows[0], rows, (2048, 2304))
+    assert [name for name, _ in stack.places] == ["Tile 1", "Tile 2"]
+    x0, x1, y0, y1, z0, z1 = dict(stack.places)["Tile 2"]
+    assert (x0, y0, z0) == (1500.0, 0.0, 100.0), "the stage's x and y, and where the stack starts in z"
+    assert x1 - x0 == pytest.approx(2304 * 3.26) and y1 - y0 == pytest.approx(2048 * 3.26), "a frame's size at this zoom"
+    assert z1 - z0 == pytest.approx(rows[2].get_image_count() * 5.0)
+    # The names are the ones the list itself gives its tiles.
+    assert [f"Tile {rows.get_tile_index(row) + 1}" for row in rows] == ["Tile 1", "Tile 1", "Tile 2", "Tile 2"]
+    # A row that cannot be read (a zoom the configuration does not know) is left out, not fatal.
+    rows[2]["zoom"] = "40x"
+    rows[3]["zoom"] = "40x"
+    assert [name for name, _ in describe_stack(a_core(), rows[0], rows, (64, 64)).places] == ["Tile 1"]
+
+
+def test_working_out_where_the_tiles_lie_stays_quick_for_a_long_table():
+    """This runs in mesoSPIM's own window at the start of every stack."""
+    import time
+
+    rows = AcquisitionList([a_row("big.ome.zarr", laser=laser, x=1500.0 * tile) for tile in range(400) for laser in ("488 nm", "561 nm")])
+    began = time.perf_counter()
+    stack = describe_stack(a_core(), rows[0], rows, (2048, 2304))
+    took = time.perf_counter() - began
+    assert len(stack.places) == 400
+    assert took < 0.1, f"describing a stack of an 800-row table took {took * 1000:.0f} ms"
 
 
 def test_a_time_lapse_into_one_store_per_tile_is_one_acquisition_with_time_points():

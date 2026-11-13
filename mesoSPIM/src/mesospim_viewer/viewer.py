@@ -204,9 +204,19 @@ class Viewer:
                 held.placements.append(placement)
             else:
                 held.placements[at] = placement
-            if measure:
-                _measure(held, placement)
-            self._publish()
+            wanting = held.unwindowed(placement) if measure else []
+            if not wanting:
+                self._publish()
+        if wanting:
+            # Measured with the viewer let go: it reads image data from disk, which on a
+            # slow drive takes seconds, and everything else that asks the viewer
+            # something (the page, the window closing) would wait for it.
+            found = {label: sample_window(store, index) for label, index in wanting}
+            with self._lock:
+                for label, window in found.items():
+                    if window is not None:
+                        held.measured.setdefault(label, window)
+                self._publish()
         return name
 
     def refresh(self, layer: str | None = None) -> None:

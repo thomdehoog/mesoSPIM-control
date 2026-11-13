@@ -69,7 +69,7 @@ def viewers():
 def library(viewers) -> Library:
     """A library over a viewer of its own, going by a clock the test moves
     (``library.clock.tick()``); nothing in it waits for real time to pass."""
-    return Library(viewers(), clock=Clock())
+    return Library(viewers(), clock=Clock(), look_budget_s=None)
 
 
 # What the engine holds: every layer's sources and errors, and how many of the

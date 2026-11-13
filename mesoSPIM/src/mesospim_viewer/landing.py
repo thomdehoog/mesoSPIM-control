@@ -117,8 +117,26 @@ class Landing:
         if landed:
             self.changed_at = now
             self.grew = self.grew or not self._first
+        if self._first:
+            self._forget_what_was_there(now)
         self._first = False
         return landed
+
+    def _forget_what_was_there(self, now: float) -> None:
+        """After the first look: of the parts of the store that were written long before
+        its newest file, keep only the count.
+
+        The first look lists everything, and every file's time and size were kept until
+        that part of the store had been looked at again and found quiet. For a store
+        opened from disk that never happened. A large acquisition then cost hundreds of
+        megabytes, and tidying up that much memory made the whole program pause for up to
+        half a second at a time. A folder whose newest file is well older than the
+        store's newest cannot be the one still being written.
+        """
+        for folder in self._folders.values():
+            if folder.files is not None and folder.count and self._latest - folder.newest > COLD_S * 1e9:
+                folder.files = None
+                folder.changed_at = min(folder.changed_at, now - COLD_S - 1.0)
 
     def _walk(
         self,

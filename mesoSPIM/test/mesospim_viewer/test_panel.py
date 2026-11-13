@@ -1051,14 +1051,18 @@ def test_2d_and_3d_swap_the_layout_and_the_volume_rendering(pages, viewers, stac
     view = viewers(ui="simple")
     view.add(stacks[0], layer="overview")
     page, errors = _opened(pages, view, layers=2)
-    assert page.evaluate(VIEW) == {"layout": "xy", "modes": ["off", "off"], "on": ["xy"]}
+    # The channels carry the volume view's projection in the flat view as well. There is no
+    # volume to draw there, so it costs nothing, and the engine does not have to build its
+    # volume renderer anew at every switch to 3D (which showed as a black frame).
+    assert until(lambda: page.evaluate(VIEW), lambda seen: seen["modes"] == ["max", "max"]) == {
+        "layout": "xy", "modes": ["max", "max"], "on": ["xy"]}
     assert page.evaluate("() => document.querySelector('.segmented.view').closest('.stage-overlay') !== null")
     assert page.evaluate("() => document.querySelector('.card.volume').hidden") is True
     _in_3d(page)
     assert page.evaluate(VIEW) == {"layout": "3d", "modes": ["max", "max"], "on": ["3d"]}
     assert page.evaluate("() => document.querySelector('.card.volume').hidden") is False
     page.click('.view button[data-layout="xy"]')
-    assert page.evaluate(VIEW) == {"layout": "xy", "modes": ["off", "off"], "on": ["xy"]}
+    assert page.evaluate(VIEW) == {"layout": "xy", "modes": ["max", "max"], "on": ["xy"]}
     assert page.evaluate("() => document.querySelector('.card.volume').hidden") is True
     assert not errors, errors
 

@@ -20,7 +20,7 @@ import pytest
 from mesoSPIM.src.mesospim_viewer import Acquisitions, Library, Stack
 from mesoSPIM.src.mesospim_viewer.demo import write_tile
 from mesoSPIM.src.mesospim_viewer.landing import COLD_EVERY
-from mesoSPIM.src.mesospim_viewer.watch import GIVE_UP_S, HAND_OVER_S, LIVE_S, PLANES_PER_S, SETTLE_S, plain_name
+from mesoSPIM.src.mesospim_viewer.watch import FED_EVERY_S, GIVE_UP_S, HAND_OVER_S, LIVE_S, PLANES_PER_S, SETTLE_S, plain_name
 
 from .stores import Slabs, an_acquisition
 from .tools import follow, landed, offered, sources, status
@@ -127,6 +127,17 @@ def test_closing_lets_the_stacks_held_in_memory_go(library, tmp_path):
     library.end_stack()
     library.end_run()
     assert not any(dataset.previews for dataset in library.datasets)
+
+
+def test_the_tiles_still_to_come_have_a_place_when_the_microscope_says_where(library, tmp_path):
+    """The microscope knows from its acquisition table where every tile of a run lies.
+    Said with the stack that begins, the panel can draw the whole run as a map at once."""
+    library.watch(tmp_path)
+    places = (("Tile 1", (0.0, 64.0, 0.0, 64.0, 0.0, 100.0)), ("Tile 2", (60.0, 124.0, 0.0, 64.0, 0.0, 100.0)))
+    library.begin_stack(replace(a_stack(tmp_path), places=places))
+    positions = offered(library.viewer)["run"]["positions"]
+    assert positions[1] == {"name": "Tile 2", "state": "next", "um": {"x": [60.0, 124.0], "y": [0.0, 64.0], "z": [0.0, 100.0]}}
+    assert positions[0]["state"] == "now" and positions[0]["um"]["x"] == [0.0, 64.0]
 
 
 def test_a_run_that_begins_is_shown_in_place_of_the_newest(library, tmp_path):
@@ -285,9 +296,14 @@ def test_files_of_other_stacks_in_the_same_tile_are_not_held_back(library, tmp_p
     look(library)
     assert landed(view) == [] and status(view.url + "data/0/" + held[0]) == 404
     assert status(view.url + "data/0/" + done[-1]) == 200, "the channel that is whole stays readable"
-    # A straggler of the first channel (a coarser copy, say) is named as it lands.
+    # A straggler of the first channel (a coarser copy, say) is named too, though not at
+    # once: while the microscope is acquiring into this tile and the stack is on screen
+    # from the camera's frames, the tile is looked at on disk only now and then, so as
+    # not to load the acquisition's drive for nothing.
     (tile.path / done[0]).write_bytes(b"\0" * 16)
     look(library)
+    assert landed(view) == [], "not every second while the stack is fed"
+    look(library, FED_EVERY_S)
     assert landed(view) == [("data/0", [done[0]])]
 
 

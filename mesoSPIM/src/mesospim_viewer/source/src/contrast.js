@@ -30,6 +30,10 @@ import { layoutOf } from "./camera.js";
 import { about, clearTouched, isTouched, markTouched, onLayersChanged, readControl, writeControl } from "./layers.js";
 
 const EVERY_MS = 300;
+// The picture has to have stood still this long before it is measured. Reading the
+// histogram makes the page wait for the graphics card to finish the frame it has just
+// been given; done in the middle of a drag, that wait is a stutter in the movement.
+const STILL_MS = 150;
 const LOW = 0.01; // the black point: the camera's background
 const HIGH = 0.998; // the white point: just under the brightest structure
 const HEADROOM = 0.1; // ...opened up by this much, so that structure is not clipped
@@ -52,6 +56,9 @@ export function setAuto(viewer, name, on) {
   const state = autos.get(name);
   if (!state || state.on === on) return;
   state.on = on;
+  if (state.watching) {
+    state.watching.value = on ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
+  }
   if (on) {
     clearTouched(name, "contrast");
     viewer.display.scheduleRedraw();
@@ -171,9 +178,14 @@ function hook(viewer, managed) {
     state.frames = 0;
   });
   autos.set(managed.name, state);
-  // The histogram is computed only for a layer somebody watches: Auto does,
-  // whether or not the panel is open.
-  const watching = new WatchableVisibilityPriority(WatchableVisibilityPriority.VISIBLE);
+  // The histogram is computed only for a layer somebody watches. Auto does, whether or
+  // not the panel is open, but only while it is on: for a channel whose contrast is set
+  // by hand the engine would otherwise run a histogram pass every frame for nobody. (An
+  // open row of the panel watches on its own account, to draw the histogram.)
+  const watching = new WatchableVisibilityPriority(
+    state.on ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED,
+  );
+  state.watching = watching;
   const unwatch = controls.histogramSpecifications.visibility.add(watching);
   layer.registerDisposer(() => {
     unwatch?.();
@@ -204,6 +216,10 @@ export function watchContrast(viewer) {
   viewer.layerManager.layersChanged.add(hookAll);
   let last = 0;
   let again = null;
+  let movedAt = 0;
+  viewer.navigationState.changed.add(() => {
+    movedAt = performance.now();
+  });
   const drawAgain = (after) => {
     if (again !== null) return;
     again = setTimeout(() => {
@@ -228,6 +244,11 @@ export function watchContrast(viewer) {
     }
     // Measured on the flat view: in the volume view the histogram is of rays.
     if (layoutOf(viewer) === "3d") return;
+    // And not while the operator is moving the picture: once it has come to rest.
+    if (time - movedAt < STILL_MS) {
+      drawAgain(STILL_MS - (time - movedAt) + 10);
+      return;
+    }
     last = time;
     for (const managed of viewer.layerManager.managedLayers) {
       const state = autos.get(managed.name);

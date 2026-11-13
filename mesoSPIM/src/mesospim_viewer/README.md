@@ -298,6 +298,10 @@ The page:
   controls are the engine's own widgets, mounted in its rows; the panel is
   registered as one of the engine's side panels, because the engine draws a
   histogram only for a panel that lies within its own canvas.
+- `tilemap.js` is the map of an acquisition's tiles in the panel, the boxes
+  drawn around a tile on the picture, and what the operator points at and
+  clicks in the picture. `camera.js` converts between the picture's pixels and
+  micrometres for it.
 
 Positions and picks are spoken in **micrometres** (seconds for `t`) by axis
 name, whatever unit a store was written in.

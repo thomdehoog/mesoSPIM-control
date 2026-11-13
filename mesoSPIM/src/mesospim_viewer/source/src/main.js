@@ -113,8 +113,35 @@ function buildViewer(ui) {
     // ground does without it. Annotations and the scale bar are unaffected.
     viewer.showAxisLines.value = false;
   }
+  tune(viewer, native);
   window.viewer = viewer;
   return viewer;
+}
+
+/** Two settings of the engine that decide how quickly the picture follows the operator.
+ * Both were measured on tiles laid out as the microscope's writer saves them. */
+function tune(viewer, native) {
+  // How many chunks are fetched at once. The engine starts up to 100, but a browser
+  // opens six connections to one address: the other 94 wait in the browser's own queue,
+  // where the engine can no longer change their order or drop them. After a drag of the
+  // depth slider, chunks of planes long passed were then served before the ones on
+  // screen. With eight in flight the engine keeps deciding what comes next: the picture
+  // was sharp five to eight times sooner after a drag, for a third of the requests.
+  try {
+    viewer.chunkQueueManager.capacities.download.itemLimit.value = 8;
+  } catch (error) {
+    console.warn("the number of chunks fetched at once could not be set", error);
+  }
+  // Once a second the engine gathers figures on every chunk source for its screenshot
+  // dialog. Only the engine's own interface has that dialog. With 200 tiles the gathering
+  // held the picture up for 40 to 85 ms each time: a hitch once a second while moving.
+  if (!native) {
+    try {
+      viewer.screenshotManager.throttledSendStatistics = Object.assign(() => {}, { cancel() {} });
+    } catch (error) {
+      console.warn("the engine's once-a-second statistics could not be switched off", error);
+    }
+  }
 }
 
 // -- the camera, by axis name --------------------------------------------------

@@ -228,11 +228,19 @@ def tile_places(core, rows, frame_shape) -> tuple:
     that cannot be read (an unknown zoom, say) is left out; the map then shows that tile
     once it is acquired.
     """
+    # The tiles are numbered here in one pass over the table, in the order they first
+    # appear and by the same four values the acquisition list tells tiles apart by
+    # (AcquisitionList.get_tile_index). Asking the list for each row's number instead
+    # walks the whole table every time: with 400 rows that held up mesoSPIM's window for
+    # a quarter of a second at the start of every stack.
+    numbered: dict[str, str] = {}
     places = {}
     for row in rows:
         try:
-            name = f'Tile {rows.get_tile_index(row) + 1}'
-            if name in places:
+            tile = f"{row['x_pos']}{row['y_pos']}{row['z_start']}{row['rot']}"
+            first_row_of_its_tile = tile not in numbered
+            name = numbered.setdefault(tile, f'Tile {len(numbered) + 1}')
+            if not first_row_of_its_tile:
                 continue
             pixel = float(core.cfg.pixelsize[row['zoom']])
             x, y, z = float(row['x_pos']), float(row['y_pos']), float(row['z_start'])

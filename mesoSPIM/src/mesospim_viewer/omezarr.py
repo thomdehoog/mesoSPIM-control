@@ -220,29 +220,23 @@ def _transforms(rank: int, transforms: object) -> tuple[list[float], list[float]
     return scale, translation
 
 
-def _array_shape(level: Path) -> list[int] | None:
-    """The shape of an array, from zarr v3's ``zarr.json`` or v2's ``.zarray``."""
-    for description in (level / "zarr.json", level / ".zarray"):
-        described = _read_json(description)
-        if isinstance(described, dict) and isinstance(described.get("shape"), list):
-            return [int(n) for n in described["shape"]]
-    return None
-
-
 # The largest value of each whole-number type, by its name in zarr v3 ("uint16")
 # and in zarr v2 ("<u2": two bytes, unsigned).
 _TOPS = {"uint8": 255.0, "uint16": 65535.0, "uint32": 4294967295.0, "int8": 127.0, "int16": 32767.0, "int32": 2147483647.0}
 _TOPS_V2 = {"u1": "uint8", "u2": "uint16", "u4": "uint32", "i1": "int8", "i2": "int16", "i4": "int32"}
 
 
-def _array_top(level: Path) -> float | None:
-    """The largest value the array's voxels can hold, or None for fractions and unknown types."""
+def _array_about(level: Path) -> tuple[list[int] | None, float | None]:
+    """An array's shape, and the largest value its voxels can hold (None for fractions and
+    unknown types), from zarr v3's ``zarr.json`` or v2's ``.zarray``. One read of the one
+    file: a store that is being watched is described again at every look."""
     for description, key in ((level / "zarr.json", "data_type"), (level / ".zarray", "dtype")):
         described = _read_json(description)
-        if isinstance(described, dict) and isinstance(described.get(key), str):
-            name = described[key]
-            return _TOPS.get(_TOPS_V2.get(name.lstrip("<>|="), name))
-    return None
+        if isinstance(described, dict) and isinstance(described.get("shape"), list):
+            name = described.get(key)
+            top = _TOPS.get(_TOPS_V2.get(name.lstrip("<>|="), name)) if isinstance(name, str) else None
+            return [int(n) for n in described["shape"]], top
+    return None, None
 
 
 def _check_axes(root: Path, axes: tuple[Axis, ...]) -> None:
@@ -328,7 +322,7 @@ def read_store(path: str | Path) -> Store:
     ]
 
     level_path = root / str(level0.get("path", "0"))
-    shape = _array_shape(level_path)
+    shape, top = _array_about(level_path)
     if shape is None or len(shape) != rank:
         raise NotSupported(
             f"{root}: level {level0.get('path', '0')!s} has no readable array shape",
@@ -350,7 +344,7 @@ def read_store(path: str | Path) -> Store:
             for index, dataset in enumerate(datasets)
             if isinstance(dataset, dict)
         ),
-        top=_array_top(level_path),
+        top=top,
     )
 
 

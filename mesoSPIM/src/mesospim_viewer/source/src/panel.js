@@ -383,7 +383,17 @@ function acquisitionsCard(viewer, post) {
     mapper.hover(pointed !== null && pointed.name === selection.open ? pointed.position : null);
     outline();
   };
+  let drawn = null; // the list as it was last given, to tell a new one from the same again
   card.setAcquisitions = (next) => {
+    // Python sends the list with every scene, changed or not. Drawing it anew each time
+    // would rebuild the map of a few hundred tiles for nothing, and would take a cell
+    // away from under the pointer while it is being pointed at.
+    const given = JSON.stringify(next);
+    if (given === drawn) {
+      go();
+      return;
+    }
+    drawn = given;
     entries = next;
     const names = entries.map((entry) => entry.name);
     // A run that starts is the one to look at: it is selected, and opened.
@@ -441,9 +451,14 @@ function viewSwitch(viewer, fit) {
 // kept here so that a layer that arrives later is drawn the same way.
 let volumeMode = "max";
 
-/** The volume view draws a projection of every channel; the flat view leaves it off, as the engine does. */
+/** Every channel is given the projection the volume view draws with, in the flat view too.
+ *
+ * The flat view has no volume to draw, so there it costs nothing. Switched off in 2D and on
+ * again in 3D, as it used to be, the engine threw its volume renderer away and built a new
+ * one at every switch: the first frame of the volume was black, and the volume was back only
+ * a second frame later, although all of its data was still in memory. */
 function applyVolumeMode(viewer) {
-  const wanted = layoutOf(viewer) === "3d" ? volumeMode : "off";
+  const wanted = volumeMode;
   for (const layer of imageLayers(viewer)) {
     if (layer.volumeRenderingMode?.toJSON() !== wanted) layer.volumeRenderingMode?.restoreState(wanted);
   }
@@ -696,6 +711,10 @@ function channelRow(viewer, managed, contrast) {
   const controls = element("div", "controls");
   row.appendChild(controls);
   let mounted = null;
+  // Whether this row is on show. The engine computes a channel's histogram, a pass over
+  // the picture every frame, for as long as its control counts as visible. A row of an
+  // acquisition that is not the selected one is not shown, and must not cost that.
+  const watching = new WatchableVisibilityPriority(WatchableVisibilityPriority.VISIBLE);
   const reflect = () => {
     row.classList.toggle("hidden", !managed.visible);
     eye.classList.toggle("off", !managed.visible);
@@ -717,7 +736,7 @@ function channelRow(viewer, managed, contrast) {
     // The engine's own controls for this layer's shader: the window with its
     // histogram (computed on the GPU once this widget is visible) and the colour.
     mounted = new ShaderControls(layer.shaderControlState, viewer.display, layer, {
-      visibility: new WatchableVisibilityPriority(WatchableVisibilityPriority.VISIBLE),
+      visibility: watching,
       legendShaderOptions: layer.getLegendShaderOptions?.(),
     });
     controls.appendChild(mounted.element);
@@ -738,7 +757,10 @@ function channelRow(viewer, managed, contrast) {
   }
   managed.layerChanged.add(reflect);
   reflect();
-  return { row, reflect, dispose: () => mounted?.dispose() };
+  const setShown = (shown) => {
+    watching.value = shown ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
+  };
+  return { row, reflect, setShown, dispose: () => mounted?.dispose() };
 }
 
 function channelsCard(viewer, contrast) {
@@ -796,6 +818,7 @@ function channelsCard(viewer, contrast) {
           rows.set(managed.layer, made);
         }
         section.appendChild(made.row);
+        made.setShown(!section.hidden);
       }
     }
   };
