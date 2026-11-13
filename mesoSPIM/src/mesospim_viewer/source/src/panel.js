@@ -199,7 +199,10 @@ function acquisitionsCard(viewer, post) {
     if (found === null) return null;
     const entry = entries.find((one) => one.name === found.name);
     const position = entry?.shown ? (entry.positions ?? []).find((one) => one.name === found.position) : null;
-    return position?.um ? { um: position.um, text: position.name } : null;
+    if (!position?.um) return null;
+    // With several acquisitions on the picture, "Tile 1" could be any of theirs.
+    const several = entries.filter((one) => one.shown).length > 1;
+    return { um: position.um, text: several ? `${entry.name}${SEPARATOR}${position.name}` : position.name };
   };
   const outline = () => {
     card.onOutline("picked", placeOf(framedAt));
@@ -310,7 +313,9 @@ function acquisitionsCard(viewer, post) {
         post("/api/show", { name: entry.name, visible: !entry.shown });
       });
       const text = element("div", "text");
-      text.append(element("span", "name", entry.name), element("span", "sub", lineOf(entry)));
+      const name = element("span", "name", entry.name);
+      name.title = entry.name; // in full, for a name too long for its two lines
+      text.append(name, element("span", "sub", lineOf(entry)));
       const badge = entry.paused ? element("span", "badge paused", "Paused")
         : entry.live ? element("span", "badge live", "Live") : element("span", "badge saved", "Saved");
       bar.append(eye, text, badge);

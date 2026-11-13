@@ -70,11 +70,22 @@ export function tileMapper(viewer) {
       inView.setAttribute("visibility", "hidden");
       return;
     }
+    // Kept within the map: a view that reaches past the acquisition on some sides would
+    // otherwise leave a single line of its frame on the map, which reads as nothing.
+    const { margin } = current;
+    const x0 = Math.max(shown.x[0], bounds.x[0] - margin / 2);
+    const x1 = Math.min(shown.x[1], bounds.x[1] + margin / 2);
+    const y0 = Math.max(shown.y[0], bounds.y[0] - margin / 2);
+    const y1 = Math.min(shown.y[1], bounds.y[1] + margin / 2);
+    if (!(x1 > x0) || !(y1 > y0)) {
+      inView.setAttribute("visibility", "hidden"); // the view is somewhere else altogether
+      return;
+    }
     inView.setAttribute("visibility", "visible");
-    inView.setAttribute("x", shown.x[0]);
-    inView.setAttribute("y", shown.y[0]);
-    inView.setAttribute("width", Math.max(0, shown.x[1] - shown.x[0]));
-    inView.setAttribute("height", Math.max(0, shown.y[1] - shown.y[0]));
+    inView.setAttribute("x", x0);
+    inView.setAttribute("y", y0);
+    inView.setAttribute("width", x1 - x0);
+    inView.setAttribute("height", y1 - y0);
   };
   const later = () => {
     if (!pending) pending = requestAnimationFrame(frameView);
@@ -123,9 +134,12 @@ export function tileMapper(viewer) {
         return position ? [position.name, stateWords(position, channels)].filter(Boolean).join(" · ") : "";
       };
       const say = (position) => {
-        said.textContent = position
+        const words = position
           ? [position.name, stateWords(position, channels)].filter(Boolean).join(" · ")
           : resting();
+        // With nothing pointed at or selected, the line says what the map is for.
+        said.textContent = words || "Point at a tile, or click it to go there";
+        said.classList.toggle("hint", !words);
       };
       for (const position of placed) {
         const cell = svg("g", { class: "position" });
@@ -162,7 +176,7 @@ export function tileMapper(viewer) {
       const inView = svg("rect", { class: "in-view", visibility: "hidden" });
       drawing.appendChild(inView);
       root.append(drawing, caption);
-      current = { root, cells, inView, bounds, say, byName: new Map(placed.map((one) => [one.name, one])) };
+      current = { root, cells, inView, bounds, margin, say, byName: new Map(placed.map((one) => [one.name, one])) };
       say(null);
       later();
       return root;
@@ -210,6 +224,7 @@ export function tileOutlines(viewer, overlay) {
       box.style.height = `${at.height}px`;
       name.textContent = what.text ?? "";
       name.hidden = !what.text || at.width < 60 || at.height < 24;
+      name.style.maxWidth = `${Math.max(0, at.width - 12)}px`;
     }
   };
   const later = () => {

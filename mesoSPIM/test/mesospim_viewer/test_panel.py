@@ -626,6 +626,8 @@ def test_a_click_on_a_tile_of_another_acquisition_selects_that_acquisition(pages
     page.mouse.up()
     assert until(lambda: page.evaluate(selected), lambda seen: seen == "right") == "right"
     assert until(lambda: page.evaluate(CHANNEL_ROWS), lambda rows: rows and all(row.startswith("right") for row in rows))
+    # With two acquisitions on the picture the box says whose tile it is.
+    assert until(lambda: page.evaluate(OUTLINES), lambda seen: seen["picked"] is not None)["picked"]["name"] == "right · Tile 1"
     assert [cell["framed"] for cell in page.evaluate(CELLS)] == [True]
     assert not errors, errors
 

@@ -120,7 +120,12 @@ button.icon.off { color: var(--text-muted); }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 0 rgba(0, 0, 0, 0.5), 0 4px 8px -4px rgba(0, 0, 0, 0.7);
 }
 .acquisition .text { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 2px 2px; }
-.acquisition .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-bright); font-weight: 600; }
+/* A name may take two lines: acquisitions are told apart by the end of their names
+   ("..._run_03") as often as by the start, and one line showed some fifteen letters. */
+.acquisition .name {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  overflow-wrap: anywhere; line-height: 1.25; color: var(--text-bright); font-weight: 600;
+}
 .acquisition.selected .name { color: #ffffff; }
 .acquisition:not(.shown) .name, .acquisition:not(.shown) .sub { color: var(--text-muted); }
 .acquisition .sub {
@@ -157,9 +162,10 @@ p.positions.hint { padding: 8px 10px; }
 .tile-map .position.pointed rect { fill: rgba(255, 255, 255, 0.24); stroke: #ffffff; stroke-width: 1.4; }
 .tile-map .position.framed rect { fill: rgba(47, 129, 247, 0.5); stroke: #58a6ff; stroke-width: 1.6; }
 .tile-map .chosen { fill: none; stroke: #58a6ff; stroke-width: 1.6; pointer-events: none; }
-.tile-map .in-view { fill: none; stroke: #e3b341; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+.tile-map .in-view { fill: rgba(227, 179, 65, 0.07); stroke: #e3b341; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
 .map-caption { display: flex; align-items: baseline; min-height: 15px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
 .map-caption .said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.map-caption .said.hint { color: var(--text-muted); }
 .map-caption .noted { flex: 0 0 auto; margin-left: 8px; white-space: nowrap; }
 .position {
   display: flex; align-items: center; width: 100%; padding: 4px 8px; border: 0; border-radius: 5px;
@@ -377,6 +383,7 @@ p.positions.hint { padding: 8px 10px; }
 .tile-outline .name {
   position: absolute; left: 4px; top: 4px; padding: 1px 7px; border-radius: 9px;
   background: var(--overlay-bg); color: var(--text-bright); font-size: 11px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;
 }
 .tile-outline .name[hidden] { display: none; }
 .tile-outline.picked .name { color: #9cc7ff; }
