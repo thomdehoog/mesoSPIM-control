@@ -1,10 +1,11 @@
 """
 The (t, c, z, y, x) layout for the multi-process OME-Zarr writer.
 
-Everything the MP_OME_Zarr_TCZYX_Writer needs beyond omezarr_writer.py lives here, and
-omezarr_writer.py itself is not touched: the live pyramid pipeline (Live3DPyramidWriter)
-is reused as it is, and only sees its arrays through a small window that puts every
-write at [t, c] of a five-dimensional array.
+Everything the MP_OME_Zarr_TCZYX_Writer needs beyond omezarr_writer.py lives here. The
+live pyramid pipeline of omezarr_writer.py (Live3DPyramidWriter) is reused as it is, and
+only sees its arrays through a small window that puts every write at [t, c] of a
+five-dimensional array. The one thing omezarr_writer.py learned for this layout is that
+its FastShardWriter can write a shard at a given time point and channel.
 
 One store per tile. Each z-stack the microscope acquires lands at [t, c] of the same
 arrays: channels are the c axis, time points are appended along t. Chunks and shards get
@@ -278,12 +279,17 @@ def omezarr_writer_worker_tczyx(
     writer_kwargs: dict,
     work_q,
     free_q,
+    attached=None,
 ):
     """
     Child process, as omezarr_writer_worker without the write cache (a stack moved into a
     store that already holds other channels would nest the folders): attaches to the shared
     memory ring, lowers its priority, owns a Live3DPyramidWriterTCZYX, and pushes every
     frame it is handed a slot for.
+
+    ``attached`` is an event this process sets as soon as it holds the shared memory. The
+    microscope's side waits for it before closing its own handle, because on Windows the
+    memory is gone once nobody holds it.
     """
     lower_priority()
     # The child returns free ring slots through this queue; do not let its feeder thread
@@ -291,6 +297,8 @@ def omezarr_writer_worker_tczyx(
     free_q.cancel_join_thread()
 
     shm = shared_memory.SharedMemory(name=shm_name)
+    if attached is not None:
+        attached.set()
     Y, X = frame_shape
     ring = np.ndarray((ring_size, Y, X), dtype=np.uint16, buffer=shm.buf)
 

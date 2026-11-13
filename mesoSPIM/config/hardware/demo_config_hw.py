@@ -488,7 +488,7 @@ MP_OME_Zarr_TCZYX_Writer = {
     'target_chunks': (64, 64, 64),  # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
 
     # Multiprocess options
-    'ring_buffer_size': 512,  # The number of frames buffered into shared memory for the MP writer.
+    'ring_buffer_size': 16,  # The number of frames buffered into shared memory for the MP writer. 16 for simulation mode (eg laptop), 512 for a real microscope
     }
 
 '''

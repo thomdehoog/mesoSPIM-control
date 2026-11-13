@@ -77,12 +77,6 @@ def files_under(root: Path) -> dict:
     return {str(p.relative_to(root)): p.stat().st_mtime_ns for p in root.rglob('*') if p.is_file()}
 
 
-@pytest.mark.xfail(
-    sys.platform == "win32", strict=False,
-    reason="OmeZarrWriterMP.finalize closes the parent's shared-memory handle before the writer "
-           "process has attached; on Windows the block then no longer exists ('wnsm_...' not found). "
-           "Stacks this short finish before the process starts.",
-)
 @pytest.mark.parametrize("config", [
     pytest.param({'ome_version': '0.5', 'shards': None, 'base_chunks': (8, 64, 64), 'target_chunks': (8, 32, 32)}, id="v3-chunks"),
     pytest.param({'ome_version': '0.5', 'shards': (8, 192, 256), 'base_chunks': (8, 64, 64), 'target_chunks': (8, 32, 32)}, id="v3-shards"),
@@ -142,6 +136,9 @@ def test_the_time_suffix_is_read_and_stripped():
     assert split('/data/run/Sample.ome.zarr') == ('/data/run/Sample.ome.zarr', 0)
     assert split('/data/run/Sample_Time003.ome.zarr') == ('/data/run/Sample.ome.zarr', 3)
     assert split(r'C:\data\run\Sample.ome_Time012.zarr') == (r'C:\data\run\Sample.ome.zarr', 12)
+    # '_Time' inside a sample's own name is part of the name, not a time point
+    assert split('/data/run/Mouse_Time2h.ome.zarr') == ('/data/run/Mouse_Time2h.ome.zarr', 0)
+    assert split('/data/run/Mouse_Time2h.ome_Time004.zarr') == ('/data/run/Mouse_Time2h.ome.zarr', 4)
     assert OMEZarrWriterMPTCZYX.channel_label('488 nm') == '488'
 
 
@@ -156,6 +153,90 @@ def test_a_shard_deeper_than_a_chunk_is_refused(tmp_path):
     )
     with pytest.raises(ValueError, match="one z-chunk deep"):
         OMEZarrWriterMPTCZYX().open(req)
+
+
+def _request(folder: Path, config: dict, row: int = 0, planes: int = PLANES) -> WriteRequest:
+    acq_list = acquisition_list(folder, 0)
+    acq = acq_list[row]
+    return WriteRequest(
+        uri=os.path.join(acq['folder'], acq['filename']), shape=(planes, Y, X), dtype='uint16', axes='ZYX',
+        x_res=1.0, y_res=1.0, z_res=5.0, num_tiles=2, num_channels=2, num_rotations=1, num_shutters=1,
+        acq=acq, acq_list=acq_list, writer_config_file_values=config,
+    )
+
+
+SMALL_CHUNKS = {'base_chunks': (8, 64, 64), 'target_chunks': (8, 32, 32)}
+
+
+def test_a_shard_is_compared_with_the_chunk_depth_really_used(tmp_path):
+    """The z-chunk of the full-resolution data is the smaller of base and target z. With base
+    z 16 and target z 8 the chunks are 8 deep, so a shard 16 deep would be written in two parts."""
+    config = {'shards': (16, 192, 256), 'base_chunks': (16, 64, 64), 'target_chunks': (8, 32, 32)}
+    with pytest.raises(ValueError, match="one z-chunk deep"):
+        OMEZarrWriterMPTCZYX().open(_request(tmp_path, config))
+
+
+def test_the_wizard_offers_this_writers_own_settings():
+    """The file-naming wizard shows these rows and hands their values to open(). The
+    MP_OME_Zarr_Writer's rows would switch shards on and offer settings this writer ignores."""
+    from mesoSPIM.src.plugins.ImageWriters.OmeZarrWriterMP import OMEZarrWriterMP
+
+    rows = OMEZarrWriterMPTCZYX.wizard_parameters()
+    assert rows['shards'][0] is None, "shards are off unless asked for"
+    for unsupported in ('write_big_stitcher_xml', 'flip_xyz', 'transpose_xy', 'write_cache'):
+        assert unsupported in OMEZarrWriterMP.wizard_parameters() and unsupported not in rows
+    for key, (default, _help) in rows.items():
+        assert key in OMEZarrWriterMP.wizard_parameters(), key
+
+
+def test_a_stack_that_ends_at_once_is_still_written(tmp_path):
+    """Stop pressed right after a stack was prepared: finalize() follows open() before the
+    writer process has started. The writer has to wait until the process holds the shared
+    memory, because on Windows the memory is gone once the microscope's side lets go of it."""
+    writer = OMEZarrWriterMPTCZYX()
+    request = _request(tmp_path, SMALL_CHUNKS)
+    writer.open(request)
+    attached, process = writer._writer_attached, writer._writer_proc
+    assert attached is not None, "the writer process is given an event to set once it has attached"
+    writer.finalize(FinalizeImage(acq=request.acq, acq_list=request.acq_list))
+    assert attached.is_set(), "finalize() returned before the writer process had the shared memory"
+    process.join(60)
+    assert process.exitcode == 0
+    writer._wait_for_background_writers()
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    assert zarr.open_group(store, mode='r')['0'].shape[:2] == (1, 2)
+
+
+def _write_stack(writer, request, planes: int) -> None:
+    writer.open(request)
+    for z in range(planes):
+        writer.write_frame(WriteImage(
+            image=frame(0, 0, 0, z), current_image_counter=z, tile_number=0,
+            laser=request.acq['laser'], shutter=request.acq['shutterconfig'], rot=request.acq['rot'],
+            x_res=1.0, y_res=1.0, z_res=5.0, acq=request.acq, acq_list=request.acq_list,
+        ))
+    writer.finalize(FinalizeImage(acq=request.acq, acq_list=request.acq_list))
+    writer._wait_for_background_writers()
+
+
+def test_running_over_a_stopped_run_is_reported(tmp_path, caplog):
+    """A stack stopped at plane 7 leaves a store 7 planes deep. Run again under the same
+    name, the full stack would be cut to those 7 planes without a word; the log now says so."""
+    import logging
+    _write_stack(OMEZarrWriterMPTCZYX(), _request(tmp_path, SMALL_CHUNKS), planes=7)   # stopped early
+    with caplog.at_level(logging.ERROR):
+        writer = OMEZarrWriterMPTCZYX()
+        _write_stack(writer, _request(tmp_path, SMALL_CHUNKS), planes=PLANES)
+    assert 'already exists with 7 planes' in caplog.text and f'this stack has {PLANES}' in caplog.text
+
+
+def test_a_store_that_fits_is_not_reported(tmp_path, caplog):
+    import logging
+    writer = OMEZarrWriterMPTCZYX()
+    with caplog.at_level(logging.ERROR):
+        _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=0), planes=PLANES)
+        _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=1), planes=PLANES)   # the tile's second channel
+    assert 'already exists' not in caplog.text
 
 
 def test_the_plugin_registers_beside_the_mp_writer():

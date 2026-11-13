@@ -196,6 +196,26 @@ your hardware.
 
 Not supported by this writer: the BigStitcher XML and ``write_cache``.
 
+.. note::
+
+   Three things are worth knowing before you rely on this writer, because each
+   of them can overwrite or shorten data without stopping the acquisition:
+
+   * **Run the whole acquisition list.** A tile's place in the store, and a
+     channel's place along ``c``, are worked out from the list that is being
+     run. *Run selected acquisition* runs a list of one row, so every row
+     would be written as tile 0, channel 0, each over the one before.
+   * **One row per laser for each tile.** A channel is recognised by its
+     laser line. Two rows of the same tile with the same laser and different
+     filters share one channel, and the second replaces the first. Use the
+     ``MP_OME_Zarr_Writer`` for that kind of acquisition.
+   * **Use a new file name after a Stop.** A store keeps the depth it was
+     created with. If a run is stopped and then started again under the same
+     name, the old, shorter store is reused and the new stacks are cut to its
+     depth. The same happens when the channels of a tile have different z
+     ranges. mesoSPIM writes an error to its log when it sees this, but it
+     does not stop the acquisition.
+
 H5_BDV_Writer
 ----------------
 

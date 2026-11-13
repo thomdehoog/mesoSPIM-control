@@ -20,6 +20,7 @@ import zarr
 
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
     PyramidSpec, ChunkScheme, plan_levels, compute_xy_only_levels, FlushPad, BloscCodec, BloscShuffle,
+    CHANNEL_COLORS,
 )
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer_tczyx import (
     TCZYX, omezarr_writer_worker_tczyx,
@@ -28,10 +29,10 @@ from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_wri
 # The time index mesoSPIM writes into file names while running a time lapse. It
 # goes in front of the LAST suffix, so 'Sample.ome.zarr' becomes
 # 'Sample.ome_Time003.zarr' (see mesoSPIM_AcquisitionManagerWindow.append_time_index_to_filenames).
-_TIME_SUFFIX = re.compile(r'_Time(\d+)')
-
-# Default false colours for the omero block, by excitation wavelength (nm).
-_CHANNEL_COLORS = {'405': '5A73FF', '488': '00FF66', '561': 'FFBF1A', '640': 'FF33FF', '647': 'FF33FF', '785': 'FFFFFF'}
+# Only a mark at the end of the name counts, with nothing but suffixes ('.ome', '.zarr')
+# after it. A sample called 'Mouse_Time2h' keeps its name: there the digits are followed
+# by more of the name.
+_TIME_SUFFIX = re.compile(r'_Time(\d+)(?=(\.[A-Za-z][A-Za-z0-9]*)*$)')
 
 
 class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
@@ -136,6 +137,27 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             IncludeAllChannelsInSingleFileFormat = False,
         )
 
+    @classmethod
+    def wizard_parameters(cls):
+        '''The settings of this writer: the defaults used by open(), and the rows the
+        file-naming wizard shows so that they can be changed for one acquisition.
+
+        {key: (default, help text)}. This writer has its own list because it differs from
+        the MP_OME_Zarr_Writer it is built on: shards are off unless asked for, and it has
+        no BigStitcher XML and no write cache. Without this list the wizard would offer the
+        other writer's rows and quietly switch its shards on.
+        '''
+        return {
+            'ome_version': ('0.5', "'0.4' = zarr v2, no sharding. '0.5' = zarr v3, sharding supported"),
+            'generate_multiscales': (True, 'False saves only the full-resolution data'),
+            'compression': ('zstd', "None, 'zstd' or 'lz4'. zstd-5 costs almost no speed and saves disk"),
+            'compression_level': (5, '1-9'),
+            'shards': (None, 'None = one file per chunk. Or a shard size (z,y,x) whose z equals the chunk z, to have fewer files. Ignored for ome_version 0.4'),
+            'base_chunks': ((64, 256, 256), 'Chunk size (z,y,x) at multiscale level 0. Bigger chunks = fewer files and better IO'),
+            'target_chunks': ((64, 64, 64), 'Chunk size (z,y,x) at the smallest multiscale level'),
+            'ring_buffer_size': (512, 'Frames buffered in shared memory for the writer process'),
+        }
+
     @staticmethod
     def split_time_index(uri: str) -> tuple[str, int]:
         '''The acquisition path without its '_Time###' mark, and the time index (0 without one).
@@ -158,43 +180,32 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
     def open(self, req: WriteRequest) -> None:
         assert self.compatible_suffix(req), f'URI suffix not compatible with {self.name()}'
 
-        #######################
-        ####  GET Defaults  ###
-        #######################
-        ome_version = '0.5'             # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
-        generate_multiscales = True     # True, False. False: only the primary data is saved. True: multiscale data is generated
-        compression = 'zstd'            # None, 'zstd', 'lz4'
-        compression_level = 5           # 1-9
-        shards = None                   # None (one file per chunk) or a (z,y,x) tuple with z == base_chunks z; ignored if ome_version "0.4"
-        base_chunks = (64, 256, 256)    # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
-        target_chunks = (64, 64, 64)    # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
+        #############################################################
+        ####  Defaults, overridden by the config file / wizard  ###
+        #############################################################
+        p = {key: default for key, (default, _help) in self.wizard_parameters().items()}
+        given = req.writer_config_file_values or {}
+        p.update({key: value for key, value in given.items() if key in p})
+        ome_version = p['ome_version']
+        generate_multiscales = p['generate_multiscales']
+        compression = p['compression']
+        compression_level = p['compression_level']
+        shards = p['shards']
+        base_chunks = p['base_chunks']
+        target_chunks = p['target_chunks']
+        ring_buffer_size = p['ring_buffer_size']
+        for unsupported in ('write_big_stitcher_xml', 'write_cache'):
+            if given.get(unsupported):
+                logger.warning(f"{self.name()}: '{unsupported}' is not supported by this writer and is ignored")
 
-        # Multiprocess options
-        ring_buffer_size = 512          # number of frames that can be queued at once
-
-        #####################################
-        ####  Load from Config if defined ###
-        #####################################
-        if req.writer_config_file_values:
-            ome_version = req.writer_config_file_values.get('ome_version', ome_version)
-            generate_multiscales = req.writer_config_file_values.get('generate_multiscales', generate_multiscales)
-            if 'compression' in req.writer_config_file_values:
-                # Deals with case where compression is None in config so it is retained
-                compression = req.writer_config_file_values.get('compression')
-            compression_level = req.writer_config_file_values.get('compression_level', compression_level)
-            shards = req.writer_config_file_values.get('shards', shards)
-            base_chunks = req.writer_config_file_values.get('base_chunks', base_chunks)
-            target_chunks = req.writer_config_file_values.get('target_chunks', target_chunks)
-            ring_buffer_size = req.writer_config_file_values.get('ring_buffer_size', ring_buffer_size)
-            for unsupported in ('write_big_stitcher_xml', 'write_cache'):
-                if req.writer_config_file_values.get(unsupported):
-                    logger.warning(f"{self.name()}: '{unsupported}' is not supported by this writer and is ignored")
-
-        if shards is not None and ome_version != '0.4' and int(shards[0]) != int(base_chunks[0]):
+        # The full-resolution data is written in z-chunks this deep (the chunk depth starts at
+        # base_chunks z and may not exceed target_chunks z). A shard has to be exactly that deep.
+        chunk_depth = min(int(base_chunks[0]), int(target_chunks[0]))
+        if shards is not None and ome_version != '0.4' and int(shards[0]) != chunk_depth:
             raise ValueError(
                 f"{self.name()}: a shard must be exactly one z-chunk deep so that it is written in one go "
-                f"(shards z={shards[0]}, base_chunks z={base_chunks[0]}); a deeper shard would be rewritten "
-                "for every chunk landing in it"
+                f"(shards z={shards[0]}, z-chunk={chunk_depth} from base_chunks z={base_chunks[0]} and "
+                f"target_chunks z={target_chunks[0]}); a deeper shard would be rewritten for every chunk landing in it"
             )
 
         # Save req so metadata_file_info can see it
@@ -235,6 +246,7 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
         # ZARR Writer setup
         Z_EST, Y, X = (req.shape[0], req.shape[2], req.shape[1])
+        self._warn_if_store_does_not_fit(self.current_acquire_file_path, n_channels=len(lasers), planes=Z_EST)
 
         xy_levels = compute_xy_only_levels(px_size_zyx)
         if generate_multiscales:
@@ -259,7 +271,7 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             c=channel_index,
             n_channels=len(lasers),
             channel_labels=tuple(self.channel_label(laser) for laser in lasers),
-            channel_colors=tuple(_CHANNEL_COLORS.get(self.channel_label(laser), '') for laser in lasers),
+            channel_colors=tuple(CHANNEL_COLORS.get(self.channel_label(laser), '') for laser in lasers),
         )
 
         # Setup multiprocessing ring buffer
@@ -293,9 +305,15 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             tczyx=tczyx,
         )
 
+        # The writer process sets this once it holds the shared memory. finalize() waits for
+        # it before letting go of its own handle: on Windows the memory disappears with its
+        # last handle, so a stack that ends before the process has started (a very short
+        # stack, or Stop right after this point) would otherwise be lost.
+        self._writer_attached = ctx.Event()
         self._writer_proc = ctx.Process(
             target=omezarr_writer_worker_tczyx,  # From omezarr_writer_tczyx.py
-            args=(shm_name, (Y, X), ring_buffer_size, writer_kwargs, self._work_q, self._free_q),
+            args=(shm_name, (Y, X), ring_buffer_size, writer_kwargs, self._work_q, self._free_q,
+                  self._writer_attached),
             daemon=True,
         )
 
@@ -321,6 +339,44 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             self._wait_for_background_writers()
             self._store_processes.clear()
             self._queues_in_use.clear()
+
+    def _warn_if_store_does_not_fit(self, store_path: str, n_channels: int, planes: int) -> None:
+        '''Say so in the log when the tile's store already exists with another shape.
+
+        A store keeps the number of channels and the depth it was created with. This matters
+        when a list is run again over data from an earlier run with the same name, for example
+        after a Stop: the old store is then reused as it is. With another number of channels
+        the stack cannot be written at all; with another depth it is cut to the old depth, or
+        ends in empty planes. Nothing is stopped here, because the acquisition is already
+        under way; the message tells the operator what to check and how to avoid it.
+        '''
+        try:
+            if not os.path.isdir(store_path):
+                return
+            root = zarr.open_group(store_path, mode='r')
+            if '0' not in root:
+                return
+            shape = root['0'].shape
+        except Exception:
+            logger.debug(f'{self.name()}: could not read the existing store {store_path}', exc_info=True)
+            return
+        if len(shape) != 5:
+            return
+        name = Path(store_path).name
+        if shape[1] != n_channels:
+            logger.error(
+                f"{self.name()}: {name} already exists with {shape[1]} channel(s), but this run has "
+                f"{n_channels}. This stack cannot be written into it. Use a new file name, or move the "
+                "old data away, and run again."
+            )
+        elif shape[2] != planes:
+            logger.error(
+                f"{self.name()}: {name} already exists with {shape[2]} planes, but this stack has "
+                f"{planes}. It keeps its old depth, so this stack will be cut short or end in empty "
+                "planes. This happens when a list is run again over a run that was stopped, or when "
+                "the channels of a tile have different z ranges. Use a new file name, or move the old "
+                "data away, and run again."
+            )
 
     def _wait_for_store(self, store_path: str) -> None:
         '''Block until the writer process last given this store has finished.'''

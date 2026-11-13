@@ -409,9 +409,12 @@ if the corresponding feature is not used:
    plugins = {}
    H5_BDV_Writer = {}
    MP_OME_Zarr_Writer = {}
-   MP_OME_Zarr_TCZYX_Writer = {}
 
 Check the ``demo_config.py`` for the latest required keys.
+
+``MP_OME_Zarr_TCZYX_Writer`` is optional. Without it the writer uses its
+built-in settings; add the dictionary only to change them (see
+:doc:`file_formats`).
 
 The zoom tables are checked at startup and mesoSPIM-control refuses to start if
 they cannot work, because ``pixelsize[zoom]`` is read while an acquisition is
