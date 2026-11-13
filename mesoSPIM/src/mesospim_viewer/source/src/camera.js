@@ -201,6 +201,78 @@ function fitCamera(viewer) {
   return fit > 0 || boxFit > 0;
 }
 
+// -- between the picture and micrometres -------------------------------------------------
+
+/** How the flat view draws: its panel, and for each of the two axes across the screen the
+ * axis's place in the space, where the view is centred (micrometres) and how many pixels a
+ * micrometre takes. Null in the volume view, or while there is nothing to draw. The flat
+ * view is never turned (panel.js), so x runs to the right and y down. */
+function flatView(viewer) {
+  if (layoutOf(viewer) === "3d") return null;
+  const { position, pose, zoomFactor } = viewer.navigationState;
+  const space = globalSpace(viewer);
+  const render = pose.displayDimensionRenderInfo.value;
+  if (!space?.rank || !render) return null;
+  let panel = null;
+  for (const one of viewer.display.panels) {
+    if ("sliceView" in one) panel = one;
+  }
+  if (!panel?.element?.isConnected) return null;
+  const drawn = Array.from(render.displayDimensionIndices).filter((axis) => axis >= 0).slice(0, 2);
+  if (drawn.length < 2 || !(zoomFactor.value > 0)) return null;
+  const axes = drawn.map((axis, slot) => {
+    const umPerVoxel = space.scales[axis] * (space.units[axis] === "m" ? 1e6 : 1);
+    return {
+      name: space.names[axis],
+      centre: position.value[axis] * umPerVoxel,
+      pixelsPerUm: render.canonicalVoxelFactors[slot] / zoomFactor.value / umPerVoxel,
+    };
+  });
+  return { panel, axes };
+}
+
+/** Where a box given in micrometres (`{ x: [low, high], y: [...] }`) is drawn in the flat
+ * view: `{ left, top, width, height }` in pixels of the page, or null when it cannot be said. */
+export function boxOnScreen(viewer, um) {
+  const flat = flatView(viewer);
+  if (flat === null || !um) return null;
+  const frame = flat.panel.element.getBoundingClientRect();
+  const spans = flat.axes.map((axis, slot) => {
+    const range = um[axis.name];
+    if (!Array.isArray(range)) return null;
+    const middle = slot === 0 ? frame.left + frame.width / 2 : frame.top + frame.height / 2;
+    return [middle + (range[0] - axis.centre) * axis.pixelsPerUm, middle + (range[1] - axis.centre) * axis.pixelsPerUm];
+  });
+  if (spans.some((span) => span === null)) return null;
+  return { left: spans[0][0], top: spans[1][0], width: spans[0][1] - spans[0][0], height: spans[1][1] - spans[1][0] };
+}
+
+/** The part of the specimen the flat view shows, in micrometres by axis name, or null. */
+export function viewInMicrometres(viewer) {
+  const flat = flatView(viewer);
+  if (flat === null) return null;
+  const frame = flat.panel.element.getBoundingClientRect();
+  const shown = {};
+  flat.axes.forEach((axis, slot) => {
+    const half = (slot === 0 ? frame.width : frame.height) / 2 / axis.pixelsPerUm;
+    shown[axis.name] = [axis.centre - half, axis.centre + half];
+  });
+  return shown;
+}
+
+/** Where the pointer is on the flat view, in micrometres by axis name, or null when it is
+ * not over the picture. */
+export function pointerInMicrometres(viewer) {
+  const mouse = viewer.mouseState;
+  const space = globalSpace(viewer);
+  if (!mouse.active || !space?.rank || layoutOf(viewer) === "3d") return null;
+  const at = {};
+  space.names.forEach((name, axis) => {
+    if (space.units[axis] === "m") at[name] = mouse.position[axis] * space.scales[axis] * 1e6;
+  });
+  return "x" in at && "y" in at ? at : null;
+}
+
 /**
  * Go to a box given in micrometres -- `{ x: [low, high], y: [...], z: [...] }`,
  * a position of an acquisition or all of them -- and fit it in the view, as Fit

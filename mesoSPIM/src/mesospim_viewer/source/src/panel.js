@@ -5,7 +5,8 @@
  * acquisition, the depth and time sliders along the bottom, a line that says
  * what is under the pointer, and -- instead of a silent black picture -- a few
  * words whenever there is nothing to draw yet. Down the right-hand edge: the
- * list of acquisitions, and one row per channel.
+ * list of acquisitions, each with a map of its tiles (tilemap.js), and one row
+ * per channel.
  *
  * Nothing here holds state of its own. The list of acquisitions is Python's
  * and is only drawn here; every other control reads and writes the engine's
@@ -26,6 +27,7 @@ import { WatchableVisibilityPriority } from "neuroglancer/unstable/visibility_pr
 import { SidePanel } from "neuroglancer/unstable/ui/side_panel.js";
 import { TrackableSidePanelLocation } from "neuroglancer/unstable/ui/side_panel_location.js";
 import { frameBounds, framing, layoutOf, setLayout, volumeDrawing } from "./camera.js";
+import { stateWords, tileMapper, tileOutlines, watchPicture } from "./tilemap.js";
 import { about } from "./layers.js";
 import { onAutoChanged } from "./contrast.js";
 import "./panel.css";
@@ -34,6 +36,8 @@ export const SEPARATOR = " · "; // between acquisition and channel in a layer's
 
 // How long a click in the list waits for the place it asks for to be known.
 const GO_WITHIN_MS = 6000;
+// Positions without a known place are listed by name, up to this many.
+const MOST_LISTED = 12;
 
 const ICONS = {
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -93,26 +97,23 @@ function select(name, open = name) {
   for (const listener of selection.listeners) listener();
 }
 
-function cardHead(step, text) {
+function cardHead(text) {
   const head = element("div", "row card-head");
-  const title = element("h2", null, "");
-  title.appendChild(element("span", "step", String(step)));
-  title.appendChild(document.createTextNode(text));
-  head.appendChild(title);
+  head.appendChild(element("h2", null, text));
   return head;
 }
 
-// -- 1: load data: from a folder, or live from the microscope -------------------------------
+// -- where the data comes from: a folder, or live from the microscope ------------------------
+// Two small buttons in the panel's head, beside its title. They are used once or
+// twice in a session, so they do not take a card of their own from the list below.
 
-function loadCard(post) {
-  const card = element("section", "card load");
-  card.appendChild(cardHead(1, "Load data"));
-  const row = element("div", "load-row");
+function loadButtons(post) {
+  const card = element("div", "load");
   const open = element("button", "open");
   open.type = "button";
   open.title = "Open a dataset from disk: an acquisition's folder, or a folder of acquisitions";
   open.innerHTML = ICONS.open;
-  open.appendChild(element("span", null, "Open from folder…"));
+  open.appendChild(element("span", null, "Open…"));
   open.addEventListener("click", () => post("/api/open"));
   const live = element("button", "live-toggle");
   live.type = "button";
@@ -121,8 +122,7 @@ function loadCard(post) {
   live.append(element("span", "live-dot"), element("span", "live-word", "Live"));
   let collecting = true;
   live.addEventListener("click", () => post("/api/collect", { on: !collecting }));
-  row.append(open, live);
-  card.appendChild(row);
+  card.append(open, live);
   card.setUi = (ui) => {
     open.hidden = ui.openable !== true;
     live.hidden = typeof ui.collecting !== "boolean";
@@ -135,7 +135,7 @@ function loadCard(post) {
   return card;
 }
 
-// -- 2: the acquisitions: Python's list, drawn as boxes with their positions --------------------
+// -- the acquisitions: Python's list, drawn as boxes with a map of their positions ---------------
 
 /** What the line under an acquisition's name says. */
 function lineOf(entry) {
@@ -171,7 +171,7 @@ function boundsOf(places) {
 
 function acquisitionsCard(viewer, post) {
   const card = element("section", "card acquisitions");
-  const head = cardHead(2, "Acquisitions");
+  const head = cardHead("Acquisitions");
   const count = element("span", "count", "");
   head.appendChild(count);
   card.appendChild(head);
@@ -188,7 +188,32 @@ function acquisitionsCard(viewer, post) {
   // take the view away from where the operator had moved it meanwhile.
   let wanted = null;
   let trying = null;
-  let framedAt = null; // the position the view went to, marked until Fit frames everything again
+  // The position that is selected: the one the view went to, or the one clicked in the
+  // picture. Marked in the map and boxed in the picture until Fit frames everything again.
+  let framedAt = null;
+  let pointed = null; // the position pointed at, in the map or in the picture: { name, position }
+  const mapper = tileMapper(viewer);
+  // Told to whoever draws on the picture (mountPanel): the tile pointed at and the one selected.
+  card.onOutline = () => {};
+  const placeOf = (found) => {
+    if (found === null) return null;
+    const entry = entries.find((one) => one.name === found.name);
+    const position = entry?.shown ? (entry.positions ?? []).find((one) => one.name === found.position) : null;
+    return position?.um ? { um: position.um, text: position.name } : null;
+  };
+  const outline = () => {
+    card.onOutline("picked", placeOf(framedAt));
+    // Pointing at the tile that is selected already: its one box says it.
+    const both = pointed !== null && framedAt !== null && pointed.name === framedAt.name && pointed.position === framedAt.position;
+    card.onOutline("pointed", both ? null : placeOf(pointed));
+  };
+  const point = (found) => {
+    const same = (found?.name ?? null) === (pointed?.name ?? null) && (found?.position ?? null) === (pointed?.position ?? null);
+    if (same) return;
+    pointed = found;
+    mapper.hover(found !== null && found.name === selection.open ? found.position : null);
+    outline();
+  };
   const go = () => {
     if (wanted === null) return;
     if (performance.now() > wanted.until) {
@@ -215,6 +240,41 @@ function acquisitionsCard(viewer, post) {
       draw();
     }
   });
+  /** The tile of a shown acquisition at a place in micrometres: of the selected acquisition
+   * first, and where tiles overlap, the one whose middle is nearest. */
+  card.tileAt = (at) => {
+    let best = null;
+    for (const entry of entries) {
+      if (!entry.shown) continue;
+      for (const position of entry.positions ?? []) {
+        const um = position.um;
+        if (!um?.x || !um?.y) continue;
+        if (at.x < um.x[0] || at.x > um.x[1] || at.y < um.y[0] || at.y > um.y[1]) continue;
+        const away = Math.hypot(at.x - (um.x[0] + um.x[1]) / 2, at.y - (um.y[0] + um.y[1]) / 2);
+        const own = entry.name === selection.name ? 0 : 1;
+        if (best === null || own < best.own || (own === best.own && away < best.away)) {
+          best = { name: entry.name, position: position.name, own, away };
+        }
+      }
+    }
+    return best === null ? null : { name: best.name, position: best.position };
+  };
+  /** The operator points at a tile in the picture (or at none). */
+  card.pointInPicture = (found) => point(found);
+  /** The operator clicked a tile in the picture: it is selected, and its acquisition with
+   * it, so that the channels below are its own. The view stays where it is. A click
+   * where no tile lies takes the selection off again. */
+  card.pickInPicture = (found) => {
+    if (found === null) {
+      if (framedAt === null) return;
+      framedAt = null;
+      draw();
+      return;
+    }
+    framedAt = { name: found.name, position: found.position };
+    if (selection.name === found.name && selection.open === found.name) draw();
+    else select(found.name); // draws
+  };
   const pick = (entry, position = null) => {
     select(entry.name);
     if (!entry.shown) post("/api/show", { name: entry.name, visible: true });
@@ -275,34 +335,53 @@ function acquisitionsCard(viewer, post) {
       bar.addEventListener("click", () => pick(entry));
       box.appendChild(bar);
       if (open && positions.length) {
-        const rows = element("div", "positions");
-        for (const position of positions) {
-          const row = element("button", "position");
-          row.type = "button";
-          row.dataset.name = position.name;
-          if (position.state) row.dataset.state = position.state;
-          row.classList.toggle("framed", framedAt?.name === entry.name && framedAt?.position === position.name);
-          const pin = element("span", "pin");
-          pin.innerHTML = ICONS.pin;
-          row.append(pin, element("span", "label", position.name));
-          if (position.state) {
-            const channels = Array.isArray(entry.channels) ? entry.channels.length : 0;
-            const words = {
-              done: "acquired", now: "acquiring", next: "next",
-              part: `${position.acquired ?? 0} of ${channels || "?"} channels`,
-            };
-            row.appendChild(element("span", "state", words[position.state] ?? position.state));
+        const channels = Array.isArray(entry.channels) ? entry.channels.length : 0;
+        const marked = framedAt?.name === entry.name ? framedAt.position : null;
+        // The positions whose place is known are drawn as a map; the others cannot be.
+        const unplaced = positions.filter((one) => !(one.um?.x && one.um?.y));
+        const toCome = unplaced.filter((one) => one.state === "next").length;
+        const map = mapper.build(positions, {
+          marked, channels,
+          note: unplaced.length > MOST_LISTED && toCome ? `${toCome} more to come` : "",
+          onHover: (position) => point(position === null ? null : { name: entry.name, position: position.name }),
+          onPick: (position) => pick(entry, position.name),
+        });
+        if (map !== null) box.appendChild(map);
+        // What the map cannot show is listed by name, as long as it is a few: a hundred
+        // names help nobody, and the map appears as soon as the acquisition is shown.
+        const listed = map === null ? positions : unplaced;
+        if (listed.length > MOST_LISTED) {
+          if (map === null) {
+            box.appendChild(element("p", "positions hint",
+              `${listed.length} positions. Show this acquisition to see where they lie.`));
           }
-          row.addEventListener("click", (event) => {
-            event.stopPropagation();
-            pick(entry, position.name);
-          });
-          rows.appendChild(row);
+        } else if (listed.length) {
+          const rows = element("div", "positions");
+          for (const position of listed) {
+            const row = element("button", "position");
+            row.type = "button";
+            row.dataset.name = position.name;
+            if (position.state) row.dataset.state = position.state;
+            row.classList.toggle("framed", marked === position.name);
+            const pin = element("span", "pin");
+            pin.innerHTML = ICONS.pin;
+            row.append(pin, element("span", "label", position.name));
+            if (position.state) row.appendChild(element("span", "state", stateWords(position, channels)));
+            row.addEventListener("click", (event) => {
+              event.stopPropagation();
+              pick(entry, position.name);
+            });
+            rows.appendChild(row);
+          }
+          box.appendChild(rows);
         }
-        box.appendChild(rows);
       }
       list.appendChild(box);
     }
+    // The map was made anew: what is pointed at and what is selected are said again.
+    if (pointed !== null && !entries.some((entry) => entry.name === pointed.name)) pointed = null;
+    mapper.hover(pointed !== null && pointed.name === selection.open ? pointed.position : null);
+    outline();
   };
   card.setAcquisitions = (next) => {
     entries = next;
@@ -604,6 +683,10 @@ function channelRow(viewer, managed, contrast) {
   swatch.type = "button";
   swatch.title = "Change the colour";
   const label = element("span", "label", channel);
+  // A row is a thin strip of histogram, so that four channels fit the panel. A click on
+  // the channel's name opens it to the full histogram with its limits, and closes it again.
+  label.title = "Show the histogram larger, or smaller again";
+  label.addEventListener("click", () => row.classList.toggle("wide"));
   const auto = textButton("Auto", "auto", "Keep setting the contrast from what is on screen");
   auto.addEventListener("click", () => contrast.setAuto(managed.name, !contrast.isAuto(managed.name)));
   head.append(eye, swatch, label, auto);
@@ -660,7 +743,7 @@ function channelRow(viewer, managed, contrast) {
 
 function channelsCard(viewer, contrast) {
   const card = element("section", "card channels");
-  card.appendChild(cardHead(3, "Channels"));
+  card.appendChild(cardHead("Channels"));
   const of = element("div", "of", "");
   card.appendChild(of);
   const body = element("div", "groups");
@@ -854,7 +937,12 @@ function readout(viewer) {
       if (Array.isArray(value) || ArrayBuffer.isView(value)) value = value[0];
       if (value === undefined || value === null || typeof value === "object") continue;
       const [, channel] = splitName(managed.name);
-      box.appendChild(element("span", "value", `${channel}: ${typeof value === "number" ? Math.round(value) : value}`));
+      const said = element("span", "value", `${channel}: ${typeof value === "number" ? Math.round(value) : value}`);
+      const colour = managed.layer.shaderControlState?.state?.get("color")?.trackable?.value;
+      if (colour?.length === 3) {
+        said.style.borderLeftColor = `rgb(${Array.from(colour, (v) => Math.round(v * 255)).join(", ")})`;
+      }
+      box.appendChild(said);
     }
     box.hidden = false;
   };
@@ -875,9 +963,10 @@ function fitButton(fit, framing) {
   button.innerHTML = `${ICONS.fit}<span>Fit</span>`;
   button.title = "Zoom out to show every tile, and keep doing so as new ones arrive";
   button.addEventListener("click", () => fit());
-  // Offered only while the view is the operator's: otherwise it already shows all.
+  // Always in its place, so the buttons beside it do not jump. While the view already
+  // shows everything there is nothing for it to do, and it is dimmed and cannot be pressed.
   const reflect = () => {
-    button.hidden = framing.value;
+    button.disabled = framing.value;
   };
   framing.listeners.push(reflect);
   reflect();
@@ -1073,8 +1162,10 @@ class ControlPanel extends SidePanel {
     const fold = iconButton("panel", "Hide the controls");
     fold.classList.add("fold");
     fold.addEventListener("click", () => this.close());
-    head.append(element("span", "title", "Data viewer"), fold);
-    body.append(head, parts.load, parts.acquisitions, parts.channels, parts.volume);
+    head.append(element("span", "title", "Data viewer"), parts.load, fold);
+    // The volume view's own controls come before the channels: they are what was asked
+    // for when 3D was chosen, and below the channels they were off the bottom of the window.
+    body.append(head, parts.acquisitions, parts.volume, parts.channels);
     this.addBody(body);
   }
 }
@@ -1087,7 +1178,7 @@ export function mountPanel(viewer, { fit, live, framing, following, acquiring, p
   // The cards are made once and live as long as the page; the engine's panel
   // that holds them is made anew each time it is unfolded.
   const parts = {
-    load: loadCard(post),
+    load: loadButtons(post),
     acquisitions: acquisitionsCard(viewer, post),
     channels: channelsCard(viewer, contrast),
     volume: volumeCard(viewer, fit),
@@ -1133,11 +1224,21 @@ export function mountPanel(viewer, { fit, live, framing, following, acquiring, p
 
   const notice = noticeBox();
   const empty = emptyState(post);
-  // Along the bottom, clear of the engine's scale bar at the left: what is
-  // under the pointer, and beneath it the sliders.
+  // Along the bottom, clear of the engine's scale bar at the left: the sliders.
   const bottom = element("div", "bottom");
-  bottom.append(readout(viewer), sliders(viewer));
-  overlay.append(loadingBar(viewer), notice, empty, bottom);
+  bottom.append(sliders(viewer));
+  // What is under the pointer is said in one fixed place, in the corner under the help
+  // button, where the eye finds it without following the pointer.
+  overlay.append(loadingBar(viewer), notice, empty, readout(viewer), bottom);
+  // The boxes around the tile pointed at and the tile selected, and what the operator
+  // points at and clicks in the picture, told to the list of acquisitions.
+  const outlines = tileOutlines(viewer, overlay);
+  parts.acquisitions.onOutline = (kind, what) => outlines.set(kind, what);
+  watchPicture(viewer, stage, {
+    tileAt: parts.acquisitions.tileAt,
+    hover: parts.acquisitions.pointInPicture,
+    pick: parts.acquisitions.pickInPicture,
+  });
   const countLayers = () => empty.setLayers(viewer.layerManager.managedLayers.length);
   viewer.layerManager.layersChanged.add(countLayers);
   countLayers();

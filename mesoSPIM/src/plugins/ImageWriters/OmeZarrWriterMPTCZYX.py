@@ -292,6 +292,7 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         self.tile_index_of_this_stack = tile
         self.tile_count_of_this_acquisition = rows.get_n_tiles()
         self.channel_labels_of_this_acquisition = tuple(channel_labels)
+        self.rows_of_this_stacks_acquisition = rows
         self.current_acquire_file_path = self.acquisition_path + '/' + self.omezarr_group_name
         self.metadata_file_path = req.uri + '_' + self.omezarr_group_name + '_meta.txt'
 

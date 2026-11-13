@@ -893,7 +893,8 @@ class Library:
         """Its positions, by tile, for the panel to list and go to: each with its name and,
         when known, its place in micrometres (``um``: x, y and z, each low and high). Of
         the run being acquired, each also says whether it is ``done``, ``now`` being
-        acquired, or ``next``; where a next one lies, nobody knows yet."""
+        acquired, or ``next``. Where a next one lies is known when the microscope said
+        so with the stack it began (``Stack.places``, from its acquisition table)."""
         found: dict[str, dict] = {}
         if dataset.shown:
             for tile in dataset.tiles.values():
@@ -939,6 +940,10 @@ class Library:
             total = max((held.preview.stack.tiles for held in dataset.previews), default=0)
             for number in range(1, total + 1):
                 found.setdefault(f"Tile {number}", {"state": "next"})
+            # Where the tiles lie that have not begun, from what the microscope last said.
+            for name, (x0, x1, y0, y1, z0, z1) in (last.places if last is not None else ()):
+                if name in found:
+                    found[name].setdefault("um", {"x": [x0, x1], "y": [y0, y1], "z": [z0, z1]})
         return [{"name": name, **found[name]} for name in sorted(found, key=_position_order)]
 
     @staticmethod

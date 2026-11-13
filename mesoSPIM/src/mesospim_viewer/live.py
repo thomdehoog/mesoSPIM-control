@@ -79,6 +79,10 @@ class Stack:
     # the acquisition's folder, and the store the stack lands in.
     folder: Path | None = None
     store: Path | None = None
+    # Where every tile of the run lies, when the microscope knows it from its acquisition
+    # table: (name, (x low, x high, y low, y high, z low, z high)) in micrometres. The panel
+    # draws its map of the tiles from this, the ones still to come included.
+    places: tuple[tuple[str, tuple[float, float, float, float, float, float]], ...] = ()
 
     @property
     def channel_index(self) -> int:

@@ -79,40 +79,27 @@ button.icon.off { color: var(--text-muted); }
 .segmented button.on { background: var(--accent); color: #fff; }
 
 /* -- the blocks' heads: their place in the order the operator uses them ----------- */
-.card h2 .step {
-  display: inline-block; width: 16px; height: 16px; margin-right: 7px; vertical-align: -3px;
-  border-radius: 50%; border: 1px solid var(--control-border); background: var(--control-bg);
-  color: var(--text-primary); font-size: 10px; line-height: 14px; text-align: center; letter-spacing: 0;
-}
 .card-head .count { color: var(--text-muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
 
-/* -- 1: load data ------------------------------------------------------------------ */
-.load-row { display: flex; }
-.load-row > * + * { margin-left: 8px; }
-.load .open {
-  flex: 1; min-width: 0; height: 50px; padding: 0 12px;
-  display: flex; align-items: center;
-  background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 8px;
-  color: var(--text-bright); font-weight: 600; cursor: pointer; text-align: left;
+/* -- where the data comes from: two small buttons in the panel's head -------------- */
+.load { flex: 0 0 auto; display: flex; align-items: center; margin-right: 6px; }
+.load[hidden] { display: none; }
+.load > * + * { margin-left: 6px; }
+.load .open, .live-toggle {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px;
+  background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 13px;
+  color: var(--text-primary); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
-.load .open[hidden] { display: none; }
-.load .open:hover { border-color: #46546a; }
-.load .open svg { flex: 0 0 auto; width: 18px; height: 18px; margin-right: 10px; fill: none; stroke: var(--text-muted); stroke-width: 1.8; stroke-linejoin: round; }
-.live-toggle {
-  flex: 0 0 50px; width: 50px; height: 50px; padding: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 8px; cursor: pointer;
-}
-.live-toggle[hidden] { display: none; }
-.live-toggle .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #4a5462; }
-.live-toggle .live-word {
-  margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted);
-}
+.load .open[hidden], .live-toggle[hidden] { display: none; }
+.load .open:hover, .live-toggle:hover { border-color: #46546a; }
+.load .open svg { flex: 0 0 auto; width: 13px; height: 13px; margin-right: 5px; fill: none; stroke: var(--text-muted); stroke-width: 1.8; stroke-linejoin: round; }
+.live-toggle .live-dot { width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #4a5462; }
+.live-toggle .live-word { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); }
 .live-toggle.on { border-color: #23633a; background: linear-gradient(180deg, rgba(63, 185, 80, 0.15), rgba(63, 185, 80, 0.02)), var(--control-bg); }
-.live-toggle.on .live-dot { background: #3fb950; box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.18); }
+.live-toggle.on .live-dot { background: #3fb950; box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.18); }
 .live-toggle.on .live-word { color: #56d364; }
 
-/* -- 2: the acquisitions: a raised bar each, its positions in a lighter area below -- */
+/* -- the acquisitions: a raised bar each, the map of its positions in a lighter area below -- */
 /* No scrolling of its own: the panel scrolls, one scrollbar. */
 .acquisitions .list { display: flex; flex-direction: column; }
 .acquisition {
@@ -147,12 +134,33 @@ button.icon.off { color: var(--text-muted); }
 .acquisition .badge.live { color: #56d364; border-color: #23633a; background: rgba(46, 160, 67, 0.16); }
 .acquisition .badge.paused { color: #e3b341; border-color: #6b5420; background: rgba(187, 128, 9, 0.15); }
 .acquisition .remove, .acquisition .fold { width: 24px; height: 24px; color: var(--text-muted); }
-.acquisition .remove { opacity: 0.6; }
-.acquisition:hover .remove, .acquisition.selected .remove { opacity: 1; }
+/* Taking an acquisition off the list sits right beside the arrow that folds it. So it
+   is there only for the row the operator is on, and not one stray click away on every row. */
+.acquisition .remove { visibility: hidden; opacity: 0.7; }
+.acquisition:hover .remove, .acquisition.selected .remove { visibility: visible; }
 .acquisition .remove:hover { color: #ff7b72; }
 .acquisition .fold svg { width: 14px; height: 14px; transition: transform 0.18s; }
 .acquisition .fold.unfolded svg { transform: rotate(90deg); }
 .positions { max-height: 132px; overflow-y: auto; padding: 4px 6px 6px 24px; }
+p.positions.hint { padding: 8px 10px; }
+
+/* The positions as a map of the specimen: a cell for every tile, where it lies. */
+.positions.tile-map { max-height: none; overflow: visible; padding: 8px 10px 8px 10px; }
+.tile-map svg { display: block; width: 100%; max-height: 210px; }
+/* Lines keep their width on screen however large the specimen is in micrometres. */
+.tile-map rect { vector-effect: non-scaling-stroke; }
+.tile-map .position { cursor: pointer; }
+.tile-map .position rect { fill: rgba(255, 255, 255, 0.10); stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+.tile-map .position[data-state="next"] rect { fill: transparent; stroke: rgba(255, 255, 255, 0.22); stroke-dasharray: 3 2; }
+.tile-map .position[data-state="part"] rect { fill: rgba(255, 255, 255, 0.05); }
+.tile-map .position[data-state="now"] rect { fill: rgba(63, 185, 80, 0.45); stroke: #56d364; }
+.tile-map .position.pointed rect { fill: rgba(255, 255, 255, 0.24); stroke: #ffffff; stroke-width: 1.4; }
+.tile-map .position.framed rect { fill: rgba(47, 129, 247, 0.5); stroke: #58a6ff; stroke-width: 1.6; }
+.tile-map .chosen { fill: none; stroke: #58a6ff; stroke-width: 1.6; pointer-events: none; }
+.tile-map .in-view { fill: none; stroke: #e3b341; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+.map-caption { display: flex; align-items: baseline; min-height: 15px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+.map-caption .said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.map-caption .noted { flex: 0 0 auto; margin-left: 8px; white-space: nowrap; }
 .position {
   display: flex; align-items: center; width: 100%; padding: 4px 8px; border: 0; border-radius: 5px;
   background: transparent; color: var(--text-primary); font-size: 12px; text-align: left; cursor: pointer;
@@ -232,7 +240,7 @@ button.icon.off { color: var(--text-muted); }
 /* overflow: a row's histogram not drawn yet keeps the browser's 300-pixel canvas,
    which would make the panel scroll sideways */
 .controls .neuroglancer-invlerp-cdfpanel {
-  position: relative; display: block; width: 100%; height: 44px; box-sizing: border-box; overflow: hidden;
+  position: relative; display: block; width: 100%; height: 24px; box-sizing: border-box; overflow: hidden;
   background: #0a0c10; border: 1px solid var(--subtle-border); border-radius: 4px;
 }
 .controls .neuroglancer-invlerp-widget-bounds { display: flex; align-items: center; width: 100%; }
@@ -241,6 +249,11 @@ button.icon.off { color: var(--text-muted); }
   background: transparent; border: 0; color: var(--text-bright);
 }
 .controls .neuroglancer-invlerp-widget-window-bounds { font-size: 11px; }
+/* A channel is a thin strip, so that four fit the panel; a click on its name opens it
+   to the full histogram with the limits of the span it shows (panel.js). */
+.channel:not(.wide) .controls .neuroglancer-invlerp-widget-window-bounds { display: none; }
+.channel.wide .controls .neuroglancer-invlerp-cdfpanel { height: 56px; }
+.channel .label { cursor: pointer; }
 .controls .neuroglancer-invlerp-widget-window-bound { color: var(--text-muted); font-size: 11px; }
 .controls .neuroglancer-invlerp-range-finder-button-container { display: none; }
 .controls .colour-control { position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0; }
@@ -264,6 +277,8 @@ button.icon.off { color: var(--text-muted); }
 }
 .tools > button.tool[hidden] { display: none; }
 .tools > button.tool:hover { border-color: var(--accent); }
+.tools > button.tool:disabled { opacity: 0.4; cursor: default; }
+.tools > button.tool:disabled:hover { border-color: var(--control-border); }
 .tools > button.tool svg { width: 14px; height: 14px; margin-right: 6px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Live: green and quiet while the view follows the acquisition; lit, and
    asking to be pressed, once the operator has stepped away from it. */
@@ -339,16 +354,33 @@ button.icon.off { color: var(--text-muted); }
 }
 .bottom > * { pointer-events: auto; }
 .bottom > * + * { margin-top: 6px; }
-.readout {
-  display: flex; align-items: center;
-  padding: 3px 9px;
-  background: var(--overlay-bg); border-radius: 6px;
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--text-primary);
+/* What is under the pointer: where, and each channel's value beside its colour. */
+.stage-overlay > .readout {
+  position: absolute; top: 48px; right: 10px; z-index: 4;
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 5px 9px;
+  background: var(--overlay-bg); border: 1px solid var(--subtle-border); border-radius: 6px;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.readout[hidden] { display: none; }
-.readout > * + * { margin-left: 12px; }
-.readout .value { color: var(--text-bright); }
+.stage-overlay > .readout[hidden] { display: none; }
+.readout .value { margin-top: 1px; padding-left: 6px; border-left: 3px solid var(--text-muted); color: var(--text-bright); }
+
+/* The boxes on the picture: around the tile pointed at, and around the one selected. */
+.stage-overlay > .tile-outline {
+  position: absolute; z-index: 2; box-sizing: border-box; pointer-events: none;
+  border: 1px dashed rgba(255, 255, 255, 0.75); border-radius: 2px;
+}
+.stage-overlay > .tile-outline[hidden] { display: none; }
+.stage-overlay > .tile-outline.picked { border: 1px solid rgba(88, 166, 255, 0.85); }
+.tile-outline .name {
+  position: absolute; left: 4px; top: 4px; padding: 1px 7px; border-radius: 9px;
+  background: var(--overlay-bg); color: var(--text-bright); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tile-outline .name[hidden] { display: none; }
+.tile-outline.picked .name { color: #9cc7ff; }
+
 .bottom-bar {
   align-self: stretch;
   display: flex; flex-direction: column;

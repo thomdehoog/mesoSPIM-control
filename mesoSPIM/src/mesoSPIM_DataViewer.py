@@ -195,11 +195,13 @@ def describe_stack(core, acq, acq_list, frame_shape):
     # A writer that decides itself where a stack lands says so (the one-store-per-tile
     # writer: which tile, and what its channels are called). The preview then carries
     # the same tile number and channel names as the store it will be replaced by.
+    table = acq_list
     if store is not None and getattr(writer, 'channel_labels_of_this_acquisition', None):
         channel = writer.channel_label_of_this_stack
         channels = tuple(writer.channel_labels_of_this_acquisition)
         tile = int(writer.tile_index_of_this_stack)
         tiles = int(writer.tile_count_of_this_acquisition)
+        table = getattr(writer, 'rows_of_this_stacks_acquisition', None) or acq_list
     return Stack(
         acquisition=name,
         channel=channel,
@@ -211,9 +213,38 @@ def describe_stack(core, acq, acq_list, frame_shape):
         time_point=time_point_of(acq['filename']) if (shared or store is None) else 0,
         tile=f'Tile {tile + 1}',
         tiles=tiles,
+        places=tile_places(core, table, frame_shape),
         folder=folder,
         store=store,
     )
+
+
+def tile_places(core, rows, frame_shape) -> tuple:
+    """Where every tile of a run lies, from the acquisition table: for each tile its name
+    and its extent in micrometres (x low, x high, y low, y high, z low, z high).
+
+    The Data viewer draws a small map of the tiles from this, so that the operator sees
+    the whole run laid out from its first stack on, with the tiles still to come. A row
+    that cannot be read (an unknown zoom, say) is left out; the map then shows that tile
+    once it is acquired.
+    """
+    places = {}
+    for row in rows:
+        try:
+            name = f'Tile {rows.get_tile_index(row) + 1}'
+            if name in places:
+                continue
+            pixel = float(core.cfg.pixelsize[row['zoom']])
+            x, y, z = float(row['x_pos']), float(row['y_pos']), float(row['z_start'])
+            depth = int(row.get_image_count()) * float(row['z_step'])
+            places[name] = (
+                round(x, 6), round(x + int(frame_shape[1]) * pixel, 6),
+                round(y, 6), round(y + int(frame_shape[0]) * pixel, 6),
+                round(z, 6), round(z + depth, 6),
+            )
+        except Exception:
+            logger.debug('The place of a tile could not be worked out from its row', exc_info=True)
+    return tuple(places.items())
 
 
 class Feed(QtCore.QObject):
