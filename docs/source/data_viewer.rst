@@ -50,7 +50,11 @@ the viewer afterwards.
   switch it on again.
 
 The viewer does not slow the acquisition down: it takes a small copy of a
-frame a few times a second and does everything else in its own threads.
+frame a few times a second and does everything else in its own threads. It
+also keeps off the drive the microscope is writing to. A tile is listed once
+when it first appears; a finished tile is not listed again; and the tile being
+acquired is checked on disk only every ten seconds, because it is on screen
+from the camera's frames until its stack is complete.
 
 What is on screen
 -----------------
@@ -296,9 +300,26 @@ Then by hand, in demo mode with the Data viewer open:
    run is shown: the picture should stay fitted. Close the window during a
    run: mesoSPIM must stay responsive and the run must go on. Open the viewer
    again afterwards; it should pick the run up.
-9. **How it feels.** Pan, zoom and drag the Z slider through a saved run.
-   Movement should follow the mouse without a pause, and tiles should sharpen
-   within a moment of stopping.
+9. **The map and the picture.** Run a grid of at least three by three tiles.
+   From the first stack on, the map in the panel should show all nine cells:
+   the one being acquired green, the others dashed, then filled as they are
+   done. Afterwards, point at tiles in the picture: a box should follow the
+   pointer from tile to tile, and the matching cell should light up. Click a
+   tile: its cell turns blue and the view does not move. Click a cell: the
+   view goes to that tile. Open a second acquisition beside the first and
+   click one of its tiles: the channel rows should become that acquisition's.
+10. **How it feels.** Pan, zoom and drag the Z slider through a saved run.
+    Movement should follow the mouse without a pause, and tiles should
+    sharpen within a moment of stopping. Switch between 2D and 3D a few times:
+    from the second time on the volume should be there at once, without a
+    black picture in between. Zoom and turn the volume: it is drawn coarser
+    while it moves and sharp when it stops, and should never disappear.
+11. **A large acquisition.** If you have one with a hundred tiles or more,
+    open it during a run of something else. The tiles should appear a few at
+    a time over some seconds; meanwhile the live view of the run must keep
+    moving and mesoSPIM must stay responsive. Watch the acquisition drive's
+    activity for a few minutes afterwards: once the tiles are in, the viewer
+    should leave the drive alone.
 
 If something is wrong
 ---------------------
