@@ -505,6 +505,9 @@ function volumeCard(viewer, fit) {
   }, 500);
   const show = () => {
     card.hidden = layoutOf(viewer) !== "3d";
+    // The layout may have been changed from Python, not by the switch in the panel:
+    // the channels are given their projection here too, or the volume view is empty.
+    applyVolumeMode(viewer);
     drawFinely(viewer);
     reflect();
   };

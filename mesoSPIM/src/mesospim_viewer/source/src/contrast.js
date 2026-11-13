@@ -24,6 +24,7 @@
  */
 import { WatchableVisibilityPriority } from "neuroglancer/unstable/visibility_priority/frontend.js";
 import { copyHistogramToCPU } from "neuroglancer/unstable/webgl/empirical_cdf.js";
+import { DataType } from "neuroglancer/unstable/util/data_type.js";
 import { defaultDataTypeRange } from "neuroglancer/unstable/util/lerp.js";
 import { layoutOf } from "./camera.js";
 import { about, clearTouched, isTouched, markTouched, onLayersChanged, readControl, writeControl } from "./layers.js";
@@ -81,7 +82,14 @@ export function autoStep(histogram, window, limits) {
   if (w0 < FLOOR) return { range: null, window: [FLOOR, Math.max(w1, FLOOR + 1)] };
   let total = 0;
   for (let bin = 1; bin < histogram.length; ++bin) total += histogram[bin];
-  if (total < MIN_SAMPLES) return null;
+  if (total < MIN_SAMPLES) {
+    // Nothing to measure inside the span. If the picture lies below it -- the view
+    // went from bright tissue to a dim tile or a deep plane -- the span is opened
+    // downwards and measured again; otherwise Auto would wait, on a black picture,
+    // for brighter data to come back. Zeros stay left out: the span still starts at one.
+    if (w0 > FLOOR && histogram[0] >= MIN_SAMPLES) return { range: null, window: [FLOOR, w1] };
+    return null;
+  }
   const bins = histogram.length - 2;
   const size = span / bins;
   const valueAt = ({ bin, within }) => w0 + (bin - 1 + within) * size;
@@ -117,6 +125,13 @@ function step(viewer, managed, state) {
   const now = readControl(layer, "contrast");
   if (!specifications || !now?.range?.length || !now?.window?.length) return;
   if (specifications.bounds.value.length === 0) return;
+  // Auto measures whole numbers, as a camera delivers them. Data in fractions
+  // (float32, from processing) has no fixed range to measure within: the engine's
+  // stand-in of 0..1 would turn every picture white, so Auto steps back.
+  if (layer.dataType?.value === DataType.FLOAT32) {
+    setAuto(viewer, managed.name, false);
+    return;
+  }
   const limits = (defaultDataTypeRange[layer.dataType?.value] ?? [0, 65535]).map(Number);
   if (!limits.every(Number.isFinite)) return;
   // Only a histogram drawn over the span the control holds now is measured:

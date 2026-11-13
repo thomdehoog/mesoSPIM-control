@@ -716,6 +716,22 @@ def test_a_channel_without_a_window_gets_its_contrast_from_what_is_on_screen(pag
     assert not errors, errors
 
 
+def test_auto_opens_its_span_downwards_when_the_picture_got_darker(pages, viewers, tiles):
+    """Auto measures within a span around the last picture. After a jump from bright
+    tissue to a dim tile, everything on screen lies below that span. Auto used to wait
+    there, on a black picture, until brighter data came back."""
+    view = viewers()
+    view.add(tiles[0], layer="overview")
+    page, errors = pages.open(view.start())
+    step = "([histogram, span]) => window.mesospim.autoStep(histogram, span, [0, 65535])"
+    below = [5000] + [0] * 255          # every sample darker than the span, none inside it
+    assert page.evaluate(step, [below, [1500, 6700]]) == {"range": None, "window": [1, 6700]}
+    # Nothing on screen at all (zeros are chunks that are not there yet): nothing to do.
+    assert page.evaluate(step, [[0] * 256, [1500, 6700]]) is None
+    assert page.evaluate(step, [below, [1, 6700]]) is None, "a span that already starts at one cannot open further"
+    assert not errors, errors
+
+
 def test_auto_also_measures_a_picture_that_stands_still(pages, viewers, tmp_path):
     """Once the tiles are drawn nothing moves on screen, so the engine draws no
     further frame of its own accord. The contrast has to be measured all the

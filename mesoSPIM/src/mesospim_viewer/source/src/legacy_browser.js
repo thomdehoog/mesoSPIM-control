@@ -44,6 +44,19 @@ if (typeof AbortSignal !== "undefined") {
   });
 }
 
+// ---- disposing (Chrome 134)
+// Neuroglancer's classes name their clean-up method `[Symbol.dispose]`. Where the
+// browser has no such symbol, that name is `undefined` at the moment a class is
+// defined, the method is filed under the text "undefined", and every later call of
+// `thing[Symbol.dispose]()` fails. The engine brings its own stand-in, but in the
+// workers it arrives after the first classes are defined. Reading a shard's index
+// ends with such a call, so sharded data never appeared in the Data viewer window.
+// Defined here, first of all, the symbol is the same one from the start.
+if (typeof Symbol === "function") {
+  define(Symbol, "dispose", Symbol.for("Symbol.dispose"));
+  define(Symbol, "asyncDispose", Symbol.for("Symbol.asyncDispose"));
+}
+
 // ---- promises (Chrome 85, 119)
 if (typeof AggregateError === "undefined") {
   globalThis.AggregateError = class AggregateError extends Error {

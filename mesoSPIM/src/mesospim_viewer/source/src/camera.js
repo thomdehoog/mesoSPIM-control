@@ -49,8 +49,21 @@ export function setLayout(viewer, name) {
   viewer.layout.restoreState(name);
   if (name === "3d" || was !== "3d") return;
   if (following.value && newest !== null) goToNewest(viewer);
-  else if (planeBefore3d !== null && depth !== -1) moveQuietly(viewer, depth, planeBefore3d);
+  else if (planeBefore3d !== null && depth !== -1 && holdsPlane(viewer, depth, planeBefore3d)) {
+    moveQuietly(viewer, depth, planeBefore3d);
+  }
   planeBefore3d = null;
+}
+
+/** Whether a plane lies within what is shown now. The picture may have been replaced
+ * while the volume view was up, and the plane remembered may belong to data that is
+ * gone: going there would show nothing, with no hint why. */
+function holdsPlane(viewer, depth, plane) {
+  const bounds = globalSpace(viewer)?.bounds;
+  const low = bounds?.lowerBounds?.[depth];
+  const high = bounds?.upperBounds?.[depth];
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return true;
+  return plane >= low && plane <= high;
 }
 
 /** Put one axis of the view somewhere without it counting as the operator stepping away. */

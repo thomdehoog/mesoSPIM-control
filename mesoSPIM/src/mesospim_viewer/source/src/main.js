@@ -48,7 +48,7 @@ import {
   toFirstTimePoint,
   watchOperator,
 } from "./camera.js";
-import { isAuto, operatorMoved, setAuto, watchContrast } from "./contrast.js";
+import { autoStep, isAuto, operatorMoved, setAuto, watchContrast } from "./contrast.js";
 import { landed, landedAnywhere } from "./engine/landed.js";
 import { applyLayers, watchRetiring } from "./layers.js";
 import { mountPanel } from "./panel.js";
@@ -312,12 +312,24 @@ async function main() {
   bindReports(viewer);
   watchOperator(viewer);
   watchRetiring(viewer);
+  // A window made larger or smaller, or a panel folded away, changes the room the
+  // picture has. While the view is still framing everything it is fitted again, so the
+  // picture is not left cropped or small with the Fit button hidden. A view the
+  // operator has moved is theirs and is left alone.
+  let refit = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(refit);
+    refit = setTimeout(() => {
+      if (framing.value && framing.busy === 0) fitEverything(viewer);
+    }, 150);
+  });
   // For the tests, and for a look from the browser's console.
   window.mesospim = {
     framing,
     following,
     acquiring,
     isAuto,
+    autoStep,
     setAuto: (name, on) => setAuto(viewer, name, on),
     fit: () => fitEverything(viewer),
     live: () => followAgain(viewer),

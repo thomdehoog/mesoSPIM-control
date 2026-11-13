@@ -104,6 +104,10 @@ var init_legacy_browser = __esm({
         return controller.signal;
       });
     }
+    if (typeof Symbol === "function") {
+      define(Symbol, "dispose", Symbol.for("Symbol.dispose"));
+      define(Symbol, "asyncDispose", Symbol.for("Symbol.asyncDispose"));
+    }
     if (typeof AggregateError === "undefined") {
       globalThis.AggregateError = class AggregateError extends Error {
         constructor(errors, message) {

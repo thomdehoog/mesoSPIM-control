@@ -57,6 +57,18 @@ def test_each_worker_of_the_committed_page_carries_the_old_browser_shims_once():
         )
 
 
+def test_each_worker_knows_the_dispose_symbol_before_the_engine_uses_it():
+    """The Qt window's browser has no ``Symbol.dispose``. The engine names clean-up
+    methods with it, so it has to exist before the engine's first class is defined;
+    otherwise reading a shard's index fails and sharded data never appears."""
+    for kind, path in _workers(PAGE_DIR).items():
+        text = path.read_text(encoding="utf-8")
+        defined = text.find('Symbol.for("Symbol.dispose")')
+        used = text.find("[Symbol.dispose]")
+        assert defined != -1, f"{kind} worker {path.name}: the shim does not define Symbol.dispose"
+        assert used == -1 or defined < used, f"{kind} worker {path.name}: Symbol.dispose is used before it is defined"
+
+
 def _npm() -> str | None:
     return shutil.which("npm") or shutil.which("npm.cmd")
 
