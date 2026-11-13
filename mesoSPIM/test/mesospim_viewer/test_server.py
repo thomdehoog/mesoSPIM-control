@@ -61,6 +61,63 @@ def test_the_server_serves_nothing_outside_the_stores_it_was_given(viewers, tile
     assert post(f"{url}api/nothing", {}) == 404
 
 
+def test_an_odd_path_is_refused_before_the_disk_is_asked(viewers, tiles):
+    """On Windows a path beginning with two backslashes names another computer, and
+    just looking it up would contact that computer. Such paths, drive letters and
+    ``..`` are turned away on their text alone."""
+    from mesoSPIM.src.mesospim_viewer.server import plain_path
+
+    assert plain_path("0/c/0/0/0") and plain_path("0/zarr.json") and plain_path(".zattrs") and plain_path("0/0.0.0")
+    for odd in ("\\\\host\\share\\x", "C:\\data", "C:/data", "/etc/passwd", "a/../b", "..", "a\\b"):
+        assert not plain_path(odd), odd
+    view = viewers()
+    view.add(tiles[0], layer="overview")
+    url = view.start()
+    assert status(f"{url}data/0/%5c%5chost%5cshare%5cx") == 404
+    assert status(f"{url}data/0/C:%5cdata") == 404
+    assert status(f"{url}%5c%5chost%5cshare%5cx") == 404
+
+
+def test_only_requests_to_the_servers_own_address_are_answered(viewers, tiles):
+    """A web page from elsewhere can point a name of its own at this computer and so
+    reach a local server. Its requests carry that name in their Host line, and are
+    turned away; the viewer's own page names 127.0.0.1."""
+    view = viewers()
+    view.add(tiles[0], layer="overview")
+    url = view.start()
+    port = url.rstrip("/").rsplit(":", 1)[1]
+    assert get(f"{url}data/0/.zattrs")[0] == 200
+    assert get(f"{url}data/0/.zattrs", {"Host": f"localhost:{port}"})[0] == 200
+    assert get(f"{url}data/0/.zattrs", {"Host": f"evil.example:{port}"})[0] == 403
+    assert get(f"{url}api/state", {"Host": "evil.example"})[0] == 403
+
+
+def test_a_page_left_open_is_turned_away_once_the_viewer_has_stopped(tiles):
+    """Stopping closes the door to new connections, but a page that is still open keeps
+    the connection it has. Its next request is refused and the connection ended, so
+    nothing of a closed viewer is served or acted on any more."""
+    import http.client
+
+    from mesoSPIM.src.mesospim_viewer import Viewer
+
+    view = Viewer()
+    view.add(tiles[0], layer="overview")
+    url = view.start()
+    host, port = url.rstrip("/").split("//")[1].rsplit(":", 1)
+    line = http.client.HTTPConnection(host, int(port), timeout=10)
+    try:
+        line.request("GET", "/data/0/.zattrs")
+        answer = line.getresponse()
+        assert answer.status == 200 and answer.read()
+        view.stop()
+        line.request("GET", "/data/0/.zattrs")
+        answer = line.getresponse()
+        answer.read()
+        assert answer.status == 503
+    finally:
+        line.close()
+
+
 def test_the_page_itself_is_served_from_the_build(viewers):
     view = viewers()
     url = view.start()

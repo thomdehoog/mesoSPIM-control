@@ -111,6 +111,7 @@ class Viewer:
             self._stopped = True
             server, self._server = self._server, None
         if server is not None:
+            server.stopped = True
             server.shutdown()
             server.server_close()
 

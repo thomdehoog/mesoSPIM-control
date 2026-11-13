@@ -170,6 +170,33 @@ def test_a_window_without_limits_gets_a_histogram_span_around_it():
     assert channel_controls(Channel("a", window=(10000, 12000)))["contrast"]["window"] == [9000.0, 14000.0]
 
 
+def test_a_bright_channels_contrast_stays_within_what_the_data_can_hold():
+    """The engine drops a contrast whole if one of its numbers is above what the data
+    type holds. A channel with a white point of 40000 used to get a histogram span up
+    to 75000, lost its contrast for it, and was drawn on the full range: nearly black."""
+    contrast = channel_controls(Channel("a", window=(5000, 40000)))["contrast"]
+    assert contrast["range"] == [5000.0, 40000.0]
+    assert contrast["window"] == [0.0, 65535.0]
+    # Eight-bit data has a lower ceiling, and data in fractions has none.
+    assert channel_controls(Channel("a", window=(10, 200)), top=255.0)["contrast"]["window"] == [0.0, 255.0]
+    assert channel_controls(Channel("a", window=(0.5, 3.0)), top=None)["contrast"]["window"] == [0.0, 5.5]
+
+
+def test_a_store_says_how_large_its_values_can_be(tiles, tmp_path):
+    import zarr
+
+    from mesoSPIM.src.mesospim_viewer import read_store
+
+    assert read_store(tiles[0]).top == 65535.0, "the pretend tiles hold 16-bit values, like a camera's"
+    root = zarr.open_group(str(tmp_path / "fractions.ome.zarr"), mode="w", zarr_format=3)
+    root.create_array(name="0", shape=(2, 4, 4), chunks=(2, 4, 4), dtype="float32")
+    root.attrs["ome"] = {"version": "0.5", "multiscales": [{
+        "axes": [{"name": n, "type": "space", "unit": "micrometer"} for n in "zyx"],
+        "datasets": [{"path": "0", "coordinateTransformations": [{"type": "scale", "scale": [1, 1, 1]}]}],
+    }]}
+    assert read_store(tmp_path / "fractions.ome.zarr").top is None
+
+
 def test_the_stores_window_and_colour_reach_the_controls(viewers, tiles):
     view = viewers()
     view.add(tiles[0], layer="run")

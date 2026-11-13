@@ -217,12 +217,27 @@ class Stores:
             return None
         if guard is not None and relative and guard(relative):
             return None
+        if relative and not plain_path(relative):
+            return None
         target = (root / relative).resolve() if relative else root
         try:
             target.relative_to(root)
         except ValueError:
             return None
         return target
+
+
+def plain_path(relative: str) -> bool:
+    """Whether a path asked for by the page is an ordinary path below a folder.
+
+    Checked on the text alone, before the disk is asked anything. On Windows a path
+    that starts with two backslashes names another computer, and merely looking it up
+    would make this PC contact that computer. A colon names a drive, and ``..`` climbs
+    out of the folder. None of these occur in the files of a store or of the page.
+    """
+    if relative.startswith("/") or "\\" in relative or ":" in relative or "\x00" in relative:
+        return False
+    return ".." not in relative.split("/")
 
 
 def _content_type(path: Path) -> str:
@@ -239,14 +254,40 @@ class Handler(BaseHTTPRequestHandler):
     # -- routing ---------------------------------------------------------------
 
     def do_GET(self) -> None:  # noqa: N802
+        if self._refused():
+            return
         self._serve(head=False)
 
     def do_HEAD(self) -> None:  # noqa: N802
+        if self._refused():
+            return
         self._serve(head=True)
+
+    def _refused(self) -> bool:
+        """Answer a request this server should not serve, and say that it was answered.
+
+        Two cases. The viewer was stopped: a page that is still open keeps asking over
+        the connection it already has, and is told to stop. Or the request names another
+        address than this server's own in its ``Host`` line: that is how a web page from
+        elsewhere, opened in a browser on this PC, could reach the data folder through a
+        name that it has pointed at this computer.
+        """
+        if self.server.stopped:
+            self.close_connection = True
+            self._send_empty(HTTPStatus.SERVICE_UNAVAILABLE)
+            return True
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host and host not in self.server.own_hosts:
+            self.close_connection = True
+            self._send_empty(HTTPStatus.FORBIDDEN)
+            return True
+        return False
 
     def do_POST(self) -> None:  # noqa: N802
         route = urlsplit(self.path).path
         payload = self._read_json()
+        if self._refused():
+            return
         # Only the viewer's own page may report: another page open in a browser
         # on this computer must not be able to tick acquisitions or ask for a
         # file dialog. A browser names the page a request comes from.
@@ -320,6 +361,9 @@ class Handler(BaseHTTPRequestHandler):
         if page is None:
             self._send_empty(HTTPStatus.SERVICE_UNAVAILABLE)
             return
+        if not plain_path(route.lstrip("/")):
+            self._send_empty(HTTPStatus.NOT_FOUND)
+            return
         target = (page / route.lstrip("/")).resolve() if route != "/" else page / "index.html"
         try:
             target.relative_to(page.resolve())
@@ -367,8 +411,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_file(self, target: Path, *, head: bool, cache: str) -> None:
+        # The file is opened first and measured through that same opening. A writer may
+        # replace a store's description at any moment; measured by name beforehand, the
+        # length announced could belong to the file from before, and the page would wait
+        # for bytes that never come.
         try:
-            about = target.stat()
+            handle = target.open("rb")
+        except OSError:
+            self._send_empty(HTTPStatus.NOT_FOUND)
+            return
+        with handle:
+            self._send_open_file(handle, target, head=head, cache=cache)
+
+    def _send_open_file(self, handle, target: Path, *, head: bool, cache: str) -> None:
+        try:
+            about = os.fstat(handle.fileno())
         except OSError:
             self._send_empty(HTTPStatus.NOT_FOUND)
             return
@@ -413,19 +470,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if head or not length:
             return
-        with target.open("rb") as handle:
-            handle.seek(start)
-            left = length
-            while left > 0:
-                piece = handle.read(min(left, 1 << 20))
-                if not piece:
-                    break
-                self.wfile.write(piece)
-                left -= len(piece)
+        handle.seek(start)
+        left = length
+        while left > 0:
+            piece = handle.read(min(left, 1 << 20))
+            if not piece:
+                # Shorter than announced after all: the connection is ended, so that
+                # the page sees a failed request instead of waiting for the rest.
+                self.close_connection = True
+                break
+            self.wfile.write(piece)
+            left -= len(piece)
 
     def log_message(self, *args) -> None:  # noqa: D401 -- quiet by default
         if os.environ.get("MESOSPIM_VIEW_LOG"):
             super().log_message(*args)
+
+
+class _AnyHost(set):
+    """Stands for every address: whatever is asked, it is in here."""
+
+    def __contains__(self, name: object) -> bool:
+        return True
 
 
 class ViewServer(ThreadingHTTPServer):
@@ -447,11 +513,25 @@ class ViewServer(ThreadingHTTPServer):
         self.live: dict[str, object] = {}
         self.last_view: dict | None = None
         self.last_view_at: float = 0.0
+        # Set when the viewer stops. Connections a page already has stay open after the
+        # server stops listening; their next request is refused and the connection ended.
+        self.stopped = False
 
     @property
     def url(self) -> str:
         host, port = self.server_address[:2]
         return f"http://{host}:{port}/"
+
+    @property
+    def own_hosts(self) -> set[str]:
+        """The addresses a browser may name to reach this server: its own, and on this
+        computer also ``localhost``. A server opened to other computers on purpose
+        (``0.0.0.0``) is reached under names it cannot know, and answers to any."""
+        host, port = self.server_address[:2]
+        if host in ("0.0.0.0", "::"):
+            return _AnyHost()
+        names = {host, "localhost"} if host in ("127.0.0.1", "::1") else {host}
+        return {f"{name}:{port}".lower() for name in names} | {f"[{name}]:{port}" for name in names if ":" in name}
 
     def handle_error(self, request, client_address) -> None:
         """A page that went away mid-request is not an error worth a traceback."""

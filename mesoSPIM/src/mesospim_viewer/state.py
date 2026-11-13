@@ -177,12 +177,18 @@ def channel_shader(channel: Channel | None = None) -> str:
     return SHADER
 
 
-def channel_controls(channel: Channel) -> dict:
+def channel_controls(channel: Channel, top: float | None = 65535.0) -> dict:
     """The starting values of the program's controls for one channel.
 
     ``range`` is the contrast window (black and white point), ``window`` the
     span the histogram shows. A channel without a window says nothing about
     its contrast, and the page then sets it from what is on screen.
+
+    ``top`` is the largest value a voxel of this data can hold: 65535 for a
+    camera's 16 bits, or None when there is no such limit. Nothing is allowed
+    above it, because the engine throws the whole contrast away, black and
+    white point included, if any of its numbers is one the data cannot hold.
+    A bright channel would then be shown on the full range and look black.
     """
     controls: dict = {"color": channel.color or PALETTE[-1]}
     contrast = {}
@@ -196,6 +202,9 @@ def channel_controls(channel: Channel) -> dict:
         contrast["window"] = [max(0.0, low - across * 0.5), high + across]
     if channel.limits and channel.limits != (0.0, 65535.0):
         contrast["window"] = [float(channel.limits[0]), float(channel.limits[1])]
+    if top is not None:
+        for name, pair in contrast.items():
+            contrast[name] = [min(value, float(top)) for value in pair]
     if contrast:
         controls["contrast"] = contrast
     return controls
@@ -317,7 +326,10 @@ class Layer:
                 "name": channel_layer_name(self.name, channel),
                 "source": sources,
                 "shader": TRANSPARENT_SHADER if transparent else SHADER,
-                "shaderControls": channel_controls(channel),
+                # A preview holds the camera's 16-bit frames; a store says what it holds.
+                "shaderControls": channel_controls(
+                    channel, top=placements[0].store.top if placements else 65535.0
+                ),
                 # Composited over one another by their brightness (see SHADER).
                 "blend": "default",
                 "opacity": 1.0,

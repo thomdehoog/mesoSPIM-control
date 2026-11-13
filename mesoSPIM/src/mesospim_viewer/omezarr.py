@@ -119,6 +119,9 @@ class Store:
     shape: tuple[int, ...]  # level 0
     channels: tuple[Channel, ...]
     levels: tuple[str, ...] = ()  # the pyramid's array paths, finest first
+    # The largest value a voxel can hold (65535 for a camera's 16 bits), or None
+    # when the store does not say or holds fractions.
+    top: float | None = None
 
     @property
     def name(self) -> str:
@@ -223,6 +226,22 @@ def _array_shape(level: Path) -> list[int] | None:
         described = _read_json(description)
         if isinstance(described, dict) and isinstance(described.get("shape"), list):
             return [int(n) for n in described["shape"]]
+    return None
+
+
+# The largest value of each whole-number type, by its name in zarr v3 ("uint16")
+# and in zarr v2 ("<u2": two bytes, unsigned).
+_TOPS = {"uint8": 255.0, "uint16": 65535.0, "uint32": 4294967295.0, "int8": 127.0, "int16": 32767.0, "int32": 2147483647.0}
+_TOPS_V2 = {"u1": "uint8", "u2": "uint16", "u4": "uint32", "i1": "int8", "i2": "int16", "i4": "int32"}
+
+
+def _array_top(level: Path) -> float | None:
+    """The largest value the array's voxels can hold, or None for fractions and unknown types."""
+    for description, key in ((level / "zarr.json", "data_type"), (level / ".zarray", "dtype")):
+        described = _read_json(description)
+        if isinstance(described, dict) and isinstance(described.get(key), str):
+            name = described[key]
+            return _TOPS.get(_TOPS_V2.get(name.lstrip("<>|="), name))
     return None
 
 
@@ -331,6 +350,7 @@ def read_store(path: str | Path) -> Store:
             for index, dataset in enumerate(datasets)
             if isinstance(dataset, dict)
         ),
+        top=_array_top(level_path),
     )
 
 

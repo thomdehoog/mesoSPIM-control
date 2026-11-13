@@ -232,7 +232,8 @@ def make_window_class():
             self._closing = True
             self.timer.stop()
             # Nothing is waited for long: a look at a slow disk that is still
-            # going on finds the library closed and does nothing more.
+            # going on finds the library closed before its next acquisition and
+            # does nothing more.
             self.library.close()
             self._feed.put_nowait(("stop",))
             self._feeder.join(timeout=1.0)

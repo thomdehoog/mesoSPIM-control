@@ -311,9 +311,14 @@ class Library:
                 self._point(self.clock())
 
     def close(self) -> None:
-        """The window is going: nothing is looked at or shown any more."""
-        with self._lock:
-            self._closed = True
+        """The window is going: nothing is looked at or shown any more.
+
+        This does not wait for a look at the disk that is still going on. Such a look
+        can take long on a slow or stalled network drive, and the window is closed from
+        mesoSPIM's own window, which would stand still for as long. The look sees the
+        mark set here before its next acquisition and stops there.
+        """
+        self._closed = True
 
     # -- what is on offer ----------------------------------------------------------
 
@@ -539,6 +544,8 @@ class Library:
             now = self.clock()
             self._list_watched()
             for dataset in list(self.datasets):
+                if self._closed:
+                    return  # closed while this look was going on
                 # A run paused by Live off is left where it is, on disk too.
                 if dataset.shown and (self.collecting or not dataset.in_run):
                     self._look(dataset, now)
