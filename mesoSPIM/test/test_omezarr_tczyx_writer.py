@@ -239,6 +239,47 @@ def test_a_store_that_fits_is_not_reported(tmp_path, caplog):
     assert 'already exists' not in caplog.text
 
 
+def test_a_description_file_in_use_is_tried_again(tmp_path):
+    """On Windows a store's description file cannot be replaced at the instant a reader,
+    such as the Data viewer, has it open. The writer waits a moment and tries again
+    instead of losing the stack."""
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP import omezarr_writer_tczyx as tczyx
+
+    calls = []
+
+    def busy_twice():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return "done"
+
+    assert tczyx.when_free(busy_twice, pause=0) == "done" and len(calls) == 3
+
+    def always_busy():
+        raise PermissionError(13, "in use")
+
+    with pytest.raises(PermissionError):
+        tczyx.when_free(always_busy, tries=3, pause=0)
+
+    # And the real thing: growing a store by a time point goes through it.
+    array = zarr.open_group(str(tmp_path / "t.zarr"), mode="w", zarr_format=3).create_array(
+        name="0", shape=(1, 1, 4, 8, 8), chunks=(1, 1, 4, 8, 8), dtype="uint16")
+    real_resize, failures = type(array).resize, [PermissionError(13, "in use")]
+
+    def resize_refused_once(self, shape):
+        if failures:
+            raise failures.pop()
+        return real_resize(self, shape)
+
+    window = tczyx.StackWindow(array, t=0, c=0, fresh=True)
+    type(array).resize = resize_refused_once
+    try:
+        window.resize((2, 8, 8))
+    finally:
+        type(array).resize = real_resize
+    assert array.shape == (1, 1, 2, 8, 8) and not failures
+
+
 def test_the_plugin_registers_beside_the_mp_writer():
     from mesoSPIM.src.plugins.ImageWriterApi import ImageWriter
     assert isinstance(OMEZarrWriterMPTCZYX(), ImageWriter)

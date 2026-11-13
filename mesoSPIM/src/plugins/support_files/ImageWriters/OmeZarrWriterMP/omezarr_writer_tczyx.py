@@ -15,6 +15,7 @@ or time point only ever adds files, and a shard written once is never rewritten.
 import concurrent.futures
 import queue
 import threading
+import time
 from dataclasses import dataclass
 from multiprocessing import shared_memory
 from typing import Tuple
@@ -49,6 +50,25 @@ def omero_block(tczyx: TCZYX) -> dict:
             entry["color"] = tczyx.channel_colors[i]
         channels.append(entry)
     return {"channels": channels}
+
+
+def when_free(action, tries: int = 100, pause: float = 0.05):
+    """Run ``action``, which replaces one of the store's small description files, and
+    try again for a few seconds if the file is in use.
+
+    A store that already holds a stack is being read by other programs, the Data viewer
+    among them. On Windows a file cannot be replaced at the instant another program has
+    it open, and the attempt fails with PermissionError. Such a read takes a fraction of
+    a millisecond, so waiting a moment and trying again succeeds. Without this, a new
+    time point that met a reader at the wrong instant would lose its whole stack.
+    """
+    for attempt in range(tries):
+        try:
+            return action()
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(pause)
 
 
 class StackWindow:
@@ -89,7 +109,7 @@ class StackWindow:
         that held a stack already was trimmed then, and every stack of a tile has the same
         depth, so only an array this stack created is resized."""
         if self.fresh:
-            self.array.resize(self.array.shape[:2] + tuple(shape))
+            when_free(lambda: self.array.resize(self.array.shape[:2] + tuple(shape)))
 
 
 def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
@@ -132,7 +152,7 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
             if a.shape[1:2] != lead[1:] or a.shape[3:] != lvl_shape[1:] or a.dtype != np.uint16:
                 raise ValueError(f"Existing {name}: {a.shape}/{a.dtype} does not fit {lead + lvl_shape}/uint16")
             if a.shape[0] < lead[0]:
-                a.resize((lead[0],) + a.shape[1:])
+                when_free(lambda: a.resize((lead[0],) + a.shape[1:]))
             fresh.append(False)
         elif zarr_version == 3:
             kwargs = dict(name=name, shape=lead + lvl_shape, chunks=lead_chunk + chunks, dtype="uint16")
@@ -193,14 +213,16 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
     ]
     multiscale = {"axes": axes, "datasets": datasets, "name": "image"}
     if ome_version == "0.5":
-        root.attrs["ome"] = {
+        when_free(lambda: root.attrs.update({"ome": {
             "version": "0.5",
             "multiscales": [dict(multiscale, type="image")],
             "omero": omero_block(tczyx),
-        }
+        }}))
     else:
-        root.attrs["multiscales"] = [dict(multiscale, version="0.4")]
-        root.attrs["omero"] = omero_block(tczyx)
+        when_free(lambda: root.attrs.update({
+            "multiscales": [dict(multiscale, version="0.4")],
+            "omero": omero_block(tczyx),
+        }))
     return root, windows
 
 
