@@ -112,8 +112,8 @@ in the file-naming wizard.
             "../src/plugins",                # relative paths work
             "C:/a/different/plugin/location",
         ],
-       'first_image_writer': 'OME_Zarr_Writer',
-        # other options: 'H5_BDV_Writer', 'MP_OME_Zarr_Writer', 'MP_OME_Zarr_TCZYX_Writer',
+       'first_image_writer': 'MP_OME_Zarr_Writer',
+        # other options: 'MP_OME_Zarr_TCZYX_Writer', 'H5_BDV_Writer',
         #                'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
     }
 
@@ -129,7 +129,7 @@ named after the writer itself, for example:
 
 .. code-block:: python
 
-   OME_Zarr_Writer = {
+   MP_OME_Zarr_Writer = {
        'ome_version': '0.5',
        'generate_multiscales': True,
        'compression': 'zstd',
@@ -355,6 +355,49 @@ refer to the extensive comments and examples directly in ``demo_config.py``
 and the
 `mesoSPIM hardware wiki <https://github.com/mesoSPIM/mesoSPIM-hardware-documentation/wiki/mesoSPIM_configuration_file>`_.
 
+The channel settings file (``startup['ETL_cfg_file']``, formerly the ETL config
+file) can also store absolute F positions per laser and zoom (see
+:doc:`user_guide`, *Channel settings*).  Whether they are used is set by:
+
+.. code-block:: python
+
+   startup = {
+       ...
+       'ETL_cfg_file' : 'config/etl_parameters/channel-parameters.csv',
+       'load_f_from_channel_file' : False,  # True: offer stored F positions for confirmation
+       ...
+   }
+
+``False`` (also when the key is missing) ignores stored F positions.  ``True``
+offers a move to the stored F after a laser, zoom or file change, in a
+confirmation dialog; F never moves without the user's OK.  The setting can be
+changed at runtime with the **Load F positions** checkbox on the ETL tab.
+
+**Soft stage limits.** ``stage_parameters['<axis>_min']`` / ``['<axis>_max']``
+(``x``, ``y``, ``z``, ``f``, ``theta``; physical stage coordinates, not affected
+by ZERO) are enforced in software for every stage type:
+
+.. code-block:: python
+
+   stage_parameters = {
+       ...
+       'x_max' : 25000,
+       'x_min' : -25000,
+       ...
+       'limit_guard_um': 10,  # optional, default 10: gap kept to a limit by a shortened button move
+   }
+
+* Move buttons: a step that would cross a limit is shortened to stop
+  ``limit_guard_um`` inside it (θ: at the limit); the status bar says so.  Fast
+  repeated clicks are checked against where the axis is heading, not the last
+  polled position.
+* Moves to an absolute position, acquisition steps and scripts are never
+  shortened: a move outside the limits is refused, and a running acquisition
+  stops with an error.
+* An acquisition list with any X, Y, Z start/end, F start/end or rotation
+  outside the limits does not start; the warning lists row, value and limit.
+* Every refusal is logged as a WARNING.
+
 Mandatory dictionaries (v1.20+)
 -------------------------------
 
@@ -365,7 +408,6 @@ if the corresponding feature is not used:
 
    plugins = {}
    H5_BDV_Writer = {}
-   OME_Zarr_Writer = {}
    MP_OME_Zarr_Writer = {}
    MP_OME_Zarr_TCZYX_Writer = {}
 

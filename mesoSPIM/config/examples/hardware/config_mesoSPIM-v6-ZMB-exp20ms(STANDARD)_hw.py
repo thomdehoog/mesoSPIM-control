@@ -44,7 +44,7 @@ plugins = {
         "../src/plugins",         # Ignored if it does not exits (use '/')
         "C:/a/different/plugin/location",  # Ignored if it does not exits (use '/')
     ],
-    'first_image_writer': 'MP_OME_Zarr_Writer', # 'H5_BDV_Writer', 'OME_Zarr_Writer', 'MP_OME_Zarr_Writer', 'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
+    'first_image_writer': 'MP_OME_Zarr_Writer', # 'H5_BDV_Writer', 'MP_OME_Zarr_Writer', 'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
 }
 
 ui_options = {'dark_mode' : True, # Dark mode: Renders the UI dark if enabled
@@ -123,85 +123,6 @@ shutteroptions = ('Left','Right','Both')
 Camera configuration
 '''
 
-'''
-For a DemoCamera, only the following options are necessary
-(x_pixels and y_pixels can be chosen arbitrarily):
-
-camera_parameters = {'x_pixels' : 1024,
-                     'y_pixels' : 1024,
-                     'x_pixel_size_in_microns' : 6.5,
-                     'y_pixel_size_in_microns' : 6.5,
-                     'subsampling' : [1,2,4]}
-
-For a Hamamatsu Orca Flash 4.0 V2 or V3, the following parameters are necessary:
-
-camera_parameters = {'x_pixels' : 2048,
-                     'y_pixels' : 2048,
-                     'x_pixel_size_in_microns' : 6.5,
-                     'y_pixel_size_in_microns' : 6.5,
-                     'subsampling' : [1,2,4],
-                     'camera_id' : 0,
-                     'sensor_mode' : 12,    # 12 for progressive
-                     'defect_correct_mode': 2,
-                     'binning' : '1x1',
-                     'readout_speed' : 1,
-                     'trigger_active' : 1,
-                     'trigger_mode' : 1, # it is unclear if this is the external lightsheeet mode - how to check this?
-                     'trigger_polarity' : 2, # positive pulse
-                     'trigger_source' : 2, # external
-                    }
-
-For a Hamamatsu Orca Fusion, the following parameters are necessary:
-
-camera_parameters = {'x_pixels' : 2304,
-                     'y_pixels' : 2304,
-                     'x_pixel_size_in_microns' : 6.5,
-                     'y_pixel_size_in_microns' : 6.5,
-                     'subsampling' : [1,2,4],
-                     'camera_id' : 0,
-                     'sensor_mode' : 12,    # 12 for progressive
-                     'defect_correct_mode': 2,
-                     'binning' : '1x1',
-                     'readout_speed' : 1,
-                     'trigger_active' : 1,
-                     'trigger_mode' : 1, # it is unclear if this is the external lightsheeet mode - how to check this?
-                     'trigger_polarity' : 2, # positive pulse
-                     'trigger_source' : 2, # external
-                    }
-                    
-For a Hamamatsu Orca Lightning, the following parameters are necessary:
-camera_parameters = {'x_pixels' : 4608,
-                     'y_pixels' : 2592,
-                     'x_pixel_size_in_microns' : 5.5,
-                     'y_pixel_size_in_microns' : 5.5,
-                     'subsampling' : [1,2,4],
-                     'camera_id' : 0,
-                     'sensor_mode' : 12,    # 12 for progressive
-                     'defect_correct_mode': 2,
-                     'binning' : '1x1',
-                     #'readout_speed' : 1, # not available for Orca Lightning
-                     'trigger_active' : 1,
-                     'trigger_mode' : 1, # 1: NORMAL, 6: START
-                     'trigger_polarity' : 2, # positive pulse
-                     'trigger_source' : 2, # external
-                     'high_dynamic_range_mode': 2, # 2: 16-bit mode on Orca Lightning
-                    }
-For a Photometrics Iris 15, the following parameters are necessary:
-
-camera_parameters = {'x_pixels' : 5056,
-                     'y_pixels' : 2960,
-                     'x_pixel_size_in_microns' : 6.5,
-                     'y_pixel_size_in_microns' : 6.5,
-                     'subsampling' : [1,2,4],
-                     'speed_table_index': 0,
-                     'exp_mode' : 'Ext Trig Edge Rising', # Lots of options in PyVCAM --> see constants.py
-                     'binning' : '1x1',
-                     'scan_mode' : 1, # Scan mode options: {'Auto': 0, 'Line Delay': 1, 'Scan Width': 2}
-                     'scan_direction' : 1, # Scan direction options: {'Down': 0, 'Up': 1, 'Down/Up Alternate': 2}
-                     'scan_line_delay' : 6, # 10.26 us x factor, a factor = 6 equals 71.82 us
-                    }
-
-'''
 camera = 'HamamatsuOrca' # 'DemoCamera' or 'HamamatsuOrca' or 'PhotometricsIris15'
 
 camera_parameters = {'x_pixels' : 4608,
@@ -396,28 +317,7 @@ False will only save the original resolution data.
 shards are defined by default. Be careful, shard shape must be defined carefully to prevent performance 
 degradation. We suggest that shards are shallow in Z and as large as you camera sensor in XY. 
 For best performance set the base and target chunks to the same z-depth as your shards.
-
-async_finalize: default: True. Enables acquisition of the next tile to proceed immediately while the multiscale 
-is finalized in the background. On systems with slow IO, data can accumulate in RAM and cause a crash.
-Slow IO can be improved by using bigger chunks. If bigger chunks do not help, use async_finalize: False 
-to make mesoSPSIM pause after each tile acquisition until the multiscale is finished generating. 
 '''
-OME_Zarr_Writer = {
-    'ome_version': '0.4', # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
-    'generate_multiscales': True, #True, False. False: only the primary data is saved. True: multiscale data is generated
-    'compression': 'zstd', # None, 'zstd', 'lz4', 'lz4hc', 'blosclz', 'snappy', 'zlib'
-    'compression_level': 5, # 1-9
-    'shards': (64,6000,6000), # None or Tuple specifying max shard size. (axes: z,y,x), ignored if ome_version "0.4"
-    'base_chunks': (128,4608//4,2592//4), # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
-    'target_chunks': (128,4608//16,2592//16), # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
-    'async_finalize': True, # True, False
-    
-    # BigStitcher Specific Options
-    'write_big_stitcher_xml': True, # True, False
-    'flip_xyz': (True, True, False), # match BigStitcher coordinates to mesoSPIM axes.
-    'transpose_xy': False, # in case X and Y axes need to be swapped for the correct BigStitcher tile positions
-    }
-    
     
 MP_OME_Zarr_Writer = {
     'ome_version': '0.4',  # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
@@ -429,7 +329,6 @@ MP_OME_Zarr_Writer = {
     # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
     'target_chunks': (64, 4608//16,2592//16),
     # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
-    'async_finalize': True,  # True, False
 
     # BigStitcher Specific Options
     'write_big_stitcher_xml': True,  # True, False

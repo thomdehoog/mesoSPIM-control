@@ -20,6 +20,7 @@ from .mesoSPIM_AcquisitionManagerWindow import mesoSPIM_AcquisitionManagerWindow
 from .mesoSPIM_Optimizer import mesoSPIM_Optimizer
 from .WebcamWindow import WebcamWindow
 from .mesoSPIM_ContrastWindow import mesoSPIM_ContrastWindow
+from .mesoSPIM_WaveformWindow import mesoSPIM_WaveformWindow
 from .mesoSPIM_ProcessorChainWindow import ProcessorChainWindow
 from .mesoSPIM_ScriptWindow import mesoSPIM_ScriptWindow # do not delete this line, it is actually used in exec()
 from .mesoSPIM_TileViewWindow import mesoSPIM_TileViewWindow
@@ -29,8 +30,10 @@ from .mesoSPIM_Core import mesoSPIM_Core
 from .remote_control.gui import RemoteControlGUI
 from .ai_assistant.gui import AiAssistantGUI
 from .devices.joysticks.mesoSPIM_JoystickHandlers import mesoSPIM_JoystickHandler
+from .utils.stage_limits import limit_status
 from .utils.utility_functions import log_cpu_core, fit_window_to_screen, move_window_into_screen, convert_seconds_to_string
-from .utils.config_loader import check_zoom_keys, is_demo
+from .utils.config_loader import check_zoom_keys, is_demo, retired_writer_warnings
+from .utils.channel_settings import channel_f_offer_key
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     sig_center_sample = QtCore.pyqtSignal()
 
     sig_save_etl_config = QtCore.pyqtSignal()
+    sig_apply_channel_f_position = QtCore.pyqtSignal(dict) # user-approved channel settings F move -> Core.apply_channel_f_position
     sig_poke_demo_thread = QtCore.pyqtSignal()
     sig_launch_optimizer = QtCore.pyqtSignal(dict)
     sig_launch_contrast_window = QtCore.pyqtSignal()
@@ -164,14 +168,18 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         # Load processor chain configuration from file
         self._load_processor_chain_config()
 
+        # Move-button state: axes switched off in the config, axes waiting after a click
+        # (button_sleep_ms_xyzft), and buttons pointing at a soft limit the axis is at.
+        self._move_axes_disabled, self._move_axes_waiting, self._limit_blocked_buttons = set(), set(), set()
+
         # Get buttons & connections ready
         self.initialize_and_connect_menubar()
         self.initialize_and_connect_widgets()
 
-        # launch ETL menu, unless there is no ETL to tune: the waveform generator has
+        # launch the channel settings (ETL) file menu, unless there is no ETL to tune: the waveform generator has
         # already loaded startup['ETL_cfg_file'], so demo mode starts without the dialog
         if is_demo(self.cfg.waveformgeneration):
-            logger.info(f"Demo mode: using ETL config file {self.state['ETL_cfg_file']}")
+            logger.info(f"Demo mode: using channel settings file {self.state['ETL_cfg_file']}")
         else:
             self.choose_etl_config()
 
@@ -188,6 +196,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.core.sig_status_message.connect(self.display_status_message)
         self.core.sig_progress.connect(self.update_progressbars)
         self.core.sig_warning.connect(self.display_warning)
+        self.core.sig_offer_channel_f_position.connect(self.offer_channel_f_position)
+        self.sig_apply_channel_f_position.connect(self.core.apply_channel_f_position)
         self.core.sig_zoom_in_progress.connect(self.set_zoom_change_in_progress)
         self.core.sig_time_lapse_finished.connect(self.on_time_lapse_finished)
         self.core.sig_time_lapse_cancelled.connect(self.on_time_lapse_cancelled)
@@ -200,6 +210,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
 
         self.optimizer = None
         self.contrast_window = None
+        self.waveform_window = None
         self.processor_chain_window = None
 
         # Signal from state to GUI
@@ -228,6 +239,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         """
         logger.info(f"Config format: {getattr(self.cfg, 'config_format', 1)}")
         check_zoom_keys(self.cfg)
+        for warning in retired_writer_warnings(self.cfg):
+            print(warning)
         gen_msg = "You are using outdated config file, check project github with the most recent template (demo_config.py):"
         if not hasattr(self.cfg, 'ui_options'):
             spec_msg = "\n - 'ui_options' is missing"
@@ -299,6 +312,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
             pass
         if self.contrast_window:
             self.contrast_window.close()
+        if self.waveform_window:
+            self.waveform_window.close()
         self.tile_view_window.close()
         mesoSPIM_DataViewer.close_window(self)
         if self.scriptwindow:
@@ -391,6 +406,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
                 self.Z_Position_Indicator.setText(self.pos2str(self.z_position)+' µm')
                 self.Focus_Position_Indicator.setText(self.pos2str(self.f_position)+' µm')
                 self.Rotation_Position_Indicator.setText(self.pos2str(self.theta_position)+'°')
+                self.update_limit_cues()
                 #self.state['position'] = dict['position'] # this must be done in the core thread
 
     @QtCore.pyqtSlot(dict)
@@ -485,6 +501,11 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.menuUtils.addAction(self.actionField_Curvature)
         self.actionField_Curvature.triggered.connect(self.launch_field_curvature_window)
 
+        # Add TIFF -> OME-Zarr converter to Utils menu
+        self.actionTiff_To_OmeZarr = QtWidgets.QAction("Convert TIFF stacks to OME-Zarr", self)
+        self.menuUtils.addAction(self.actionTiff_To_OmeZarr)
+        self.actionTiff_To_OmeZarr.triggered.connect(self.launch_tiff_to_omezarr_window)
+
     def initialize_and_connect_widgets(self):
         """ Connecting the menu actions """
         self.openScriptEditorButton.clicked.connect(self.create_script_window)
@@ -499,16 +520,24 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         else:
             x_sign, y_sign, z_sign, f_sign, t_sign = 1, 1, 1, 1, 1
             logger.warning('flip_XYZFT_button_polarity key not found in config file. Assuming all buttons are positive.')
-        self.xPlusButton.pressed.connect(lambda: self.move_relative({'x_rel': - x_sign*self.xyzIncrementSpinbox.value()}))
-        self.xMinusButton.pressed.connect(lambda: self.move_relative({'x_rel': x_sign*self.xyzIncrementSpinbox.value()}))
-        self.yPlusButton.pressed.connect(lambda: self.move_relative({'y_rel': y_sign*self.xyzIncrementSpinbox.value()}))
-        self.yMinusButton.pressed.connect(lambda: self.move_relative({'y_rel': - y_sign*self.xyzIncrementSpinbox.value()}))
-        self.zPlusButton.pressed.connect(lambda: self.move_relative({'z_rel': z_sign*self.xyzIncrementSpinbox.value()}))
-        self.zMinusButton.pressed.connect(lambda: self.move_relative({'z_rel': - z_sign*self.xyzIncrementSpinbox.value()}))
-        self.focusPlusButton.pressed.connect(lambda: self.move_relative({'f_rel': f_sign*self.focusIncrementSpinbox.value()}))
-        self.focusMinusButton.pressed.connect(lambda: self.move_relative({'f_rel': - f_sign*self.focusIncrementSpinbox.value()}))
-        self.rotPlusButton.pressed.connect(lambda: self.move_relative({'theta_rel': t_sign*self.rotIncrementSpinbox.value()}))
-        self.rotMinusButton.pressed.connect(lambda: self.move_relative({'theta_rel': - t_sign*self.rotIncrementSpinbox.value()}))
+        # (button, axis, direction of its physical move, step spin box)
+        self.move_buttons = [
+            (self.xPlusButton, 'x', -x_sign, self.xyzIncrementSpinbox),
+            (self.xMinusButton, 'x', x_sign, self.xyzIncrementSpinbox),
+            (self.yPlusButton, 'y', y_sign, self.xyzIncrementSpinbox),
+            (self.yMinusButton, 'y', -y_sign, self.xyzIncrementSpinbox),
+            (self.zPlusButton, 'z', z_sign, self.xyzIncrementSpinbox),
+            (self.zMinusButton, 'z', -z_sign, self.xyzIncrementSpinbox),
+            (self.focusPlusButton, 'f', f_sign, self.focusIncrementSpinbox),
+            (self.focusMinusButton, 'f', -f_sign, self.focusIncrementSpinbox),
+            (self.rotPlusButton, 'theta', t_sign, self.rotIncrementSpinbox),
+            (self.rotMinusButton, 'theta', -t_sign, self.rotIncrementSpinbox),
+        ]
+        for button, axis, direction, spinbox in self.move_buttons:
+            button.pressed.connect(lambda axis=axis, direction=direction, spinbox=spinbox:
+                                   self.move_relative({axis + '_rel': direction * spinbox.value()}))
+        for spinbox in (self.xyzIncrementSpinbox, self.focusIncrementSpinbox, self.rotIncrementSpinbox):
+            spinbox.valueChanged.connect(lambda _value: self.update_limit_cues())
 
         self.xyzrotStopButton.pressed.connect(self.sig_stop_movement.emit)
 
@@ -520,8 +549,8 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.xyzLoadButton.clicked.connect(self.sig_load_sample.emit)
         self.xyzUnloadButton.clicked.connect(self.sig_unload_sample.emit)
         self.centerButton.clicked.connect(self.sig_center_sample.emit)
-        self.launchOptimizerButton.clicked.connect(lambda: self.sig_launch_optimizer.emit({'mode': 'etl_offset', 'amplitude': 0.5}))
         self.ContrastWindowButton.clicked.connect(lambda: self.sig_launch_contrast_window.emit())
+        self.ShowWaveformsButton.clicked.connect(self.show_waveform_window)
 
         # Keyboard shortcut for processor chain window (Ctrl+Shift+P)
         self.processor_chain_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+P"), self)
@@ -578,6 +607,13 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.SaveToConfigButton.clicked.connect(self.save_parameters_to_config)
         self.SnapFolderIndicator.setText(self.state['snap_folder'])
         self.ETLconfigIndicator.setText(self.state['ETL_cfg_file'])
+        self._pending_channel_f = None
+        self._channel_f_dialog_open = False
+        self._channel_f_shown_key = None  # offer on screen
+        self._channel_f_last_key = None   # offer answered last
+        self.LoadChannelFCheckBox.setChecked(bool(self.state['load_f_from_channel_file']))
+        self.LoadChannelFCheckBox.toggled.connect(self.set_load_f_from_channel_file)
+        logger.info(f"Loading F positions from channel settings files: {'ON' if self.state['load_f_from_channel_file'] else 'OFF'}")
 
         self.ShutterComboBox.currentIndexChanged.connect(self.update_GUI_by_shutter_state)
 
@@ -658,7 +694,62 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.LaserIntensitySpinBox.valueChanged.connect(self.set_laser_intensity)
         self.LaserIntensitySlider.setValue(self.cfg.startup['intensity'])
 
+    def _refresh_move_buttons(self, axis):
+        '''Enable the buttons of an axis unless switched off in the config, waiting after a
+        click (button_sleep_ms_xyzft), or pointing at a soft limit the axis is at.'''
+        for button, button_axis, _direction, _spinbox in getattr(self, 'move_buttons', []):
+            if button_axis == axis:
+                button.setEnabled(axis not in self._move_axes_disabled and axis not in self._move_axes_waiting
+                                  and button not in self._limit_blocked_buttons)
+
+    def update_limit_cues(self):
+        '''Soft-limit cue: amber position read-out within one step of a limit, and the move
+        button that points at a limit greyed out once the axis is at it (physical coordinates).'''
+        if not hasattr(self, 'move_buttons'):
+            return
+        try:
+            guard = self.core.serial_worker.limit_guard
+            physical = self.state['position_absolute']
+        except (AttributeError, KeyError, TypeError):
+            return
+        indicators = {'x': self.X_Position_Indicator, 'y': self.Y_Position_Indicator, 'z': self.Z_Position_Indicator,
+                      'f': self.Focus_Position_Indicator, 'theta': self.Rotation_Position_Indicator}
+        steps = {axis: spinbox.value() for _b, axis, _d, spinbox in self.move_buttons}
+        blocked = set()
+        for axis, indicator in indicators.items():
+            if axis not in guard.limits or f'{axis}_pos' not in physical:
+                continue
+            low, high = guard.limits[axis]
+            position = physical[f'{axis}_pos']
+            at_low, at_high, near = limit_status(position, low, high, steps.get(axis, 0), guard._guard(axis))
+            for button, button_axis, direction, _spinbox in self.move_buttons:
+                if button_axis == axis and ((direction > 0 and at_high) or (direction < 0 and at_low)):
+                    blocked.add(button)
+            if near != getattr(indicator, '_limit_near', None):
+                indicator._limit_near = near
+                indicator.setStyleSheet('QLineEdit { color: #ffb000; font-weight: bold; }' if near else '')
+            unit = '°' if axis == 'theta' else ' µm'
+            tip = (f'Soft limits {low:g} … {high:g}{unit} (physical); physical position {position:.1f}{unit}.'
+                   + (' Within one step of a limit.' if near else ''))
+            if indicator.toolTip() != tip:
+                indicator.setToolTip(tip)
+        if blocked != self._limit_blocked_buttons:
+            changed = {axis for button, axis, _d, _s in self.move_buttons if button in blocked ^ self._limit_blocked_buttons}
+            self._limit_blocked_buttons = blocked
+            for axis in changed:
+                self._refresh_move_buttons(axis)
+
     def enable_move_buttons(self, axis='x', state=True):
+        '''Switch the move buttons of an axis on or off (config ui_options['enable_<axis>_buttons']).'''
+        if axis not in ('x', 'y', 'z', 'f', 'theta'):
+            raise ValueError(f'axis = {axis} is unknown.')
+        if state:
+            self._move_axes_disabled.discard(axis)
+        else:
+            self._move_axes_disabled.add(axis)
+        if hasattr(self, 'move_buttons'):
+            self._refresh_move_buttons(axis)
+            return
         if axis == 'x':
             self.xPlusButton.setEnabled(state)
             self.xMinusButton.setEnabled(state)
@@ -682,14 +773,18 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         assert len(pos_dict) == 1, f"Position dictionary expects only one entry, got {pos_dict}"
         key, value = list(pos_dict.keys())[0], list(pos_dict.values())[0]
         #self.sig_move_relative.emit(pos_dict)
-        self.core.serial_worker.move_relative(pos_dict)  # direct call to ensure execution in main thread during live mode and avoid conflicts with core thread (stage freezing)
+        # direct call to ensure execution in main thread during live mode and avoid conflicts with core thread (stage freezing);
+        # clamp: a step that would cross a soft limit stops just inside it
+        self.core.serial_worker.move_relative(pos_dict, clamp=True)
         if hasattr(self.cfg, 'ui_options') and ('button_sleep_ms_xyzft' in self.cfg.ui_options.keys()):
             axis = key[:-4]
             index = ['x', 'y', 'z', 'f', 'theta'].index(axis)
             sleep_ms = self.cfg.ui_options['button_sleep_ms_xyzft'][index]
             if sleep_ms > 0:
-                self.enable_move_buttons(axis, False)
-                QtCore.QTimer().singleShot(sleep_ms, lambda: self.enable_move_buttons(axis, True))
+                self._move_axes_waiting.add(axis)
+                self._refresh_move_buttons(axis)
+                QtCore.QTimer().singleShot(sleep_ms, lambda: (self._move_axes_waiting.discard(axis),
+                                                              self._refresh_move_buttons(axis)))
             else:
                 pass
 
@@ -1002,6 +1097,15 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
             self.optimizer.show()
 
     @QtCore.pyqtSlot()
+    def show_waveform_window(self):
+        '''Waveforms tab: plot the current waveforms of one sweep (read-only).'''
+        if not self.waveform_window:
+            self.waveform_window = mesoSPIM_WaveformWindow(self)
+        self.waveform_window.show()
+        self.waveform_window.raise_()
+        self.waveform_window.activateWindow()
+
+    @QtCore.pyqtSlot()
     def launch_contrast_window(self):
         if not self.contrast_window:
             self.contrast_window = mesoSPIM_ContrastWindow(self)
@@ -1095,6 +1199,18 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         pixel_pitch_micron = self.cfg.camera_parameters['x_pixel_size_in_microns']
         args = self._system_parameter_args(mag, pixel_pitch_micron, None)
         self._launch_utils_tool('field_curvature_gui_qt.py', args, "Field curvature analysis")
+
+    def launch_tiff_to_omezarr_window(self):
+        """Open the TIFF -> OME-Zarr converter (utils/tiff_to_omezarr.py) as a separate process,
+        so a long conversion never blocks the GUI. Its file dialogs start in the acquisition folder."""
+        args = ['--gui']
+        try:
+            folder = self.state['folder']
+        except Exception:
+            folder = None
+        if folder and os.path.isdir(folder):
+            args += ['--start-dir', folder]
+        self._launch_utils_tool('tiff_to_omezarr.py', args, "TIFF to OME-Zarr")
 
     @staticmethod
     def _system_parameter_args(mag, pixel_pitch_micron, z_step_micron):
@@ -1247,31 +1363,91 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         else:
             self.state['galvo_l_amplitude'] = self.galvo_amp_backup
             #self.state['galvo_r_amplitude'] = self.galvo_amp_backup
-            self.freezeGalvoButton.setText('Freeze galvos')
+            self.freezeGalvoButton.setText('⚠ Freeze galvos')
         self.sig_state_request.emit({'galvo_l_amplitude': self.state['galvo_l_amplitude']})
         self.update_gui_from_state()
         #self.sig_state_request.emit({'galvo_r_amplitude': self.state['galvo_r_amplitude']})
 
     def choose_etl_config(self):
-        ''' File dialog for choosing the config file
+        ''' File dialog for choosing the channel settings (former ETL config) file
         '''
-        path , _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open ETL config file, specific for immersion medium and stationary cuvette size',
+        path , _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open channel settings (ETL) file, specific for immersion medium and stationary cuvette size',
                                                          self.state['ETL_cfg_file'],  filter='CSV file (*.csv)')
         ''' To avoid crashes, only set the cfg file when a file has been selected:'''
         if path:
             self.state['ETL_cfg_file'] = path
             self.ETLconfigIndicator.setText(path)
-            logger.info(f'Main Window: Chose ETL Config File: {path}')
+            logger.info(f'Main Window: Chose channel settings file: {path}')
+            self._channel_f_last_key = None  # a deliberately (re)loaded file asks again
             self.sig_state_request.emit({'ETL_cfg_file' : path})
         else:
-            logger.debug(f'Choose ETL Config File cancelled')
+            logger.debug(f'Choose channel settings file cancelled')
 
     def save_etl_config(self):
-        ''' Save current ETL parameters into config '''
+        ''' Save the current channel settings (ETL parameters and absolute F) of the current laser and zoom '''
         self.sig_save_etl_config.emit()
 
+    @QtCore.pyqtSlot(bool)
+    def set_load_f_from_channel_file(self, enabled):
+        ''' GUI switch for using F positions from channel settings files (config: startup['load_f_from_channel_file']) '''
+        self.state['load_f_from_channel_file'] = bool(enabled)
+        self._channel_f_last_key = None  # ask again, even for the channel answered last
+        logger.info(f"Loading F positions from channel settings files switched {'ON' if enabled else 'OFF'} in the GUI")
+
+    @QtCore.pyqtSlot(dict)
+    def offer_channel_f_position(self, proposal):
+        ''' Ask the user to approve an F move to the position stored in the channel settings file.
+
+        The Core only offers positions that passed its safety checks; it checks them again when the
+        approval arrives. "No" is the default button. If a newer offer arrives while the dialog is
+        open, the open one is discarded whatever the answer and the newer one is asked instead.
+
+        An offer identical to the one on screen, or to the one answered last (same laser, zoom, file,
+        stored F and current F), is not asked again: at startup, the zoom and the laser initialization
+        each reload the channel settings and would otherwise ask the same question twice. Choosing a
+        file or toggling the "Load F positions" checkbox forgets the last answer.
+        '''
+        key = channel_f_offer_key(proposal)
+        if key in (getattr(self, '_channel_f_shown_key', None), getattr(self, '_channel_f_last_key', None)):
+            logger.info(f"Channel settings: duplicate F offer for {proposal['laser']} / {proposal['zoom']} not asked again")
+            return
+        self._pending_channel_f = proposal
+        if self._channel_f_dialog_open:
+            return  # asked as soon as the open dialog closes
+        self._channel_f_dialog_open = True
+        try:
+            while self._pending_channel_f is not None:
+                p, self._pending_channel_f = self._pending_channel_f, None
+                if not self.state['load_f_from_channel_file']:
+                    logger.info('Channel settings: F offer dropped, F loading was switched off')
+                    break
+                self._channel_f_shown_key = channel_f_offer_key(p)
+                delta = p['f_abs'] - p['f_current']
+                text = (f"The channel settings file stores an F position for {p['laser']} / {p['zoom']}.\n\n"
+                        f"Current F (absolute): {p['f_current']:.1f} um\n"
+                        f"Stored F (absolute): {p['f_abs']:.1f} um\n"
+                        f"Move: {delta:+.1f} um\n\n"
+                        f"Move F to the stored position now?\n\n"
+                        f"File: {p['file']}")
+                box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Question, 'Move focus (F)?', text,
+                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, self)
+                box.setDefaultButton(QtWidgets.QMessageBox.No)
+                answer = box.exec_()
+                self._channel_f_shown_key, self._channel_f_last_key = None, channel_f_offer_key(p)
+                if self._pending_channel_f is not None:
+                    logger.info('Channel settings: F offer superseded by a newer one, answer discarded')
+                    continue
+                if answer == QtWidgets.QMessageBox.Yes:
+                    logger.info(f"Channel settings: user approved F move to {p['f_abs']} um for {p['laser']} / {p['zoom']}")
+                    self.sig_apply_channel_f_position.emit(p)
+                else:
+                    logger.info(f"Channel settings: user declined F move to {p['f_abs']} um for {p['laser']} / {p['zoom']}")
+        finally:
+            self._channel_f_dialog_open = False
+            self._channel_f_shown_key = None
+
     def save_parameters_to_config(self):
-        """Save current Parameters-tab values back into the startup dict of a config file.
+        """Save current Waveforms-tab values and the display subsampling (Other tab) back into the startup dict of a config file.
         Opens a Save-As dialog pre-filled with the current config path.
         If the chosen file already exists the user is asked to confirm overwrite.
         """

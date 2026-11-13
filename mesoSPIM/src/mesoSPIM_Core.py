@@ -29,6 +29,7 @@ from .mesoSPIM_Camera import mesoSPIM_Camera
 
 from .devices.lasers.Demo_LaserEnabler import Demo_LaserEnabler
 from .devices.lasers.mesoSPIM_LaserEnabler import mesoSPIM_LaserEnabler
+from .utils.stage_limits import limits_from_cfg, acquisition_limit_violations, format_violations
 from .utils.ni_daqmx import require_nidaqmx
 from .utils.config_loader import is_demo
 
@@ -38,6 +39,13 @@ from .mesoSPIM_ImageWriter import mesoSPIM_ImageWriter
 
 from .utils.acquisitions import AcquisitionList, Acquisition
 from .utils.utility_functions import convert_seconds_to_string, format_data_size, write_line, replace_with_underscores, log_cpu_core
+from .utils.channel_settings import evaluate_f_target, F_DISABLED, F_IN_PLACE, F_OFFER
+
+# Microscope states in which an F position from a channel settings file may be offered to the user and,
+# after explicit approval, moved to. Never during acquisitions, previews, scripts or tiling.
+CHANNEL_F_INTERACTIVE_STATES = ('idle', 'live', 'visual_mode', 'lightsheet_alignment_mode')
+# If F changed by more than this (um) between the offer and the approval, the approval is not used.
+CHANNEL_F_APPROVAL_DRIFT_UM = 10.0
 
 
 class mesoSPIM_Core(QtCore.QObject):
@@ -86,6 +94,8 @@ class mesoSPIM_Core(QtCore.QObject):
 
     ''' ETL-related signals '''
     sig_save_etl_config = QtCore.pyqtSignal()
+    # Channel settings F position that passed the safety checks -> MainWindow.offer_channel_f_position (asks the user)
+    sig_offer_channel_f_position = QtCore.pyqtSignal(dict)
 
     sig_remote_control_started = QtCore.pyqtSignal(bool, str)  # Remote Control tab: a transport started (ok, message)
 
@@ -179,6 +189,7 @@ class mesoSPIM_Core(QtCore.QObject):
         self.sig_polling_stage_position_start.connect(self.serial_worker.stage.pos_timer.start)
         self.sig_polling_stage_position_stop.connect(self.serial_worker.stage.pos_timer.stop)
         self.sig_move_absolute.connect(self.serial_worker.move_absolute)
+        self.serial_worker.sig_move_refused.connect(self.handle_move_refused)
         self.sig_move_relative.connect(self.serial_worker.move_relative)
         self.sig_move_relative_and_wait_until_done.connect(lambda sdict: self.serial_worker.move_relative(sdict, wait_until_done=True))
         self.sig_state_request.connect(self.serial_worker.state_request_handler)
@@ -198,6 +209,7 @@ class mesoSPIM_Core(QtCore.QObject):
             self.waveformer = mesoSPIM_DemoWaveFormGenerator(self)
 
         self.waveformer.sig_update_gui_from_state.connect(self.sig_update_gui_from_state.emit)
+        self.waveformer.sig_channel_f_position.connect(self.handle_channel_f_position)
         # Signals from Core
         self.sig_state_request.connect(self.waveformer.state_request_handler)
         self.sig_state_request_and_wait_until_done.connect(self.waveformer.state_request_handler)
@@ -482,6 +494,95 @@ class mesoSPIM_Core(QtCore.QObject):
                 'remaining_time_string': remaining_time_string,
         }
         self.sig_progress.emit(dict)
+
+    def _channel_f_check(self, f_target):
+        """evaluate_f_target() against the current physical F, the F-loading switch and the stage F limits."""
+        enabled = bool(self.state['load_f_from_channel_file'])
+        f_current = self.state['position_absolute']['f_pos']
+        stage_parameters = getattr(self.cfg, 'stage_parameters', {})
+        f_limits = None
+        if 'f_min' in stage_parameters and 'f_max' in stage_parameters:
+            f_limits = (stage_parameters['f_min'], stage_parameters['f_max'])
+        outcome, message = evaluate_f_target(f_target, f_current, enabled, f_limits)
+        return outcome, message, f_current
+
+    @QtCore.pyqtSlot(dict)
+    def handle_channel_f_position(self, report):
+        """Safety gate for an F position read from the channel settings file. Never moves F.
+
+        Called after the waveformer loaded the settings of a channel (laser, zoom), e.g. after the user
+        changed laser or zoom or chose another channel settings file. If F loading is switched on, the
+        microscope is in an interactive state and the stored F passes the checks (present, within the
+        stage limits, at most MAX_F_JUMP_UM from the current F), the position is *offered* to the user
+        via sig_offer_channel_f_position; the move needs the user's explicit approval
+        (apply_channel_f_position). Missing or too distant positions are flagged in the GUI and the log.
+
+        Args:
+            report (dict): {'f_abs': float or None, 'laser': str, 'zoom': str, 'file': str}
+        """
+        channel = f"{report['laser']} / {report['zoom']}"
+        outcome, message, f_current = self._channel_f_check(report['f_abs'])
+        if outcome == F_DISABLED:
+            logger.debug(f'Channel settings: F loading is off, stored F {report["f_abs"]} of {channel} ignored')
+            return
+        microscope_state = self.state['state']
+        if microscope_state not in CHANNEL_F_INTERACTIVE_STATES:
+            logger.info(f'Channel settings: F of {channel} not offered in state {microscope_state!r}')
+            return
+        if outcome == F_IN_PLACE:
+            logger.info(f'Channel settings: F already at the stored {report["f_abs"]} um for {channel}')
+            return
+        if outcome != F_OFFER:
+            text = f'Channel {channel}: {message}\nChannel settings file: {report["file"]}'
+            logger.warning(f'Channel settings: {outcome}: {text}')
+            self.sig_warning.emit(text)
+            return
+        proposal = dict(report, f_current=f_current)
+        logger.info(f'Channel settings: offering F move for {channel}: {f_current} -> {report["f_abs"]} um (waits for the user)')
+        self.sig_offer_channel_f_position.emit(proposal)
+
+    @QtCore.pyqtSlot(dict)
+    def apply_channel_f_position(self, proposal):
+        """Move F to a channel settings F position the user has explicitly approved.
+
+        Every check of handle_channel_f_position is repeated, because laser, zoom, file, F or the
+        microscope state may have changed while the confirmation dialog was open. Additionally, the
+        approval is only used if F did not move by more than CHANNEL_F_APPROVAL_DRIFT_UM since the
+        offer. The move uses physical stage coordinates (use_internal_position=False).
+
+        Args:
+            proposal (dict): as emitted by sig_offer_channel_f_position, including 'f_current'.
+
+        Returns:
+            bool: True if F was moved.
+        """
+        channel = f"{proposal['laser']} / {proposal['zoom']}"
+        reasons = []
+        if self.state['state'] not in CHANNEL_F_INTERACTIVE_STATES:
+            reasons.append(f"the microscope is busy ({self.state['state']})")
+        if (proposal['laser'], proposal['zoom'], proposal['file']) != \
+                (self.state['laser'], self.state['zoom'], self.state['ETL_cfg_file']):
+            reasons.append('laser, zoom or channel settings file changed since the offer')
+        outcome, message, f_current = self._channel_f_check(proposal['f_abs'])
+        if outcome == F_IN_PLACE and not reasons:
+            logger.info(f'Channel settings: F already at {proposal["f_abs"]} um for {channel}, no move')
+            return False
+        if outcome == F_DISABLED:
+            reasons.append('loading F positions from channel settings files was switched off')
+        elif outcome not in (F_OFFER, F_IN_PLACE):
+            reasons.append(message)
+        if abs(f_current - proposal['f_current']) > CHANNEL_F_APPROVAL_DRIFT_UM:
+            reasons.append(f"F moved from {proposal['f_current']:.1f} to {f_current:.1f} um since the offer")
+        if reasons:
+            text = f'Channel {channel}: F was not moved to {proposal["f_abs"]} um: ' + '; '.join(reasons)
+            logger.warning(f'Channel settings: {text}')
+            self.sig_warning.emit(text)
+            return False
+        logger.info(f'Channel settings: moving F (approved by the user) for {channel}: {f_current} -> {proposal["f_abs"]} um (absolute)')
+        self.send_status_message_to_gui(f'Moving F to the channel settings position {proposal["f_abs"]:.1f} um')
+        self.move_absolute({'f_abs': proposal['f_abs']}, wait_until_done=True, use_internal_position=False)
+        self.send_status_message_to_gui('F at the channel settings position')
+        return True
 
     @QtCore.pyqtSlot(dict)
     def set_filter(self, filter, wait_until_done=False):
@@ -863,7 +964,10 @@ class mesoSPIM_Core(QtCore.QObject):
                                   f'Stopping! \n')
             self.sig_finished.emit()
         elif len(acqusitions_outside_motion_limits) > 0:
-            self.sig_warning.emit(f'The acquisition list contains positions {acqusitions_outside_motion_limits} outside the motion limits - stopping!')
+            text = format_violations(acqusitions_outside_motion_limits)
+            logger.error(f'Acquisition list outside the soft limits, not started:\n{text}')
+            self.sig_warning.emit('The acquisition list has positions outside the stage soft limits '
+                                  '(stage_parameters in the config) - stopping!\n' + text)
             self.sig_finished.emit()
         else:
             self.prepare_acquisition_list(acq_list)
@@ -892,31 +996,29 @@ class mesoSPIM_Core(QtCore.QObject):
         return total_bytes_required
     
     def check_motion_limits(self, acq_list):
-        """
-        Check if the motion limits of the stage are violated for each acquisition in the given list.
+        """Positions of the acquisition list outside the stage soft limits.
 
-        Args:
-            acq_list (list): A list of dictionaries representing acquisitions, where each dictionary contains
-                             the x, y, and z positions.
+        Checks X, Y, Z start/end, F start/end and rotation of every row against
+        cfg.stage_parameters (physical coordinates; the ZERO offsets are taken into account).
 
         Returns:
-            list: A list of indices of acquisitions in the input list that violate the motion limits.
-
+            list: (row, key, value, physical value, limit name, limit) per violation; empty if all fine.
         """
-        unsafe_list = []
-        for i in range(len(acq_list)):
-            if not (self.cfg.stage_parameters['x_min'] <= acq_list[i]['x_pos'] - self.serial_worker.stage.int_x_pos_offset <= self.cfg.stage_parameters['x_max']):
-                unsafe_list.append(i)
-            elif not (self.cfg.stage_parameters['y_min'] <= acq_list[i]['y_pos'] - self.serial_worker.stage.int_y_pos_offset <= self.cfg.stage_parameters['y_max']):
-                unsafe_list.append(i)
-            elif not (self.cfg.stage_parameters['z_min'] <= acq_list[i]['z_start'] - self.serial_worker.stage.int_z_pos_offset <= self.cfg.stage_parameters['z_max']):
-                unsafe_list.append(i)
-            elif not (self.cfg.stage_parameters['z_min'] <= acq_list[i]['z_end'] - self.serial_worker.stage.int_z_pos_offset <= self.cfg.stage_parameters['z_max']):
-                unsafe_list.append(i)
-            else:
-                continue
-        return unsafe_list
-            
+        stage = self.serial_worker.stage
+        offsets = {axis: getattr(stage, f'int_{axis}_pos_offset', 0) for axis in ('x', 'y', 'z', 'f', 'theta')}
+        return acquisition_limit_violations(acq_list, limits_from_cfg(self.cfg.stage_parameters), offsets)
+
+    @QtCore.pyqtSlot(str)
+    def handle_move_refused(self, message):
+        """A programmatic stage move was refused by the soft limits (mesoSPIM_Serial).
+
+        During an acquisition this would image the wrong planes, so the acquisition is stopped.
+        """
+        if self.state['state'] in ('run_selected_acquisition', 'run_acquisition_list') and not self.stopflag:
+            logger.error(f'Acquisition stopped: {message}')
+            self.sig_warning.emit(f'Acquisition stopped: a stage move was refused by the soft limits.\n{message}')
+            self.stop()
+
     def prepare_acquisition_list(self, acq_list):
         ''' Housekeeping: Prepare the acquisition list '''
         self.image_count = 0
@@ -1198,7 +1300,9 @@ class mesoSPIM_Core(QtCore.QObject):
                 self.snap_image_in_series(laser_blanking)
                 self.sig_add_images_to_image_series.emit(acq, acq_list)
 
-                if not self.state['ttl_movement_enabled_during_acq']:
+                if i == steps - 1:
+                    pass  # last plane: no step beyond z_end (it could cross a soft limit set at z_end)
+                elif not self.state['ttl_movement_enabled_during_acq']:
                     # Z and F moves via serial commands at each plane
                     f_step = self.f_step_generator.__next__()
                     if f_step != 0:

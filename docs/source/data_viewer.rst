@@ -126,8 +126,9 @@ yet; the viewer says so if you pick one.
 
 That covers what the ``MP_OME_Zarr_TCZYX_Writer`` saves (one
 ``(t, c, z, y, x)`` store per tile, see :doc:`file_formats`) and what the
-``OME_Zarr_Writer`` and ``MP_OME_Zarr_Writer`` save (one store per tile and
-channel).
+``MP_OME_Zarr_Writer`` saves (one store per tile and channel). Older data
+from the ``OME_Zarr_Writer``, which has since been removed from mesoSPIM, has
+that same layout and opens too.
 
 When a dataset holds one store per tile *and* per channel, the viewer needs to
 know which channel each store holds. It reads this from the ``omero`` block
@@ -246,9 +247,9 @@ If something is wrong
 * **All channels look the same in a dataset from disk**: the dataset holds one
   store per channel, and the stores do not say which channel they hold (they
   have no ``omero`` block). The viewer then cannot tell them apart. This is the
-  case for data from the ``OME_Zarr_Writer`` and ``MP_OME_Zarr_Writer`` written
-  before they started saving the channel in each store; data written since
-  shows each channel as its own row.
+  case for data that the ``MP_OME_Zarr_Writer`` (or the older, now removed
+  ``OME_Zarr_Writer``) wrote before the channel was saved in each store; data
+  written since shows each channel as its own row.
 * **The data viewer's own tests**: ``python -m pytest mesoSPIM/test/mesospim_viewer``,
   with Playwright and a Chromium for the picture tests (they skip, saying so,
   without them). Changing the page itself needs Node: see
