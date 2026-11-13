@@ -217,6 +217,68 @@ while it runs and after:
 5. **Open from folder…** adds a saved acquisition; the × takes one off the list
    (its files stay on disk). File > Exit closes the Data viewer with mesoSPIM.
 
+Checks that need the microscope PC
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some things can only be checked on the Windows PC of the microscope: the
+window itself (it needs a real screen and graphics card), and what the writer
+does when Windows, not Linux, looks after the files. Demo mode
+(``python mesoSPIM/mesoSPIM_Control.py -D``) is enough for all of them; no
+laser has to be on.
+
+First the automatic tests, from the folder that holds ``mesoSPIM``, in the
+environment mesoSPIM runs in. They take a few minutes.
+
+.. code-block:: bat
+
+   pip install pytest pytest-timeout playwright
+   playwright install chromium
+   set MESOSPIM_VIEWER_QT_TESTS=1
+   python -m pytest mesoSPIM/test/mesospim_viewer mesoSPIM/test/test_omezarr_tczyx_writer.py mesoSPIM/test/test_tiff_to_omezarr.py -q --timeout=600
+
+``MESOSPIM_VIEWER_QT_TESTS=1`` switches on the tests that open the real
+window. Everything should pass. One test, ``test_realistic.py ... [feed]``,
+measures timing and can fail while the PC is busy with something else; run it
+again on its own before reading anything into it.
+
+Then by hand, in demo mode with the Data viewer open:
+
+1. **Data saved in shards shows up.** Choose ``MP_OME_Zarr_Writer`` with
+   ``'ome_version': '0.5'`` and its default ``'shards'``, run two tiles, and
+   wait until the run turns **Saved**. The tiles must stay visible, sharp when
+   zoomed in. Close the window, open it again and load the run with
+   **Open from folder…**: it must appear again. (The window's old browser
+   could not read shards before; a current browser always could, so this is
+   the one place that shows it.)
+2. **The writer's own settings in the wizard.** In the file-naming wizard
+   choose *MP OME Zarr TCZYX*. The page of settings should list eight rows,
+   with ``shards`` set to ``None`` and no BigStitcher or write-cache rows.
+3. **Rows run one at a time.** With ``MP_OME_Zarr_TCZYX_Writer``, make a list
+   of two tiles and two lasers, all under one file name. Run the rows one by
+   one with *Run selected acquisition*, in any order. The acquisition folder
+   should hold two tile stores, and in the viewer each tile should show both
+   channels.
+4. **One laser with two filters.** Give one tile two rows with the same laser
+   and different filters, and run the list. The viewer should show two
+   channel rows, named after the laser and the filter.
+5. **Stop in the second channel.** Run a tile with two lasers and press Stop
+   halfway through the second stack. In the viewer the second channel should
+   end where it was stopped, with nothing after it. Start the same list again
+   under a new file name; it should run through.
+6. **A very short stack.** Run a stack of two or three planes with either
+   OME-Zarr writer. It must be saved. mesoSPIM's log must not contain
+   ``FileNotFoundError`` or ``PermissionError`` from the writer.
+7. **A time lapse with the viewer open.** Three time points of two tiles with
+   ``MP_OME_Zarr_TCZYX_Writer``. The T slider should grow to three, and the
+   log should again be free of ``PermissionError``.
+8. **Closing and resizing.** Make the window larger and smaller while a saved
+   run is shown: the picture should stay fitted. Close the window during a
+   run: mesoSPIM must stay responsive and the run must go on. Open the viewer
+   again afterwards; it should pick the run up.
+9. **How it feels.** Pan, zoom and drag the Z slider through a saved run.
+   Movement should follow the mouse without a pause, and tiles should sharpen
+   within a moment of stopping.
+
 If something is wrong
 ---------------------
 
