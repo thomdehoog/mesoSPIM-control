@@ -196,7 +196,12 @@ def describe_stack(core, acq, acq_list, frame_shape):
     # writer: which tile, and what its channels are called). The preview then carries
     # the same tile number and channel names as the store it will be replaced by.
     table = acq_list
+    colour = None
     if store is not None and getattr(writer, 'channel_labels_of_this_acquisition', None):
+        # The colour the writer puts into the store for this channel, so that the picture
+        # does not change colour when the preview gives way to the data on disk.
+        written = getattr(writer, 'channel_colour_of_this_stack', None)
+        colour = f'#{written.lower()}' if written else None
         channel = writer.channel_label_of_this_stack
         channels = tuple(writer.channel_labels_of_this_acquisition)
         tile = int(writer.tile_index_of_this_stack)
@@ -214,6 +219,7 @@ def describe_stack(core, acq, acq_list, frame_shape):
         tile=f'Tile {tile + 1}',
         tiles=tiles,
         places=tile_places(core, table, frame_shape),
+        colour=colour,
         folder=folder,
         store=store,
     )

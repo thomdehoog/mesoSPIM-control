@@ -332,6 +332,99 @@ def test_a_stack_finds_its_channel_by_name_when_the_table_has_changed(tmp_path):
     assert writer.channel_labels_of_this_acquisition == ('488', '561', '640'), "what the Data viewer is told"
 
 
+def test_every_channel_is_given_a_colour_and_a_contrast(tmp_path):
+    """The OME-Zarr rules ask every channel for a colour and four contrast numbers, and
+    programs that check a file refuse one without them. A laser line the writer has no
+    colour for used to be written with neither."""
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '594 nm', 'Empty'), (100.0, 'Lamp', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    for value, acq in zip((1000, 2000, 3000), table):
+        _run(writer, acq, table, value)
+    root = zarr.open_group(tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr', mode='r')
+    channels = root.attrs['ome']['omero']['channels']
+    assert [channel['label'] for channel in channels] == ['488', '594', 'Lamp']
+    for channel in channels:
+        assert len(channel['color']) == 6 and int(channel['color'], 16) >= 0
+        assert channel['window'] == {'min': 0, 'max': 65535, 'start': 0, 'end': 65535}
+    assert channels[0]['color'] == '00FF66'
+    assert len({channel['color'] for channel in channels}) == 3, "three channels, three colours"
+    assert writer.channel_colour_of_this_stack == channels[2]['color'], "what the Data viewer's preview is told"
+
+
+def test_a_colour_follows_the_wavelength():
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
+        CHANNEL_COLORS, channel_colour,
+    )
+    for line, colour in CHANNEL_COLORS.items():
+        assert channel_colour(line) == colour and channel_colour(f'{line} 525/50') == colour
+    rgb = lambda colour: tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4))
+    red, green, blue = rgb(channel_colour('473'))
+    assert blue > red and green > red, "a 473 nm line reads blue-green"
+    red, green, blue = rgb(channel_colour('594'))
+    assert red > green > blue, "a 594 nm line reads orange-red"
+    assert channel_colour('532') != channel_colour('561') != channel_colour('594')
+    assert channel_colour('850') == 'FFFFFF', "past the red end there is no colour to give"
+    assert channel_colour('Lamp', 0) != channel_colour('LED', 1), "names without a number take colours in turn"
+
+
+def test_a_contrast_someone_chose_survives_a_new_channel(tmp_path):
+    """A later stack adds a channel and the store's channel list is written again. What
+    the list said about the channels it had, a contrast set in another program say, stays."""
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    _run(writer, table[0], table, 1000)
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    root = zarr.open_group(store, mode='a')
+    ome = dict(root.attrs['ome'])
+    ome['omero']['channels'][0]['window'] = {'min': 0, 'max': 65535, 'start': 120, 'end': 4000}
+    root.attrs['ome'] = ome
+    more = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '561 nm', 'Empty'))
+    _run(writer, more[1], more, 2000)
+    channels = zarr.open_group(store, mode='r').attrs['ome']['omero']['channels']
+    assert [channel['label'] for channel in channels] == ['488', '561']
+    assert channels[0]['window']['end'] == 4000
+    assert channels[1]['window']['end'] == 65535
+
+
+def test_the_smallest_copy_of_a_camera_frame_is_a_few_dozen_pixels():
+    """What a viewer loads to show a hundred tiles at once is each tile's smallest copy."""
+    from mesoSPIM.src.plugins.ImageWriters import OmeZarrWriterMPTCZYX as plugin
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
+        level_factors, plan_levels,
+    )
+    levels = plan_levels(5056, 2960, 2000, 1, min_dim=plugin.OVERVIEW_MIN_PIXELS)
+    _zf, yf, xf = level_factors(levels - 1, 1)
+    smallest = (-(-5056 // yf), -(-2960 // xf))
+    assert 16 <= min(smallest) < 32 and max(smallest) < 64, smallest
+
+
+def test_a_store_made_with_fewer_copies_keeps_that_number(tmp_path):
+    """A store from an earlier version of the writer has fewer, larger copies. A stack
+    added now follows it. Copies that hold only some of the channels would be worse."""
+    from mesoSPIM.src.plugins.ImageWriters import OmeZarrWriterMPTCZYX as plugin
+
+    writer = OMEZarrWriterMPTCZYX()
+    was = plugin.OVERVIEW_MIN_PIXELS
+    plugin.OVERVIEW_MIN_PIXELS = 64                    # as the earlier version planned
+    try:
+        _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=0), planes=PLANES)
+    finally:
+        plugin.OVERVIEW_MIN_PIXELS = was
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    before = sorted(zarr.open_group(store, mode='r').array_keys())
+    _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=1), planes=PLANES)
+    root = zarr.open_group(store, mode='r')
+    assert sorted(root.array_keys()) == before == ['0', '1']
+    assert len(root.attrs['ome']['multiscales'][0]['datasets']) == 2
+
+    fresh = tmp_path / 'fresh'
+    fresh.mkdir()
+    _write_stack(OMEZarrWriterMPTCZYX(), _request(fresh, SMALL_CHUNKS, row=0), planes=PLANES)
+    made = zarr.open_group(fresh / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr', mode='r')
+    assert len(list(made.array_keys())) > 2, "a new store goes on to smaller copies"
+    assert min(made[str(len(list(made.array_keys())) - 1)].shape[3:]) >= 16
+
+
 def test_a_store_that_fits_is_not_reported(tmp_path, caplog):
     import logging
     writer = OMEZarrWriterMPTCZYX()

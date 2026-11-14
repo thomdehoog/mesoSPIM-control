@@ -184,12 +184,20 @@ def _omero_channels(omero: object) -> list[Channel]:
         if not isinstance(raw, dict):
             continue
         window = raw.get("window")
+        limits = _pair(window, "min", "max")
+        chosen = _pair(window, "start", "end")
+        if chosen is not None and chosen == limits:
+            # Black at the lowest value the data can hold and white at the highest is what
+            # a writer puts down when nobody has chosen a contrast (the OME-Zarr rules
+            # ask for some numbers). Shown as it stands, a 16-bit picture would be almost
+            # black. It is taken as "nothing said", and the contrast sets itself.
+            chosen = None
         found.append(
             Channel(
                 label=str(raw.get("label") or f"channel {index}"),
                 color=_hex(raw.get("color")),
-                window=_pair(window, "start", "end"),
-                limits=_pair(window, "min", "max"),
+                window=chosen,
+                limits=limits,
                 active=bool(raw.get("active", True)),
             )
         )

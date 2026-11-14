@@ -224,6 +224,21 @@ def test_a_chunk_file_says_where_in_the_array_it_sits():
     assert Level(path="0", shape=(20,), files=(8,)).count(0) == 3
 
 
+def test_a_contrast_over_the_whole_range_counts_as_none_chosen():
+    """The OME-Zarr rules ask a writer for contrast numbers even when nobody has chosen a
+    contrast, and the microscope's writer then puts down the whole range of the data.
+    Shown like that a 16-bit picture is almost black, so it is read as "nothing said" and
+    the viewer sets the contrast itself. A contrast somebody did choose is kept."""
+    full = {"min": 0, "max": 65535, "start": 0, "end": 65535}
+    chosen = {"min": 0, "max": 65535, "start": 380, "end": 12400}
+    channels = omezarr._omero_channels({"channels": [
+        {"label": "488", "color": "00FF66", "window": full},
+        {"label": "561", "color": "FFBF1A", "window": chosen},
+    ]})
+    assert channels[0].window is None and channels[0].limits == (0.0, 65535.0)
+    assert channels[1].window == (380.0, 12400.0)
+
+
 # -- a contrast window from the data --------------------------------------------------
 
 

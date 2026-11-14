@@ -21,7 +21,7 @@ import zarr
 
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
     PyramidSpec, ChunkScheme, plan_levels, compute_xy_only_levels, FlushPad, BloscCodec, BloscShuffle,
-    CHANNEL_COLORS,
+    CHANNEL_COLORS, channel_colour,
 )
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer_tczyx import (
     TCZYX, omezarr_writer_worker_tczyx,
@@ -34,6 +34,14 @@ from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_wri
 # after it. A sample called 'Mouse_Time2h' keeps its name: there the digits are followed
 # by more of the name.
 _TIME_SUFFIX = re.compile(r'_Time(\d+)(?=(?:\.[A-Za-z][A-Za-z0-9]*)*$)')
+
+# Smaller copies of a stack are made until the next one would be narrower than this many
+# pixels. A camera frame of 5056 x 2960 pixels then ends in a copy of about 40 x 24. The
+# smallest copy is what a viewer loads to show a whole acquisition at once. With a hundred
+# tiles on screen each tile covers a few dozen pixels, and a copy much larger than that
+# (it used to stop near 158 x 93, with sixty-four times the voxels) is read and drawn for
+# nothing. The extra copies add well under a thousandth to the size of the file.
+OVERVIEW_MIN_PIXELS = 16
 
 
 class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
@@ -286,7 +294,8 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         self.acquisition_path, time_index = self.split_time_index(req.uri)
         channels, channel_labels = self.channels_of(rows)
         self.channel_label_of_this_stack = channel_labels[channels.index((str(acq['laser']), str(acq['filter'])))]
-        channel_colors = [CHANNEL_COLORS.get(self.channel_label(laser), '') for laser, _filter in channels]
+        channel_colors = [channel_colour(self.channel_label(laser), index)
+                          for index, (laser, _filter) in enumerate(channels)]
         # For the Data viewer, so that its preview of this stack carries the same tile
         # number and channel names as the store on disk.
         self.tile_index_of_this_stack = tile
@@ -311,16 +320,18 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         # run that it does not have yet are added after them. So a tile acquired again after
         # the table was changed (a laser added, a row taken out) still puts every stack in
         # its own channel, and nothing lands on another channel's data.
-        store_shape, in_store = self._store_as_it_is(self.current_acquire_file_path)
+        store_shape, in_store, store_levels = self._store_as_it_is(self.current_acquire_file_path)
         known = [str(channel.get('label', '')) for channel in in_store]
         added = [label for label in channel_labels if label not in known]
         if in_store and added:
             logger.info(f"{self.name()}: {group_name} gets {len(added)} more channel(s): {', '.join(added)}")
         colour_of = dict(zip(channel_labels, channel_colors))
-        colour_of.update({str(channel.get('label', '')): str(channel.get('color', '')) for channel in in_store})
+        colour_of.update({str(channel.get('label', '')): str(channel['color'])
+                          for channel in in_store if channel.get('color')})
         channel_labels = known + added
         channel_colors = [colour_of.get(label, '') for label in channel_labels]
         channel_index = channel_labels.index(self.channel_label_of_this_stack)
+        self.channel_colour_of_this_stack = channel_colors[channel_index]
         self.channel_labels_of_this_acquisition = tuple(channel_labels)
 
         px_size_zyx = (req.z_res, req.y_res, req.x_res)
@@ -335,8 +346,13 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
                         f"{Z_EST} planes deep for this stack")
 
         xy_levels = compute_xy_only_levels(px_size_zyx)
-        if generate_multiscales:
-            levels = plan_levels(Y, X, Z_EST, xy_levels, min_dim=64)
+        if store_levels:
+            # A store that is there already keeps the copies it was made with. One written
+            # by an earlier version has fewer of them, and this stack follows it, so that
+            # every copy holds every channel and time point.
+            levels = store_levels
+        elif generate_multiscales:
+            levels = plan_levels(Y, X, Z_EST, xy_levels, min_dim=OVERVIEW_MIN_PIXELS)
         else:
             levels = 1
 
@@ -427,24 +443,28 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             self._store_processes.clear()
             self._queues_in_use.clear()
 
-    def _store_as_it_is(self, store_path: str) -> tuple[tuple | None, list[dict]]:
-        '''What a tile's store holds already: the shape of its full-resolution array and the
-        channels it names, each as its entry in the omero block (``label``, ``color``). An
-        empty answer, ``(None, [])``, for a store that is not there yet or cannot be read.'''
+    def _store_as_it_is(self, store_path: str) -> tuple[tuple | None, list[dict], int]:
+        '''What a tile's store holds already: the shape of its full-resolution array, the
+        channels it names, each as its entry in the omero block (``label``, ``color``), and
+        how many copies of the data it has (the full-resolution one and the smaller ones).
+        An empty answer, ``(None, [], 0)``, for a store that is not there yet or cannot be
+        read.'''
         try:
             if not os.path.isdir(store_path):
-                return None, []
+                return None, [], 0
             root = zarr.open_group(store_path, mode='r')
             shape = tuple(root['0'].shape) if '0' in root else None
             attrs = dict(root.attrs)
             omero = attrs.get('ome', {}).get('omero') or attrs.get('omero') or {}
             channels = [dict(channel) for channel in omero.get('channels', []) if isinstance(channel, dict)]
+            multiscales = attrs.get('ome', {}).get('multiscales') or attrs.get('multiscales') or [{}]
+            levels = len(multiscales[0].get('datasets', []))
         except Exception:
             logger.debug(f'{self.name()}: could not read the existing store {store_path}', exc_info=True)
-            return None, []
+            return None, [], 0
         if shape is None or len(shape) != 5:
-            return None, []
-        return shape, channels
+            return None, [], 0
+        return shape, channels, levels
 
     def _wait_for_store(self, store_path: str) -> None:
         '''Block until the writer process last given this store has finished.'''

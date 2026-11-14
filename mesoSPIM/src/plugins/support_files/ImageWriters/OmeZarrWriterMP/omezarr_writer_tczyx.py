@@ -41,15 +41,30 @@ class TCZYX:
     channel_colors: Tuple[str, ...] = ()    # omero colours as "RRGGBB"
 
 
-def omero_block(tczyx: TCZYX) -> dict:
+def omero_block(tczyx: TCZYX, existing: dict | None = None) -> dict:
+    """What the store says about its channels: a name, a colour and a contrast for each.
+
+    Every channel gets all three, because the OME-Zarr rules ask for a colour and a
+    contrast, and programs that check a file refuse one without them. ``existing`` is the
+    block the store has already. A channel named there keeps its entry as it is, so a
+    contrast that somebody chose in another program is not thrown away when a later
+    stack adds a channel.
+    """
+    existing = existing if isinstance(existing, dict) else {}
+    kept = {str(entry.get("label")): entry for entry in existing.get("channels", []) if isinstance(entry, dict)}
     channels = []
     for i in range(tczyx.n_channels):
         label = tczyx.channel_labels[i] if i < len(tczyx.channel_labels) else f"channel {i}"
-        entry = {"label": label, "active": True}
-        if i < len(tczyx.channel_colors) and tczyx.channel_colors[i]:
-            entry["color"] = tczyx.channel_colors[i]
+        entry = dict(kept.get(label, {}))
+        entry.setdefault("label", label)
+        entry.setdefault("active", True)
+        chosen = tczyx.channel_colors[i] if i < len(tczyx.channel_colors) else ""
+        if not entry.get("color"):
+            entry["color"] = chosen or base.channel_colour(label, i)
+        if not isinstance(entry.get("window"), dict):
+            entry["window"] = dict(base.FULL_WINDOW)
         channels.append(entry)
-    return {"channels": channels}
+    return dict(existing, channels=channels)
 
 
 def when_free(action, tries: int = 100, pause: float = 0.05):
@@ -200,9 +215,10 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
         if grown:
             # The channels the store names are brought up to date; nothing else changes.
             if ome_version == "0.5":
-                when_free(lambda: root.attrs.update({"ome": dict(root.attrs["ome"], omero=omero_block(tczyx))}))
+                when_free(lambda: root.attrs.update({"ome": dict(
+                    root.attrs["ome"], omero=omero_block(tczyx, root.attrs["ome"].get("omero")))}))
             else:
-                when_free(lambda: root.attrs.update({"omero": omero_block(tczyx)}))
+                when_free(lambda: root.attrs.update({"omero": omero_block(tczyx, root.attrs.get("omero"))}))
         return root, windows
 
     # OME attributes, written once with the first stack: multiscales with per-axis

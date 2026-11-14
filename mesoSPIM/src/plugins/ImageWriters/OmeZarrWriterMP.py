@@ -61,7 +61,7 @@ from plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
     Live3DPyramidWriter, plan_levels,
     compute_xy_only_levels, FlushPad,
     BloscCodec, BloscShuffle,
-    XmlWriter, omezarr_writer_worker, CHANNEL_COLORS
+    XmlWriter, omezarr_writer_worker, channel_colour
 )
 
 
@@ -385,7 +385,7 @@ class OMEZarrWriterMP(ImageWriter):
             ome_version=ome_version,
             # Each store holds one channel; its omero block says which one.
             channel_label=laser,
-            channel_color=CHANNEL_COLORS.get(laser),
+            channel_color=channel_colour(laser),
         )
 
         self._writer_attached = ctx.Event()

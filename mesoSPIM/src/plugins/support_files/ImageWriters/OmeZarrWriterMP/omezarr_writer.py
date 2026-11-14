@@ -231,6 +231,48 @@ def pick_shards_for_level(
 # Default false colours for a channel's omero entry, by excitation wavelength (nm).
 # The same as the MP_OME_Zarr_TCZYX_Writer uses.
 CHANNEL_COLORS = {'405': '5A73FF', '488': '00FF66', '561': 'FFBF1A', '640': 'FF33FF', '647': 'FF33FF', '785': 'FFFFFF'}
+# For a channel whose name holds no wavelength at all: one colour after the other.
+_COLOURS_IN_TURN = ('00FF66', 'FF33FF', 'FFBF1A', '5A73FF', 'FFFFFF', '33DDFF')
+# The contrast a channel's omero entry starts with: the whole range of the 16-bit data.
+# The OME-Zarr rules ask every channel for these four numbers, and programs that check a
+# file refuse one without them. Black at 0 and white at 65535 says "nobody has chosen a
+# contrast yet"; the Data viewer reads it that way and sets the contrast itself.
+FULL_WINDOW = {"min": 0, "max": 65535, "start": 0, "end": 65535}
+
+
+def channel_colour(label, index: int = 0) -> str:
+    """A display colour for a channel, as "RRGGBB", from the wavelength in its name.
+
+    The laser lines mesoSPIM usually has keep the colours of CHANNEL_COLORS. Any other
+    line (a 473, a 532, a 594) gets the colour of light a little redder than the laser,
+    which is roughly what its fluorescence looks like, so that two lines never share one
+    colour by accident. Past the red end, where the eye sees nothing, it is white. A name
+    without a number gets a colour by its place among the channels (``index``).
+    """
+    import re
+    found = re.search(r'\d{3,4}', str(label))
+    if found is None:
+        return _COLOURS_IN_TURN[index % len(_COLOURS_IN_TURN)]
+    if found.group() in CHANNEL_COLORS:
+        return CHANNEL_COLORS[found.group()]
+    nm = int(found.group()) + 25          # fluorescence is redder than the light that excites it
+    if nm >= 700:
+        return 'FFFFFF'
+    nm = max(nm, 400)
+    if nm < 440:
+        r, g, b = (440 - nm) / 60, 0.0, 1.0
+    elif nm < 490:
+        r, g, b = 0.0, (nm - 440) / 50, 1.0
+    elif nm < 510:
+        r, g, b = 0.0, 1.0, (510 - nm) / 20
+    elif nm < 580:
+        r, g, b = (nm - 510) / 70, 1.0, 0.0
+    elif nm < 645:
+        r, g, b = 1.0, (645 - nm) / 65, 0.0
+    else:
+        r, g, b = 1.0, 0.0, 0.0
+    # Lightened a little: pure blue and pure red are hard to see on a dark background.
+    return ''.join(f'{round(255 * (0.25 + 0.75 * part)):02X}' for part in (r, g, b))
 
 
 def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
@@ -329,9 +371,9 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
     # channel. Viewers read it to tell the stores of different channels apart.
     omero = None
     if channel_label:
-        channel = {"label": channel_label, "active": True}
-        if channel_color:
-            channel["color"] = channel_color
+        channel = {"label": channel_label, "active": True,
+                   "color": channel_color or channel_colour(channel_label),
+                   "window": dict(FULL_WINDOW)}
         omero = {"channels": [channel]}
     if ome_version == "0.5":
         ome = {

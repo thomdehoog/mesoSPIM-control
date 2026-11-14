@@ -59,8 +59,9 @@ def test_mesospim_tiles_and_channels(tmp_path):
         assert g['0'].shards is not None
         # Each store says which channel it holds, so a viewer can tell the channels apart.
         channel = g.attrs.asdict()['ome']['omero']['channels']
-        assert channel == [{'label': '488', 'active': True, 'color': '00FF66'}] if '488' in s.path else \
-            channel == [{'label': '561', 'active': True, 'color': 'FFBF1A'}]
+        window = {'min': 0, 'max': 65535, 'start': 0, 'end': 65535}   # nobody has chosen a contrast yet
+        assert channel == [{'label': '488', 'active': True, 'color': '00FF66', 'window': window}] if '488' in s.path else \
+            channel == [{'label': '561', 'active': True, 'color': 'FFBF1A', 'window': window}]
 
     root = ET.parse(out + '.xml').getroot()
     assert root.find('.//ImageLoader').get('zarr.version') == 'ZarrV3'

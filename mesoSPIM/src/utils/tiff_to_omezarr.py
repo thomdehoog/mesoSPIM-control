@@ -737,7 +737,7 @@ def convert(sources: list, out_path, opts: dict,
             # Each store holds one channel. Saying which one lets viewers such as the
             # Data viewer show the channels as separate rows, as for data from the microscope.
             channel_label=channel_name,
-            channel_color=ozw.CHANNEL_COLORS.get(channel_name),
+            channel_color=ozw.channel_colour(channel_name),
         )
         reader = PlaneReader(src)
         reader.signed = opts['signed_integers']
