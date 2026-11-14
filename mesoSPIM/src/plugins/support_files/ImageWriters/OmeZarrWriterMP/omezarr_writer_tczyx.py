@@ -105,9 +105,9 @@ class StackWindow:
         self.array[(self.t, self.c, slice(z.start, stop)) + rest] = value[:n]
 
     def resize(self, shape):
-        """The pipeline trims each level to the planes written when a stack closes; a store
-        that held a stack already was trimmed then, and every stack of a tile has the same
-        depth, so only an array this stack created is resized."""
+        """The pipeline trims each level to the planes written when a stack closes. Only an
+        array this stack created is trimmed: a store that held a stack already keeps its
+        depth, which other stacks of the tile may need."""
         if self.fresh:
             when_free(lambda: self.array.resize(self.array.shape[:2] + tuple(shape)))
 
@@ -135,6 +135,7 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
     dims = ["t", "c", "z", "y", "x"]
     windows = []
     fresh = []
+    grown = False   # whether the store was given a channel it did not have
     for l in range(spec.levels):
         zf, yf, xf = level_factors(l, xy_levels)
         z_l = ceil_div(spec.z_size_estimate, zf)
@@ -146,13 +147,20 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
 
         name = f"{l}"
         if name in root:
-            # The same tile again: its next channel or time point. Its z was trimmed when
-            # the first stack closed and is never touched again; only t may grow.
+            # The same tile again: its next channel or time point. The store grows to take
+            # the stack in: by a time point, by a channel it did not have, and in depth when
+            # this stack has more planes than the store was left with (an earlier stack was
+            # stopped, or planned shorter). It never shrinks, and nothing on disk is
+            # rewritten: every chunk and shard holds one time point of one channel, so
+            # growing only changes the arrays' description. What other stacks do not fill
+            # of the new room reads as empty planes.
             a = root[name]
-            if a.shape[1:2] != lead[1:] or a.shape[3:] != lvl_shape[1:] or a.dtype != np.uint16:
+            if a.shape[3:] != lvl_shape[1:] or a.dtype != np.uint16:
                 raise ValueError(f"Existing {name}: {a.shape}/{a.dtype} does not fit {lead + lvl_shape}/uint16")
-            if a.shape[0] < lead[0]:
-                when_free(lambda: a.resize((lead[0],) + a.shape[1:]))
+            wanted = (max(a.shape[0], lead[0]), max(a.shape[1], lead[1]), max(a.shape[2], lvl_shape[0])) + a.shape[3:]
+            if wanted != a.shape:
+                grown = grown or wanted[1] != a.shape[1]
+                when_free(lambda: a.resize(wanted))
             fresh.append(False)
         elif zarr_version == 3:
             kwargs = dict(name=name, shape=lead + lvl_shape, chunks=lead_chunk + chunks, dtype="uint16")
@@ -189,6 +197,12 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
         windows.append(StackWindow(a, tczyx.t, tczyx.c, fresh[-1]))
 
     if not all(fresh):
+        if grown:
+            # The channels the store names are brought up to date; nothing else changes.
+            if ome_version == "0.5":
+                when_free(lambda: root.attrs.update({"ome": dict(root.attrs["ome"], omero=omero_block(tczyx))}))
+            else:
+                when_free(lambda: root.attrs.update({"omero": omero_block(tczyx)}))
         return root, windows
 
     # OME attributes, written once with the first stack: multiscales with per-axis
@@ -279,8 +293,10 @@ class Live3DPyramidWriterTCZYX(Live3DPyramidWriter):
             z_l = ceil_div(self.spec.z_size_estimate, zf)
             y_l = ceil_div(self.spec.y, yf)
             x_l = ceil_div(self.spec.x, xf)
-            zc, yc, xc = self.chunk_scheme.chunks_for_level(l, (z_l, y_l, x_l))
-            self.zc.append(zc)
+            # Buffered and written a chunk at a time, as deep as the array's chunks are. For
+            # a store that is there already that is the depth it was created with, which
+            # this stack's own plan need not share (its first stack may have been shorter).
+            self.zc.append(int(self.arrs[l].array.chunks[2]))
             self.yx_shapes.append((y_l, x_l))
 
         self.q = queue.Queue(maxsize=ingest_queue_size)

@@ -219,15 +219,56 @@ def _write_stack(writer, request, planes: int) -> None:
     writer._wait_for_background_writers()
 
 
-def test_running_over_a_stopped_run_is_reported(tmp_path, caplog):
+def test_running_again_over_a_stopped_run_writes_the_whole_stack(tmp_path):
     """A stack stopped at plane 7 leaves a store 7 planes deep. Run again under the same
-    name, the full stack would be cut to those 7 planes without a word; the log now says so."""
-    import logging
+    name, the full stack used to be cut to those 7 planes without a word. The store is now
+    made as deep as the stack needs."""
     _write_stack(OMEZarrWriterMPTCZYX(), _request(tmp_path, SMALL_CHUNKS), planes=7)   # stopped early
-    with caplog.at_level(logging.ERROR):
-        writer = OMEZarrWriterMPTCZYX()
-        _write_stack(writer, _request(tmp_path, SMALL_CHUNKS), planes=PLANES)
-    assert 'already exists with 7 planes' in caplog.text and f'this stack has {PLANES}' in caplog.text
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    assert zarr.open_group(store, mode='r')['0'].shape[2] == 7
+    _write_stack(OMEZarrWriterMPTCZYX(), _request(tmp_path, SMALL_CHUNKS), planes=PLANES)
+    root = zarr.open_group(store, mode='r')
+    assert root['0'].shape == (1, 2, PLANES, X, Y)
+    assert np.array_equal(root['0'][0, 0], np.stack([frame(0, 0, 0, z) for z in range(PLANES)]))
+    assert root['1'][0, 0, -1].max() > 0, "the coarser copy was made deeper and written to its last plane too"
+    assert 'mesospim_incomplete_stacks' not in root.attrs, "the stack is whole now"
+
+
+def test_a_deeper_stack_makes_the_store_deeper_and_the_shorter_one_ends_empty(tmp_path):
+    """Two channels of a tile with different z ranges: twelve planes, then twenty. The
+    store takes the deeper one in full; the shorter channel reads as empty after its own
+    last plane, not as copies of it."""
+    table = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '561 nm', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    _run(writer, table[0], table, 1000, planes=12, expected=12)
+    _run(writer, table[1], table, 2000, planes=PLANES, expected=PLANES)
+    root = zarr.open_group(tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr', mode='r')
+    assert root['0'].shape[:3] == (1, 2, PLANES)
+    assert np.array_equal(root['0'][0, 1, :, 0, 0], 2000 + np.arange(PLANES)), "the deeper stack in full"
+    assert np.array_equal(root['0'][0, 0, :12, 0, 0], 1000 + np.arange(12))
+    assert not root['0'][0, 0, 12:].any(), "nothing after the shorter stack's last plane"
+    assert 'mesospim_incomplete_stacks' not in root.attrs, "both stacks are as long as they were planned"
+
+
+def test_a_stack_finds_its_channel_by_name_when_the_table_has_changed(tmp_path):
+    """A tile with 488 and 561 on disk. The table is changed: 561 is taken out and 640
+    added. Counted in the new table, 640 would be channel 1 and land on the 561 data. It is
+    given a channel of its own, and a second 488 stack still lands on 488."""
+    before = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '561 nm', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    for value, acq in zip((1000, 2000), before):
+        _run(writer, acq, before, value)
+    after = _rows(tmp_path, (100.0, '488 nm', 'Empty'), (100.0, '640 nm', 'Empty'))
+    writer = OMEZarrWriterMPTCZYX()
+    _run(writer, after[1], after, 3000)
+    _run(writer, after[0], after, 1500)
+    root = zarr.open_group(tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr', mode='r')
+    channels = root.attrs['ome']['omero']['channels']
+    assert [channel['label'] for channel in channels] == ['488', '561', '640']
+    assert channels[2]['color'] == 'FF33FF' and channels[1]['color'] == 'FFBF1A', "each keeps its colour"
+    assert root['0'].shape[:3] == (1, 3, PLANES) and root['1'].shape[1] == 3
+    assert [int(root['0'][0, c, 0, 0, 0]) for c in range(3)] == [1500, 2000, 3000]
+    assert writer.channel_labels_of_this_acquisition == ('488', '561', '640'), "what the Data viewer is told"
 
 
 def test_a_store_that_fits_is_not_reported(tmp_path, caplog):

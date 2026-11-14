@@ -208,18 +208,27 @@ Not supported by this writer: the BigStitcher XML and ``write_cache``.
 
 .. note::
 
-   **Use a new file name after a Stop.** A store keeps the depth it was created
-   with. If a run is stopped during the first stack of a tile and then started
-   again under the same name, the old, shorter store is reused and the new
-   stacks are cut to its depth. The same happens when the channels of a tile
-   have different z ranges. mesoSPIM writes an error to its log when it sees
-   this, but it does not stop the acquisition.
+   **A tile's store grows; it is never cut.** Acquiring into a store that is
+   already there adds to it:
 
-   A stack that ends early, or that did not fit, is marked in the store itself.
-   Everything after its last real plane is empty (zero), and the store's
-   attributes list it under ``mesospim_incomplete_stacks`` with its time point,
-   its channel and the number of planes it holds. Acquiring that stack again
-   in full removes the entry.
+   * A stack with more planes than the store has makes the store deeper. This
+     is what happens when a run is stopped and then started again under the
+     same name, or when the channels of a tile have different z ranges. The
+     shorter stacks then read as empty planes after their own last plane.
+   * A stack finds its channel by the channel's name. A channel the store
+     does not have yet is added after the ones it has. So changing the
+     acquisition table between two runs (a laser added, a row taken out)
+     cannot put a stack on another channel's data.
+   * A time point of a timelapse is appended along ``t``.
+
+   Nothing already on disk is rewritten for any of this: every chunk holds one
+   time point of one channel, so growing only changes the store's description.
+
+   A stack that ends early is marked in the store itself. Everything after its
+   last real plane is empty (zero), and the store's attributes list it under
+   ``mesospim_incomplete_stacks`` with its time point, its channel and the
+   number of planes it holds. Acquiring that stack again in full removes the
+   entry.
 
 H5_BDV_Writer
 ----------------

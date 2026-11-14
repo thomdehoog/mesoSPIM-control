@@ -285,13 +285,12 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         # Where this stack lands: the store of its tile, at (t, c)
         self.acquisition_path, time_index = self.split_time_index(req.uri)
         channels, channel_labels = self.channels_of(rows)
-        channel_index = channels.index((str(acq['laser']), str(acq['filter'])))
-        self.channel_label_of_this_stack = channel_labels[channel_index]
+        self.channel_label_of_this_stack = channel_labels[channels.index((str(acq['laser']), str(acq['filter'])))]
+        channel_colors = [CHANNEL_COLORS.get(self.channel_label(laser), '') for laser, _filter in channels]
         # For the Data viewer, so that its preview of this stack carries the same tile
         # number and channel names as the store on disk.
         self.tile_index_of_this_stack = tile
         self.tile_count_of_this_acquisition = rows.get_n_tiles()
-        self.channel_labels_of_this_acquisition = tuple(channel_labels)
         self.rows_of_this_stacks_acquisition = rows
         self.current_acquire_file_path = self.acquisition_path + '/' + self.omezarr_group_name
         self.metadata_file_path = req.uri + '_' + self.omezarr_group_name + '_meta.txt'
@@ -307,11 +306,33 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         # must not meet. Other tiles keep running in the background as before.
         self._wait_for_store(self.current_acquire_file_path)
 
+        # A stack finds its channel in the store by the channel's name. A store that is
+        # there already keeps the channels it has, in their order, and the channels of this
+        # run that it does not have yet are added after them. So a tile acquired again after
+        # the table was changed (a laser added, a row taken out) still puts every stack in
+        # its own channel, and nothing lands on another channel's data.
+        store_shape, in_store = self._store_as_it_is(self.current_acquire_file_path)
+        known = [str(channel.get('label', '')) for channel in in_store]
+        added = [label for label in channel_labels if label not in known]
+        if in_store and added:
+            logger.info(f"{self.name()}: {group_name} gets {len(added)} more channel(s): {', '.join(added)}")
+        colour_of = dict(zip(channel_labels, channel_colors))
+        colour_of.update({str(channel.get('label', '')): str(channel.get('color', '')) for channel in in_store})
+        channel_labels = known + added
+        channel_colors = [colour_of.get(label, '') for label in channel_labels]
+        channel_index = channel_labels.index(self.channel_label_of_this_stack)
+        self.channel_labels_of_this_acquisition = tuple(channel_labels)
+
         px_size_zyx = (req.z_res, req.y_res, req.x_res)
 
         # ZARR Writer setup
         Z_EST, Y, X = (req.shape[0], req.shape[2], req.shape[1])
-        self._warn_if_store_does_not_fit(self.current_acquire_file_path, n_channels=len(channels), planes=Z_EST)
+        if store_shape is not None and store_shape[2] < Z_EST:
+            # The store is made deeper for this stack (omezarr_writer_tczyx.py). It was
+            # shallower because an earlier stack of the tile was stopped, or was planned
+            # with a shorter z range; those stacks then end in empty planes.
+            logger.info(f"{self.name()}: {group_name} is {store_shape[2]} planes deep and is made "
+                        f"{Z_EST} planes deep for this stack")
 
         xy_levels = compute_xy_only_levels(px_size_zyx)
         if generate_multiscales:
@@ -334,10 +355,10 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         tczyx = TCZYX(
             t=time_index,
             c=channel_index,
-            n_channels=len(channels),
+            n_channels=len(channel_labels),
             channel_labels=tuple(channel_labels),
             # The colour goes by the laser line, with or without a filter in the name.
-            channel_colors=tuple(CHANNEL_COLORS.get(self.channel_label(laser), '') for laser, _filter in channels),
+            channel_colors=tuple(channel_colors),
         )
 
         # Setup multiprocessing ring buffer
@@ -406,43 +427,24 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
             self._store_processes.clear()
             self._queues_in_use.clear()
 
-    def _warn_if_store_does_not_fit(self, store_path: str, n_channels: int, planes: int) -> None:
-        '''Say so in the log when the tile's store already exists with another shape.
-
-        A store keeps the number of channels and the depth it was created with. This matters
-        when a list is run again over data from an earlier run with the same name, for example
-        after a Stop: the old store is then reused as it is. With another number of channels
-        the stack cannot be written at all; with another depth it is cut to the old depth, or
-        ends in empty planes. Nothing is stopped here, because the acquisition is already
-        under way; the message tells the operator what to check and how to avoid it.
-        '''
+    def _store_as_it_is(self, store_path: str) -> tuple[tuple | None, list[dict]]:
+        '''What a tile's store holds already: the shape of its full-resolution array and the
+        channels it names, each as its entry in the omero block (``label``, ``color``). An
+        empty answer, ``(None, [])``, for a store that is not there yet or cannot be read.'''
         try:
             if not os.path.isdir(store_path):
-                return
+                return None, []
             root = zarr.open_group(store_path, mode='r')
-            if '0' not in root:
-                return
-            shape = root['0'].shape
+            shape = tuple(root['0'].shape) if '0' in root else None
+            attrs = dict(root.attrs)
+            omero = attrs.get('ome', {}).get('omero') or attrs.get('omero') or {}
+            channels = [dict(channel) for channel in omero.get('channels', []) if isinstance(channel, dict)]
         except Exception:
             logger.debug(f'{self.name()}: could not read the existing store {store_path}', exc_info=True)
-            return
-        if len(shape) != 5:
-            return
-        name = Path(store_path).name
-        if shape[1] != n_channels:
-            logger.error(
-                f"{self.name()}: {name} already exists with {shape[1]} channel(s), but this run has "
-                f"{n_channels}. This stack cannot be written into it. Use a new file name, or move the "
-                "old data away, and run again."
-            )
-        elif shape[2] != planes:
-            logger.error(
-                f"{self.name()}: {name} already exists with {shape[2]} planes, but this stack has "
-                f"{planes}. It keeps its old depth, so this stack will be cut short or end in empty "
-                "planes. This happens when a list is run again over a run that was stopped, or when "
-                "the channels of a tile have different z ranges. Use a new file name, or move the old "
-                "data away, and run again."
-            )
+            return None, []
+        if shape is None or len(shape) != 5:
+            return None, []
+        return shape, channels
 
     def _wait_for_store(self, store_path: str) -> None:
         '''Block until the writer process last given this store has finished.'''
