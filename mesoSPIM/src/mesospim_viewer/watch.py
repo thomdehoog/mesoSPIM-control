@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .landing import Landing, Progress
+from .landing import Landing, Progress, newest_change
 from .live import Held, PreviewStack, Stack
 from .omezarr import Channel, NotAStore, NotSupported, Store, read_levels, read_store
 from .viewer import Viewer
@@ -61,6 +61,12 @@ DOZING_THOROUGH_S = 120.0
 RECENT_S = 3600.0
 # Any other is *asleep*: probed seldom, never listed whole.
 ASLEEP_S = 300.0
+# A tile nothing has been written to for this long is *settled* when it is first met:
+# it is shown as it is, and none of its folders are listed. Listing every folder of
+# every tile of an old acquisition, only to learn that nothing is new, kept a network
+# drive busy for minutes. A settled tile is still checked for being written again: the
+# microscope's writer rewrites the store's description with every stack it begins.
+SETTLED_S = 600.0
 # A tile whose stack is being acquired right now, and shown from the camera's frames,
 # is looked at on disk only this often. Its files are kept from the page until the
 # stack is whole, so looking every second would load the acquisition's drive with
@@ -725,6 +731,13 @@ class Library:
             tile.woken_at = now
             self.viewer.add(path, layer=dataset.name, channel=channel_of(store), measure=False)
             only_its_shape = False
+        elif store.stamp != tile.store.stamp:
+            # The store's description was written anew though its shape is the same: the
+            # microscope has begun a stack in it, over one that was there (the same time
+            # point acquired again). Its files are about to change, so it is watched.
+            tile.store = store
+            tile.woken_at = now
+            only_its_shape = False
         if only_its_shape:
             return
         files = tile.landing.look(now, thorough=thorough, depth=depth)
@@ -750,12 +763,18 @@ class Library:
         except NotAStore:
             return  # being created at this very moment: looked at again next time
         landing = Landing(path, phase=random.randrange(1000))
-        files = landing.look(now, thorough=True)  # what is there already: nothing has read it yet
         tile = Tile(path=path, store=store, landing=landing, progress=None, looked_at=now, listed_at=now)
         tile.describe(store)
+        settled = self._settled_since(dataset, tile)
+        if settled:
+            landing.take_as_read(settled)
+            tile.progress.take_as_whole()
+            files = []
+        else:
+            files = landing.look(now, thorough=True)  # what is there already: nothing has read it yet
         if tile.progress is not None:
             tile.progress.add(files)
-        if not files or time.time() - landing.newest_s < AWAKE_S:
+        if not settled and (not files or time.time() - landing.newest_s < AWAKE_S):
             # A tile that has just appeared, or was written moments ago, is one to
             # keep an eye on: its next files land any second.
             tile.woken_at = now
@@ -772,6 +791,34 @@ class Library:
         self.viewer.add(
             path, layer=dataset.name, channel=channel_of(store), measure=not self._is_live(dataset, now)
         )
+
+    @staticmethod
+    def _settled_since(dataset: Dataset, tile: Tile) -> int:
+        """When the last file of a tile was written, if the tile can be taken in without
+        listing its folders; 0 if it has to be looked at.
+
+        A tile the microscope is acquiring, or one written within the last minutes, is
+        looked at properly. For any other, three cheap signs have to agree. The store's
+        description is old. So is the newest file, found by following the folders changed
+        last in the finest copy (``newest_change``). And every stack the store has room
+        for ends in its last file, so nothing more is expected to land. An old tile that
+        is not complete (the run was stopped, or it is still being copied here) fails the
+        third, and is listed and watched as before.
+        """
+        path, store, progress = tile.path, tile.store, tile.progress
+        if progress is None or dataset.in_run:
+            return 0
+        if any(held.store == path and not held.released for held in dataset.previews):
+            return 0
+        wall = time.time()
+        if wall - store.stamp[0] / 1e9 < SETTLED_S:
+            return 0
+        newest = newest_change(path / progress.level.path)
+        if newest <= 0 or wall - newest / 1e9 < SETTLED_S:
+            return 0
+        if not all((path / progress.last_file(stack)).is_file() for stack in progress.stacks()):
+            return 0
+        return newest
 
     @staticmethod
     def _hold(dataset: Dataset, tile: Tile) -> None:
@@ -832,7 +879,7 @@ class Library:
                 tile.landing.wake(now)
                 if tile.progress is not None:
                     # Whatever an earlier try left of this stack is written over.
-                    tile.progress.slabs.pop(held.stack, None)
+                    tile.progress.forget(held.stack)
                 self._hold(dataset, tile)
             for old in earlier:
                 # The same stack once more -- stopped and started again -- takes

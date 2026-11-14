@@ -122,6 +122,10 @@ class Store:
     # The largest value a voxel can hold (65535 for a camera's 16 bits), or None
     # when the store does not say or holds fractions.
     top: float | None = None
+    # When the store's own description file was last written, and how long it is. The
+    # microscope's writer writes that file anew with every stack it begins, so a change
+    # here says "this store is being written again" without a look at any of its data.
+    stamp: tuple[int, int] = (0, 0)
 
     @property
     def name(self) -> str:
@@ -271,11 +275,13 @@ def read_store(path: str | Path) -> Store:
     fmt: str
     if (root / "zarr.json").is_file():
         fmt = "zarr3"
-        described = _read_json(root / "zarr.json") or {}
+        description = root / "zarr.json"
+        described = _read_json(description) or {}
         attrs = described.get("attributes") if isinstance(described, dict) else None
     elif (root / ".zattrs").is_file():
         fmt = "zarr2"
-        attrs = _read_json(root / ".zattrs")
+        description = root / ".zattrs"
+        attrs = _read_json(description)
     else:
         raise NotAStore(f"{root} holds neither zarr.json nor .zattrs")
     if not isinstance(attrs, dict):
@@ -353,7 +359,16 @@ def read_store(path: str | Path) -> Store:
             if isinstance(dataset, dict)
         ),
         top=top,
+        stamp=_stamp(description),
     )
+
+
+def _stamp(path: Path) -> tuple[int, int]:
+    try:
+        about = path.stat()
+    except OSError:
+        return (0, 0)
+    return (about.st_mtime_ns, about.st_size)
 
 
 @dataclass(frozen=True)
@@ -367,6 +382,14 @@ class Level:
     path: str  # the array's folder inside the store, "0" for the finest
     shape: tuple[int, ...]
     files: tuple[int, ...]
+    # How a file is named after its place in the array: what stands in front ("c/" in
+    # zarr v3, nothing in zarr v2) and what stands between the numbers ("/" or ".").
+    prefix: str = "c/"
+    separator: str = "/"
+
+    def file_of(self, index: tuple[int, ...]) -> str:
+        """The name, below the array's folder, of the file at a place in the array."""
+        return self.prefix + self.separator.join(str(int(part)) for part in index)
 
     def index_of(self, name: str) -> tuple[int, ...] | None:
         """Where in the array a chunk file sits, from its path below the array's folder.
@@ -400,16 +423,30 @@ def read_levels(store: Store) -> tuple[Level, ...]:
             grid = described.get("chunk_grid")
             configuration = grid.get("configuration") if isinstance(grid, dict) else None
             files = configuration.get("chunk_shape") if isinstance(configuration, dict) else None
+            naming = described.get("chunk_key_encoding")
+            naming = naming if isinstance(naming, dict) else {}
+            plain = naming.get("name", "default") != "default"   # "v2": the numbers alone
+            given = naming.get("configuration")
+            separator = str((given if isinstance(given, dict) else {}).get("separator", "." if plain else "/"))
+            prefix = "" if plain else f"c{separator}"
         else:
             described = _read_json(folder / ".zarray")
             files = described.get("chunks") if isinstance(described, dict) else None
+            separator = str(described.get("dimension_separator", ".")) if isinstance(described, dict) else "."
+            prefix = ""
         if not isinstance(described, dict) or not isinstance(files, list):
             break
         shape = described.get("shape")
         if not isinstance(shape, list) or len(shape) != len(files) or not all(files):
             break
         found.append(
-            Level(path=path, shape=tuple(int(n) for n in shape), files=tuple(int(n) for n in files))
+            Level(
+                path=path,
+                shape=tuple(int(n) for n in shape),
+                files=tuple(int(n) for n in files),
+                prefix=prefix,
+                separator=separator,
+            )
         )
     return tuple(found)
 

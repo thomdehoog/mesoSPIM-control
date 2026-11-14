@@ -212,13 +212,21 @@ def init_ome_zarr_tczyx(spec: PyramidSpec, path, tczyx: TCZYX,
         windows.append(StackWindow(a, tczyx.t, tczyx.c, fresh[-1]))
 
     if not all(fresh):
+        # The store notes the stack that is begun in it. This writes the store's description
+        # file anew, and that is the point: a program watching the folder (the Data viewer)
+        # sees from that one small file that the store is being written again. Otherwise it
+        # would have to list all of the store's folders to find out, or it would miss a
+        # stack acquired a second time, which changes neither the store's shape nor its
+        # channels.
+        noted = {"mesospim_last_stack": {"t": int(tczyx.t), "c": int(tczyx.c),
+                                         "began": time.strftime("%Y-%m-%dT%H:%M:%S")}}
         if grown:
             # The channels the store names are brought up to date; nothing else changes.
             if ome_version == "0.5":
-                when_free(lambda: root.attrs.update({"ome": dict(
-                    root.attrs["ome"], omero=omero_block(tczyx, root.attrs["ome"].get("omero")))}))
+                noted["ome"] = dict(root.attrs["ome"], omero=omero_block(tczyx, root.attrs["ome"].get("omero")))
             else:
-                when_free(lambda: root.attrs.update({"omero": omero_block(tczyx, root.attrs.get("omero"))}))
+                noted["omero"] = omero_block(tczyx, root.attrs.get("omero"))
+        when_free(lambda: root.attrs.update(noted))
         return root, windows
 
     # OME attributes, written once with the first stack: multiscales with per-axis

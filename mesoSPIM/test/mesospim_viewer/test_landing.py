@@ -15,10 +15,10 @@ import time
 
 from mesoSPIM.src.mesospim_viewer import Landing, Progress, read_store
 from mesoSPIM.src.mesospim_viewer.demo import write_tile
-from mesoSPIM.src.mesospim_viewer.landing import COLD_EVERY, COLD_S, HOT_S
+from mesoSPIM.src.mesospim_viewer.landing import COLD_EVERY, COLD_S, HOT_S, newest_change
 from mesoSPIM.src.mesospim_viewer.omezarr import read_levels
 
-from .stores import Slabs, chunk_files, take_chunks, land, write_store
+from .stores import Slabs, age, chunk_files, take_chunks, land, write_store
 
 
 def progress_of(path) -> Progress:
@@ -319,6 +319,70 @@ def test_a_probe_looks_no_deeper_than_it_is_told(tmp_path):
     channel = tile.write(0, c=1)  # the new folder is 0/c/0/1: three steps below the root
     assert landing.look(now=quiet + 1.0, depth=1) == [], "its parent lies deeper than the probe looks"
     assert sorted(landing.look(now=quiet + 2.0, depth=4)) == sorted(channel)
+
+
+# -- a store finished long ago ------------------------------------------------------
+
+
+def test_the_newest_file_of_a_store_is_found_with_a_handful_of_listings(tmp_path, monkeypatch):
+    """Listing every folder of a big finished tile only to learn how old it is costs
+    thousands of requests on a network drive. Following, from each folder, the one that
+    was changed last ends at the newest files after a few."""
+    tile = Slabs(tmp_path / "tile.ome.zarr", planes=64, slab=8, channels=("488", "561"), timepoints=2)
+    for t in range(2):
+        for c in range(2):
+            tile.write_stack(t=t, c=c)
+    age(tile.path, 7200)
+    last = tile.path / tile.files(7, t=1, c=1)[-1]
+    newest = time.time() - 3000
+    os.utime(last, (newest, newest))
+    for folder in list(last.relative_to(tile.path).parents)[:-1]:   # every folder on the way down to it
+        os.utime(tile.path / folder, (newest, newest))
+    folders = sum(1 for _ in os.walk(tile.path))
+    listed = []
+    real = os.scandir
+
+    def counted(path):
+        listed.append(str(path))
+        return real(path)
+
+    monkeypatch.setattr("mesoSPIM.src.mesospim_viewer.landing.os.scandir", counted)
+    found = newest_change(tile.path / "0")
+    assert abs(found / 1e9 - newest) < 1.0
+    assert len(listed) <= 8 < folders, f"{len(listed)} listings where the store has {folders} folders"
+    assert newest_change(tmp_path / "not_there") == 0
+
+
+def test_a_store_taken_as_read_reports_only_what_was_written_after(tmp_path):
+    """A store finished long ago is shown without a look at its files. If it is written
+    again later, the first look that does list it names the new files only: the page has
+    had the old ones from the start."""
+    tile = Slabs(tmp_path / "tile.ome.zarr", planes=16, slab=8, channels=("488",), timepoints=2)
+    old = tile.write_stack(t=0)
+    age(tile.path, 7200)
+    landing = Landing(tile.path)
+    landing.take_as_read(newest_change(tile.path / "0"))
+    assert landing.holds_data and not landing.grew
+    assert time.time() - landing.newest_s > 7000
+    new = tile.write_stack(t=1)                      # a time point acquired today
+    found = landing.look(100.0)
+    assert sorted(found) == sorted(new) and not set(found) & set(old)
+    assert landing.grew
+    assert landing.look(101.0) == []
+    again = tile.write(0, t=0)                       # an old stack written over
+    assert sorted(landing.look(102.0)) == sorted(again)
+
+
+def test_stacks_taken_as_whole_count_as_complete_until_they_are_written_again(tmp_path):
+    tile = Slabs(tmp_path / "tile.ome.zarr", planes=16, slab=8, channels=("488", "561"))
+    progress = progress_of(tile.path)
+    progress.take_as_whole()
+    assert progress.complete((0, 0)) and progress.complete((0, 1)) and progress.planes((0, 1)) == 16
+    assert not progress.complete((1, 0)), "a time point the store had no room for is not covered"
+    progress.add(tile.files(0, c=1))                 # the second channel is being written again
+    assert progress.planes((0, 1)) == 8 and progress.complete((0, 0))
+    progress.forget((0, 0))                          # the microscope says it begins this stack again
+    assert progress.planes((0, 0)) == 0
 
 
 def test_a_store_that_is_gone_lands_nothing(tmp_path):

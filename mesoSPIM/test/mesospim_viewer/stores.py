@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import shutil
+import time
 from pathlib import Path
 
 import numpy as np
@@ -268,6 +270,16 @@ def numbered(path: Path) -> Path:
     }
     group_json(path, multiscale, "0.4", None)
     return path
+
+
+def age(path: Path, seconds: float) -> None:
+    """Set every file and folder below ``path`` back in time, as if it had all been
+    written ``seconds`` ago: an acquisition from last week, made in a moment."""
+    then = time.time() - seconds
+    for folder, _folders, files in os.walk(path, topdown=False):
+        for name in files:
+            os.utime(os.path.join(folder, name), (then, then))
+        os.utime(folder, (then, then))
 
 
 class Slabs:

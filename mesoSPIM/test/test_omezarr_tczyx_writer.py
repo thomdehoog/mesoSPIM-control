@@ -425,6 +425,52 @@ def test_a_store_made_with_fewer_copies_keeps_that_number(tmp_path):
     assert min(made[str(len(list(made.array_keys())) - 1)].shape[3:]) >= 16
 
 
+@pytest.mark.parametrize("config", [
+    SMALL_CHUNKS,
+    {**SMALL_CHUNKS, 'shards': (8, 192, 256)},
+    {**SMALL_CHUNKS, 'ome_version': '0.4'},
+], ids=['chunks', 'shards', 'zarr2'])
+def test_the_data_viewer_can_tell_a_finished_tile_without_listing_it(tmp_path, config):
+    """The Data viewer takes an old tile in without listing its folders when every stack
+    ends in its last file. It works that file's name out from the store's description, so
+    the name has to be right for every way this writer lays a store out."""
+    from mesoSPIM.src.mesospim_viewer import Progress, read_store
+    from mesoSPIM.src.mesospim_viewer.omezarr import read_levels
+
+    writer = OMEZarrWriterMPTCZYX()
+    _write_stack(writer, _request(tmp_path, config, row=0), planes=PLANES)
+    store_path = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    store = read_store(store_path)
+    progress = Progress(store, read_levels(store)[0])
+    assert progress.stacks() == [(0, 0), (0, 1)]
+    assert (store_path / progress.last_file((0, 0))).is_file()
+    assert not (store_path / progress.last_file((0, 1))).is_file(), "the second channel is not acquired yet"
+    _write_stack(writer, _request(tmp_path, config, row=1), planes=PLANES)
+    assert (store_path / progress.last_file((0, 1))).is_file()
+
+
+def test_every_stack_begun_in_a_store_that_is_there_is_noted_in_its_description(tmp_path):
+    """A stack acquired a second time changes neither the store's shape nor its channels.
+    The note the writer leaves rewrites the store's description file, and that is how the
+    Data viewer learns, from one small file, that the store is being written again."""
+    from mesoSPIM.src.mesospim_viewer import read_store
+
+    writer = OMEZarrWriterMPTCZYX()
+    _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=0), planes=PLANES)
+    store_path = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    assert 'mesospim_last_stack' not in zarr.open_group(store_path, mode='r').attrs
+    before = read_store(store_path).stamp
+    _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=1), planes=PLANES)
+    noted = zarr.open_group(store_path, mode='r').attrs['mesospim_last_stack']
+    assert (noted['t'], noted['c']) == (0, 1) and noted['began']
+    after = read_store(store_path).stamp
+    assert after != before
+    _write_stack(writer, _request(tmp_path, SMALL_CHUNKS, row=1), planes=PLANES)      # the same stack once more
+    assert read_store(store_path).shape == (1, 2, PLANES, X, Y)
+    assert read_store(store_path).stamp != after or \
+        zarr.open_group(store_path, mode='r').attrs['mesospim_last_stack']['began'] == noted['began']
+
+
 def test_a_store_that_fits_is_not_reported(tmp_path, caplog):
     import logging
     writer = OMEZarrWriterMPTCZYX()

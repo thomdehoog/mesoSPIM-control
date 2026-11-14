@@ -23,6 +23,11 @@ Three kinds of look, for three ages of a store:
 - a *thorough* look, which lists every folder whatever its modification time
   says, for file systems whose folder times cannot be trusted.
 
+A store that was finished long ago is not looked into at all when it is first
+met (:func:`newest_change`, :meth:`Landing.take_as_read`). Listing every folder
+of a two-hundred-tile acquisition from last month, only to learn that nothing
+is new, kept a network drive busy for minutes.
+
 :class:`Progress` turns the landed files of the finest copy into how many
 planes of each stack are complete, which is where a live view should be looking.
 """
@@ -55,6 +60,42 @@ def _is_chunk_file(name: str) -> bool:
     return not (name in _METADATA or name.startswith(".") or name.endswith((".partial", ".tmp")))
 
 
+def newest_change(folder: str | Path, steps: int = 8) -> int:
+    """Roughly when the last file landed anywhere below ``folder``, in nanoseconds (0 for
+    a folder that cannot be read).
+
+    Found without listing everything. A folder's modification time moves when something
+    is added to it, so of the folders inside one, the one changed last is where the
+    writer was last at work. Following that one down, a step at a time, ends at the
+    newest files after a handful of listings, where a full walk of a large tile takes
+    thousands. The answer can be a little early when two stacks were written side by
+    side; it is used only to tell "finished long ago" from "written lately".
+    """
+    newest = 0
+    here = os.fspath(folder)
+    for _ in range(steps):
+        following = None
+        try:
+            with os.scandir(here) as entries:
+                for entry in entries:
+                    try:
+                        modified = entry.stat(follow_symlinks=False).st_mtime_ns
+                        is_folder = entry.is_dir(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if not is_folder and not _is_chunk_file(entry.name):
+                        continue
+                    newest = max(newest, modified)
+                    if is_folder and (following is None or modified >= following[0]):
+                        following = (modified, entry.path)
+        except OSError:
+            break
+        if following is None:
+            break
+        here = following[1]
+    return newest
+
+
 @dataclass
 class _Folder:
     modified: int = -1  # st_mtime_ns when last listed
@@ -76,6 +117,9 @@ class Landing:
         # Stores looked at together take their closer looks in turn (``phase``).
         self._looks = phase
         self._first = True
+        # Files written up to this time were there when the store was taken in without
+        # a look (take_as_read). The first real look does not report them as new.
+        self._read_until = 0
         self._latest = 0  # the newest modification time seen in the store, in ns
         self.count = 0  # chunk files seen so far
         self.changed_at = 0.0  # when a file last landed, on the monotonic clock
@@ -83,8 +127,19 @@ class Landing:
 
     @property
     def holds_data(self) -> bool:
-        """Whether any chunk file has been seen."""
-        return self.count > 0
+        """Whether any chunk file has been seen, or is known to be there."""
+        return self.count > 0 or self._read_until > 0
+
+    def take_as_read(self, newest: int) -> None:
+        """Take the store in as it is, without listing its folders.
+
+        For a store finished long ago, whose newest file is from ``newest`` (see
+        :func:`newest_change`). Nothing of it is listed until there is a reason to. The
+        first look that does list it then reports only what was written after
+        ``newest``, since the page has shown everything older from the start.
+        """
+        self._read_until = max(int(newest), 1)
+        self._latest = max(self._latest, int(newest))
 
     @property
     def newest_s(self) -> float:
@@ -116,8 +171,11 @@ class Landing:
         self._walk("", now, closer, thorough or self._first, depth, 0, landed)
         if landed:
             self.changed_at = now
-            self.grew = self.grew or not self._first
-        if self._first:
+            self.grew = self.grew or not self._first or self._read_until > 0
+        if self._first and not self._read_until:
+            # (A store that was taken as read is listed for the first time because it is
+            # being written again. All of it is kept in mind for now, so that a file
+            # written over in any part of it is seen with the next look.)
             self._forget_what_was_there(now)
         self._first = False
         return landed
@@ -198,6 +256,8 @@ class Landing:
                 files[entry.name] = (about.st_mtime_ns, about.st_size)
             folder.folders = folders
             fresh = self._fresh(folder, files)
+            if self._first and self._read_until:
+                fresh = [name for name in fresh if files[name][0] > self._read_until]
             if fresh:
                 prefix = f"{relative}/" if relative else ""
                 landed.extend(prefix + name for name in fresh)
@@ -249,6 +309,9 @@ class Progress:
     # landed, or WHOLE once all of them have
     slabs: dict[tuple[int, int], dict[int, set | None]] = field(default_factory=dict)
     newest: tuple[int, int] | None = None  # the stack that last gained a file
+    # Stacks taken to be on disk in full without their files having been counted: those
+    # of a store that was finished long before it was first met (take_as_whole).
+    settled: set[tuple[int, int]] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         self.reshape(self.store, self.level)
@@ -268,6 +331,35 @@ class Progress:
         self._across = across
         self._prefix = level.path + "/"
 
+    def take_as_whole(self) -> None:
+        """Count every stack the store has room for as complete, without a look at its
+        files. For a store finished long ago. A stack that gains a file afterwards is
+        being written again, and is counted from its files from then on."""
+        self.settled = set(self.stacks())
+
+    def stacks(self) -> list[tuple[int, int]]:
+        """Every stack the store has room for: each time point of each channel."""
+        points = self.level.shape[self._t] if self._t is not None else 1
+        channels = self.level.shape[self._c] if self._c is not None else 1
+        return [(point, channel) for point in range(points) for channel in range(channels)]
+
+    def last_file(self, stack: tuple[int, int]) -> str:
+        """The file of a stack's last slab that lies in the far corner of the sensor, as a
+        path below the store. The writer fills a stack from its first plane to its last,
+        so in a store that has been quiet for a while this file being there says, to a
+        very good approximation, that the stack is there in full."""
+        index = [self.level.count(axis) - 1 for axis in range(len(self.level.shape))]
+        if self._t is not None:
+            index[self._t] = stack[0]
+        if self._c is not None:
+            index[self._c] = stack[1]
+        return self._prefix + self.level.file_of(tuple(index))
+
+    def forget(self, stack: tuple[int, int]) -> None:
+        """A stack is about to be written again: what is known of its files no longer holds."""
+        self.slabs.pop(stack, None)
+        self.settled.discard(stack)
+
     def stack_of(self, file: str) -> tuple[int, int] | None:
         """The (time point, channel) a chunk file of any copy belongs to."""
         index = self._index(file, any_level=True)
@@ -280,6 +372,7 @@ class Progress:
             if index is None:
                 continue
             stack = self._stack(index)
+            self.settled.discard(stack)
             slabs = self.slabs.setdefault(stack, {})
             at = index[self._z]
             places = slabs.get(at, set())
@@ -290,6 +383,8 @@ class Progress:
 
     def planes(self, stack: tuple[int, int]) -> int:
         """How many planes of a stack are complete, counted from its first."""
+        if stack in self.settled:
+            return self.level.shape[self._z]
         slabs = self.slabs.get(stack)
         if not slabs:
             return 0

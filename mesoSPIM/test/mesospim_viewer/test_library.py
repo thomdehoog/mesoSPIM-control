@@ -21,7 +21,7 @@ from mesoSPIM.src.mesospim_viewer.demo import write_tile
 from mesoSPIM.src.mesospim_viewer.watch import ASLEEP_S, AWAKE_S, DOZING_S, LIVE_S, RECENT_S, free_name, plain_name
 from mesoSPIM.src.mesospim_viewer.window import refusal
 
-from .stores import Slabs, an_acquisition, land, one_store_per_channel, take_chunks, write_store
+from .stores import Slabs, age, an_acquisition, land, one_store_per_channel, take_chunks, write_store
 from .tools import events, follow, landed, offered, sources, status
 
 TILE = "Mag1_Tile{}_Sh0_Rot0.ome.zarr"
@@ -298,6 +298,84 @@ def test_a_tile_that_is_whole_is_not_listed_again_only_its_description_is_read(l
     library.clock.tick()
     library.poll()
     assert landed(view) == [("data/0", files)]
+
+
+def test_an_acquisition_finished_long_ago_is_shown_without_listing_its_tiles_folders(library, tmp_path, monkeypatch):
+    """Opening last week's acquisition used to list every folder of every tile once, to
+    learn which files were there: hundreds of thousands of requests for two hundred tiles
+    on a network drive, and all of them to find that nothing was new. A tile nothing has
+    been written to for a while is now shown as it is, after a handful of listings."""
+    acquisition = an_acquisition(tmp_path, "last_week")
+    tiles = [Slabs(acquisition / TILE.format(n), planes=64, slab=8) for n in range(4)]
+    for tile in tiles:
+        for c in range(2):
+            tile.write_stack(c=c)
+    age(acquisition, 7 * 24 * 3600)
+    folders_of_a_tile = sum(1 for _ in os.walk(tiles[0].path))
+    listed = _listings(monkeypatch)
+    library.watch(tmp_path)
+    view = library.viewer
+    assert set(sources(view, "last_week").values()) == {"data/0/", "data/1/", "data/2/", "data/3/"}
+    for tile in tiles:
+        mine = [path for path in listed if str(tile.path.resolve()) in path]
+        assert len(mine) <= 8 < folders_of_a_tile, f"{len(mine)} listings for a tile of {folders_of_a_tile} folders"
+        held = library.datasets[0].tiles[tile.path.resolve()]
+        assert held.whole() and not held.awake(library.clock())
+    del listed[:]
+    for _ in range(12):                                  # an hour of looks
+        library.clock.tick(300)
+        library.poll()
+    assert [path for path in listed if ".ome.zarr" in path and "last_week" + os.sep + "Mag" in path] == []
+    assert landed(view) == []
+    assert offered(view)["last_week"]["positions"][0].get("um"), "its positions are known from the descriptions alone"
+
+
+def test_a_settled_tile_that_is_written_again_is_noticed_from_its_description(library, tmp_path):
+    """The same time point acquired a second time changes neither the store's shape nor
+    its channels, only its files, deep down. The microscope's writer notes every stack it
+    begins in the store's description, and that one small file is what a settled tile is
+    checked by. The files written from then on are named to the page; the old ones are not."""
+    acquisition = an_acquisition(tmp_path, "run")
+    tile = Slabs(acquisition / TILE.format(0), planes=16, slab=8, channels=("488",))
+    tile.write_stack()
+    age(acquisition, 7200)
+    library.watch(tmp_path)
+    view = library.viewer
+    held = library.datasets[0].tiles[tile.path.resolve()]
+    assert held.whole()
+    library.clock.tick(ASLEEP_S + 1)
+    library.poll()
+    assert landed(view) == []
+    # The writer begins the stack again: the description is written anew, then the files.
+    described = json.loads((tile.path / "zarr.json").read_text())
+    described["attributes"]["mesospim_last_stack"] = {"t": 0, "c": 0, "began": "2026-11-14T10:00:00"}
+    (tile.path / "zarr.json").write_text(json.dumps(described))
+    first = tile.write(0)
+    library.clock.tick(ASLEEP_S + 1)
+    library.poll()
+    assert landed(view) == [("data/0", first)], "only the files written again, not the whole tile"
+    assert held.awake(library.clock()) and not held.whole()
+    second = tile.write(1)
+    library.clock.tick()
+    library.poll()
+    assert landed(view)[-1] == ("data/0", second)
+    assert held.whole()
+
+
+def test_a_tile_written_minutes_ago_is_still_looked_at_properly(library, tmp_path):
+    """Only a tile that has been quiet for a good while is taken in unseen. One the
+    microscope may still be writing is listed, so that what lands next is followed."""
+    acquisition = an_acquisition(tmp_path, "run")
+    tile = Slabs(acquisition / TILE.format(0), planes=16, slab=8, channels=("488",))
+    tile.write(0)
+    age(acquisition, 60)
+    library.watch(tmp_path)
+    held = library.datasets[0].tiles[tile.path.resolve()]
+    assert not held.whole() and held.landing.count == 4
+    files = tile.write(1)
+    library.clock.tick()
+    library.poll()
+    assert landed(library.viewer) == [("data/0", files)]
 
 
 def test_the_tiles_of_a_run_the_microscope_feeds_are_left_alone_until_it_writes_them(library, tmp_path, monkeypatch):
