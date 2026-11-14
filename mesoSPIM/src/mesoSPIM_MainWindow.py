@@ -31,6 +31,7 @@ from .remote_control.gui import RemoteControlGUI
 from .ai_assistant.gui import AiAssistantGUI
 from .devices.joysticks.mesoSPIM_JoystickHandlers import mesoSPIM_JoystickHandler
 from .utils.stage_limits import limit_status
+from .utils.acquisitions import TimeLapseNames
 from .utils.utility_functions import log_cpu_core, fit_window_to_screen, move_window_into_screen, convert_seconds_to_string
 from .utils.config_loader import check_zoom_keys, is_demo, retired_writer_warnings
 from .utils.channel_settings import channel_f_offer_key
@@ -129,6 +130,9 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.scriptwindow = None
 
         self.timelapse_in_progress = False
+        # Takes the '_Time003' marks off the table's file names when a time lapse is over.
+        self.timelapse_names = TimeLapseNames(
+            lambda: self.acquisition_manager_window.remove_time_index_from_filenames())
         self.timelapse_total_timepoints = 1
         self.timelapse_current_timepoint = 0
         self.timelapse_start_time = 0
@@ -1044,6 +1048,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         ''' Re-enables the Run Timelapse button once a timelapse sequence has
         completed normally. The Time Point progress bar is left showing 100%. '''
         self.timelapse_in_progress = False
+        self.timelapse_names.time_lapse_ended()
         self.RunTimelapseButton.setEnabled(self.EnableTimelapseCheckBox.isChecked())
 
     @QtCore.pyqtSlot()
@@ -1051,6 +1056,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         ''' Re-enables the Run Timelapse button and resets the Time Point progress
         bar to 0 once a timelapse sequence has been cancelled via the Stop button. '''
         self.timelapse_in_progress = False
+        self.timelapse_names.time_lapse_ended()
         self.RunTimelapseButton.setEnabled(self.EnableTimelapseCheckBox.isChecked())
         self.TimePointProgressBar.setValue(0)
         self.TimePointProgressBar.setFormat('%p%')
@@ -1078,6 +1084,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int)
     def run_timepoint(self, timepoint):
         self.acquisition_manager_window.append_time_index_to_filenames(timepoint)
+        self.timelapse_names.time_point_started()
         total = getattr(self, 'timelapse_total_timepoints', 1)
         self.timelapse_current_timepoint = timepoint
         self.TimePointProgressBar.setValue(int((timepoint + 1) / total * 100))
@@ -1274,6 +1281,7 @@ class mesoSPIM_MainWindow(QtWidgets.QMainWindow):
         self.RunTimelapseButton.setEnabled(boolean and self.EnableTimelapseCheckBox.isChecked())
 
     def finished(self):
+        self.timelapse_names.acquisition_finished()
         self.enable_stop_button(False)
         self.enable_mode_control_buttons(True)
         self.enable_gui(True)

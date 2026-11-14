@@ -13,6 +13,7 @@ from PyQt5.uic import loadUi
 ''' mesoSPIM imports '''
 from .utils.utility_functions import format_data_size
 from .utils.models import AcquisitionModel
+from .utils.acquisitions import with_time_index, without_time_index
 
 from .utils.delegates import (ComboDelegate,
                         SliderDelegate,
@@ -513,12 +514,20 @@ class mesoSPIM_AcquisitionManagerWindow(QtWidgets.QWidget):
         for row in range(0, row_count):
             index = self.model.createIndex(row, filename_column)
             filename = self.model.data(index)
-            base, extention = os.path.splitext(filename)
-            base_no_time = base.split('_Time')[0]
-            base_new = base_no_time + f'_Time{time_index:03d}'
+            self.model.setData(index, with_time_index(filename, time_index))
+
+    def remove_time_index_from_filenames(self):
+        ''' Takes the time index off each filename again, once a time lapse is over.
+
+        Without this the table keeps the names of the last time point, and an ordinary
+        acquisition run afterwards is saved as if it were that time point. '''
+        filename_column = self.model.getFilenameColumn()
+        for row in range(0, self.model.rowCount()):
             index = self.model.createIndex(row, filename_column)
-            filename_new = base_new + extention
-            self.model.setData(index, filename_new)
+            filename = self.model.data(index)
+            plain = without_time_index(filename)
+            if plain != filename:
+                self.model.setData(index, plain)
 
     def display_no_row_selected_warning(self):
         self.display_warning('No row selected!')
