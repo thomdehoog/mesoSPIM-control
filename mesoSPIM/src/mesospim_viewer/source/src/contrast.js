@@ -44,6 +44,32 @@ const FLOOR = 1; // the lowest value that counts as data
 const autos = new Map();
 const listeners = [];
 
+// Whether the picture stands still. A histogram costs the graphics card a pass over the
+// picture for every tile in view, in every frame it is asked for. While the operator
+// moves, zooms or turns the picture nobody reads it: Auto measures only once the picture
+// has come to rest, and the panel's little histogram cannot be read while it changes
+// sixty times a second. So the engine is asked for histograms only at rest, and the
+// frames in between are spent on the movement alone.
+const rest = { still: true, timer: null, hearers: new Set() };
+
+/** Whether the picture has stood still for a moment. */
+export function atRest() {
+  return rest.still;
+}
+
+/** Hear the picture start to move and come to rest again; returns how to stop hearing. */
+export function onRest(hear) {
+  rest.hearers.add(hear);
+  return () => rest.hearers.delete(hear);
+}
+
+// A channel on Auto asks for its histogram while the picture is at rest and flat. In
+// the volume view the histogram is of rays, and Auto does not measure there at all.
+function watches(viewer, state) {
+  return state.on && rest.still && layoutOf(viewer) !== "3d"
+    ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
+}
+
 export function onAutoChanged(listener) {
   listeners.push(listener);
 }
@@ -56,9 +82,7 @@ export function setAuto(viewer, name, on) {
   const state = autos.get(name);
   if (!state || state.on === on) return;
   state.on = on;
-  if (state.watching) {
-    state.watching.value = on ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
-  }
+  if (state.watching) state.watching.value = watches(viewer, state);
   if (on) {
     clearTouched(name, "contrast");
     viewer.display.scheduleRedraw();
@@ -182,9 +206,7 @@ function hook(viewer, managed) {
   // not the panel is open, but only while it is on: for a channel whose contrast is set
   // by hand the engine would otherwise run a histogram pass every frame for nobody. (An
   // open row of the panel watches on its own account, to draw the histogram.)
-  const watching = new WatchableVisibilityPriority(
-    state.on ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED,
-  );
+  const watching = new WatchableVisibilityPriority(watches(viewer, state));
   state.watching = watching;
   const unwatch = controls.histogramSpecifications.visibility.add(watching);
   layer.registerDisposer(() => {
@@ -216,10 +238,28 @@ export function watchContrast(viewer) {
   viewer.layerManager.layersChanged.add(hookAll);
   let last = 0;
   let again = null;
-  let movedAt = 0;
+  const reflectRest = () => {
+    for (const state of autos.values()) {
+      if (state.watching) state.watching.value = watches(viewer, state);
+      // The histogram the engine holds is from before the picture moved. One frame
+      // drawn at rest brings a fresh one, and only that one is measured.
+      state.frames = Math.min(state.frames, 1);
+    }
+    for (const hear of rest.hearers) hear(rest.still);
+  };
   viewer.navigationState.changed.add(() => {
-    movedAt = performance.now();
+    if (rest.still) {
+      rest.still = false;
+      reflectRest();
+    }
+    clearTimeout(rest.timer);
+    rest.timer = setTimeout(() => {
+      rest.still = true;
+      reflectRest();
+      viewer.display.scheduleRedraw();
+    }, STILL_MS);
   });
+  viewer.layout.changed.add(reflectRest);
   const drawAgain = (after) => {
     if (again !== null) return;
     again = setTimeout(() => {
@@ -230,6 +270,7 @@ export function watchContrast(viewer) {
   viewer.display.updateFinished.add(() => {
     let unsettled = false;
     for (const state of autos.values()) {
+      if (!rest.still) continue; // frames drawn on the move carry no histogram
       state.frames += 1;
       if (state.on && state.frames < 3) unsettled = true;
     }
@@ -244,11 +285,9 @@ export function watchContrast(viewer) {
     }
     // Measured on the flat view: in the volume view the histogram is of rays.
     if (layoutOf(viewer) === "3d") return;
-    // And not while the operator is moving the picture: once it has come to rest.
-    if (time - movedAt < STILL_MS) {
-      drawAgain(STILL_MS - (time - movedAt) + 10);
-      return;
-    }
+    // And not while the operator is moving the picture: once it has come to rest, which
+    // draws the picture once more (above), with its histograms.
+    if (!rest.still) return;
     last = time;
     for (const managed of viewer.layerManager.managedLayers) {
       const state = autos.get(managed.name);

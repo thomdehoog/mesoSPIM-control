@@ -29,7 +29,7 @@ import { TrackableSidePanelLocation } from "neuroglancer/unstable/ui/side_panel_
 import { frameBounds, framing, layoutOf, setLayout, volumeDrawing } from "./camera.js";
 import { stateWords, tileMapper, tileOutlines, watchPicture } from "./tilemap.js";
 import { about } from "./layers.js";
-import { onAutoChanged } from "./contrast.js";
+import { atRest, onAutoChanged, onRest } from "./contrast.js";
 import "./panel.css";
 
 export const SEPARATOR = " · "; // between acquisition and channel in a layer's name (state.py)
@@ -762,10 +762,24 @@ function channelRow(viewer, managed, contrast) {
   }
   managed.layerChanged.add(reflect);
   reflect();
-  const setShown = (shown) => {
-    watching.value = shown ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
+  // ...nor while the picture is being moved: the histogram is drawn afresh when it has
+  // come to rest, and until then the row keeps showing the last one.
+  let onShow = true;
+  const watch = () => {
+    watching.value = onShow && atRest() ? WatchableVisibilityPriority.VISIBLE : WatchableVisibilityPriority.IGNORED;
   };
-  return { row, reflect, setShown, dispose: () => mounted?.dispose() };
+  const setShown = (shown) => {
+    onShow = shown;
+    watch();
+  };
+  const unhear = onRest(watch);
+  return {
+    row, reflect, setShown,
+    dispose: () => {
+      unhear();
+      mounted?.dispose();
+    },
+  };
 }
 
 function channelsCard(viewer, contrast) {

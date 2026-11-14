@@ -674,6 +674,28 @@ def test_many_positions_without_a_place_are_counted_and_not_listed(pages, viewer
     assert not errors, errors
 
 
+def test_histograms_are_asked_for_only_while_the_picture_stands_still(pages, viewers, stacks):
+    """A histogram is a pass over the picture for every tile in view. While the picture is
+    being moved nobody reads it, so the engine is not asked for one: the frames of a drag
+    are spent on the drag. A moment after the picture has come to rest it is asked again."""
+    view = viewers(ui="simple")
+    view.add(stacks[0], layer="demo")
+    page, errors = _opened(pages, view, layers=2)
+    asked = """() => window.viewer.layerManager.managedLayers
+      .map((managed) => managed.layer.shaderControlState.histogramSpecifications.visibility.visible)"""
+    assert until(lambda: page.evaluate(asked), lambda seen: seen == [True, True]) == [True, True]
+    on_the_move = page.evaluate("""() => {
+      const state = window.viewer.navigationState, at = Float32Array.from(state.position.value);
+      at[0] += 3;
+      state.position.value = at;
+      return window.viewer.layerManager.managedLayers
+        .map((managed) => managed.layer.shaderControlState.histogramSpecifications.visibility.visible);
+    }""")
+    assert on_the_move == [False, False]
+    assert until(lambda: page.evaluate(asked), lambda seen: seen == [True, True], timeout_s=5) == [True, True]
+    assert not errors, errors
+
+
 def test_an_acquisition_that_is_not_shown_has_its_map_too(pages, viewers, stacks):
     """Once the places of its positions are known, a hundred positions of an acquisition
     that is not on screen are a map like any other, and a click on a cell shows it."""
