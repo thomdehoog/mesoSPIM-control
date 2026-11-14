@@ -88,7 +88,11 @@ What is on screen
     for four hundred. A dashed frame marks the part of the specimen that is on
     screen. During a run the cells show how far it has got: filled when
     acquired, green while being acquired, dashed while still to come. A click
-    on a cell takes the view to that tile.
+    on a cell takes the view to that tile. An acquisition that is not shown has
+    its map too, a moment after it is listed; a click on one of its cells
+    shows it and goes to the tile. Tiles that lie on exactly the same spot
+    (the same place acquired at another angle, or lit from the other side) are
+    drawn one inside the other, so each can be pointed at and clicked.
   * *The map and the picture answer each other.* Point at a cell, and a box
     is drawn around that tile in the picture. Point at a tile in the picture,
     and its cell lights up, with its name under the map. A click on a tile in
@@ -242,6 +246,31 @@ while it runs and after:
 5. **Open…** adds a saved acquisition; the × takes one off the list
    (its files stay on disk). File > Exit closes the Data viewer with mesoSPIM.
 
+Giving the viewer more memory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The viewer keeps up to 1 GB of image data on the graphics card and up to 2 GB
+in the computer's memory. Those limits suit any computer. When it reaches
+them it lets go of the parts of the image it drew longest ago, and has to load
+them again when you come back to them.
+
+On a computer with a large graphics card you can let it keep more. A large
+acquisition, above all as a volume, is then drawn in finer detail and comes
+back faster when you return to a place. Add this to the configuration file,
+with numbers that fit the computer (both are in megabytes, and each may be
+left out):
+
+.. code-block:: python
+
+   data_viewer = {
+       'gpu_memory_MB': 4000,      # on the graphics card; keep it well below what the card has
+       'system_memory_MB': 8000,   # in the computer's memory; the camera and the writer need room too
+   }
+
+The new limits apply the next time the Data viewer is opened. If a number is
+not a positive number, mesoSPIM's log says so and the viewer keeps its own
+limit for it.
+
 Checks that need the microscope PC
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -319,7 +348,27 @@ Then by hand, in demo mode with the Data viewer open:
     a time over some seconds; meanwhile the live view of the run must keep
     moving and mesoSPIM must stay responsive. Watch the acquisition drive's
     activity for a few minutes afterwards: once the tiles are in, the viewer
-    should leave the drive alone.
+    should leave the drive alone. An acquisition from an earlier day should be
+    there within seconds even from a network drive, because its tiles are
+    taken in without listing their folders.
+12. **A map before the acquisition is shown.** With two acquisitions in the
+    list, click the one that is not shown (its eye is crossed out) to fold its
+    positions out. After a moment its map should be there. A click on a cell
+    should show the acquisition and go to that tile.
+13. **After a time lapse.** Run a time lapse of two time points, with any
+    writer. While it runs, the file names in the acquisition table end in
+    ``_Time000``, then ``_Time001``. When it has finished, and also when you
+    stop it halfway, the names should be back to what they were before.
+14. **The writer process is ended.** Start a long stack with one of the
+    OME-Zarr writers. In the Windows Task Manager, end the newest ``python``
+    process (the writer runs in a process of its own). Within a few seconds
+    mesoSPIM's status line should read ``NOT SAVING``, the log should say that
+    the writer process ended unexpectedly, and the acquisition should go on to
+    the next stack, which is saved as usual. Stop must still work.
+15. **The same time point once more.** With ``MP_OME_Zarr_TCZYX_Writer``, run a
+    time lapse of one time point of two tiles, wait more than ten minutes, and
+    run it again under the same name. In the viewer the tiles should be
+    replaced by the new data as it is written, without closing the window.
 
 If something is wrong
 ---------------------

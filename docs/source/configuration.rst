@@ -347,6 +347,26 @@ For backward compatibility, the legacy top-level ``objective_parameters``
 dictionary is still supported. If ``microscope_parameters['objective']`` is not
 present, mesoSPIM writes ``objective_parameters`` into an ``OBJECTIVE`` block.
 
+data_viewer
+~~~~~~~~~~~
+
+Optional. How much image data the :doc:`Data viewer <data_viewer>` may keep at
+hand, in megabytes. Leave the section out and the viewer keeps its own limits
+(1000 MB on the graphics card, 2000 MB in the computer's memory), which suit
+any computer.
+
+.. code-block:: python
+
+   data_viewer = {
+       'gpu_memory_MB': 4000,      # image data kept on the graphics card
+       'system_memory_MB': 8000,   # image data kept in the computer's memory
+   }
+
+Raise them on a computer with a large graphics card, so that a large
+acquisition is drawn in finer detail. Keep ``gpu_memory_MB`` well below the
+memory the graphics card has, and leave room in the computer's memory for the
+camera and the file writer.
+
 stages / zoom / ETL
 ~~~~~~~~~~~~~~~~~~~~
 

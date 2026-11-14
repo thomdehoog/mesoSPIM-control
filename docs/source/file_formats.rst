@@ -172,6 +172,20 @@ Channel names and colours go into the ``omero`` block, the stage position into
 the coordinate transformations. A viewer opens each tile as one multichannel,
 multi-time-point image.
 
+Every channel has a colour and a contrast in the ``omero`` block, because the
+OME-Zarr rules ask for both and programs that check a file refuse one without
+them. The usual laser lines have fixed colours; any other line gets one from
+its wavelength. The contrast is written as the whole range of the data (0 to
+65535), which only says that nobody has chosen one yet. The Data viewer reads
+it that way and sets the contrast itself.
+
+Besides the full-resolution data, a store holds smaller copies of it, each
+half the size of the one before (``'generate_multiscales': True``). They go
+down to a copy about 40 by 24 pixels across for a full camera frame. That
+smallest copy is what a viewer loads to show a whole acquisition of many tiles
+at once. A store that is already there keeps the number of copies it was made
+with.
+
 A channel is a laser line together with its filter, in the order they first
 appear in the acquisition table. It is named after the laser (``488``). When
 one laser is used with more than one filter, the filter is added to the name
@@ -223,6 +237,12 @@ Not supported by this writer: the BigStitcher XML and ``write_cache``.
 
    Nothing already on disk is rewritten for any of this: every chunk holds one
    time point of one channel, so growing only changes the store's description.
+
+   Every stack that is begun in a store that is already there is noted in the
+   store's attributes, under ``mesospim_last_stack``, with its time point, its
+   channel and the time it began. The note is how a program that watches the
+   folder, such as the Data viewer, learns from one small file that the store
+   is being written again.
 
    A stack that ends early is marked in the store itself. Everything after its
    last real plane is empty (zero), and the store's attributes list it under

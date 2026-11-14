@@ -159,7 +159,7 @@ added to it.
 The engine draws every tile of an acquisition as a layer of its own, and as it
 comes it does a fixed amount of work for each on every frame. With a hundred
 tiles that work, and not the picture, decided how smoothly the view moved. The
-build changes two things:
+build changes four things:
 
 - **In the flat view** a tile with nothing on screen is passed over before
   anything is set up for it. Zoomed in on one tile of a hundred, in two
@@ -175,9 +175,29 @@ build changes two things:
   overlap, the join shows the brighter of the two, as in the flat view, and no
   longer their sum, which showed as a lattice of brighter seams.
 
-What these do not change: with every tile in view, each still has to be drawn,
-and the blended ("Blend") projection is drawn as before. The counts are
-checked by `test_many_tiles.py`.
+- **A blended volume at rest.** Blend draws a tile straight into the picture,
+  so on the move there is nothing to share. Once the camera rests, the engine
+  draws every tile a second time, to learn what lies under the pointer, and it
+  copied that across the whole picture and cleared it after each tile. The
+  tiles of a channel now share the one copy: 8 whole-picture copies a frame
+  where there were 78, with 36 tiles in two channels. The picture is the same
+  pixel for pixel, and what the pointer rests on is still found.
+- **Opening many tiles.** Every tile that finishes loading adds its bounding
+  box to the coordinate space all layers share, and the engine then worked out
+  afresh how every tile already there sits in that space. How a tile sits
+  there depends only on the axes' names and scales and on the tile's own
+  transform, which a new bounding box does not change, so the result is now
+  kept. Opening 196 tiles of two channels spends 1.5 s of processor time on
+  this where it spent 4.5 s.
+
+Besides the build, the page asks the engine for **histograms only while the
+picture stands still** (`contrast.js`). A histogram is a pass over the picture
+for every tile in view, and nobody reads it during a drag. With a hundred
+tiles of two channels in view, a frame of a drag no longer carries 202
+histogram passes.
+
+What these do not change: with every tile in view, each still has to be drawn.
+The counts are checked by `test_many_tiles.py`.
 
 ## How channels and tiles are mixed
 
@@ -251,6 +271,25 @@ but corresponding chunk dimension has extent 1"). Chunks per channel are the
 right layout for writing and reading, so `c` stays a per-layer dimension and
 each channel is a layer that pins it (`localPosition`). The panel lists them
 as `488`, `561` under their acquisition; the Python API still speaks of one layer.
+
+## Old acquisitions on a network drive
+
+When a tile is first met, the viewer has to learn which of its files are on
+disk. For a tile that is being written this means listing its folders. For one
+that was finished long ago the listing found nothing new, and on a network
+drive it took minutes for a large acquisition.
+
+A tile is taken in as it is, without a listing, when three cheap signs agree:
+its description is more than ten minutes old; so is its newest file, found by
+following the folders that were changed last (`landing.newest_change`); and
+every stack it has room for ends in its last file. Two hundred tiles then cost
+about 1,200 folder listings where they cost 26,800. An old tile that is not
+complete, a stopped run for instance, is listed and watched as before.
+
+Such a tile is checked by its description from then on. The microscope's
+writer notes every stack it begins in the store's description
+(`mesospim_last_stack`), so a stack acquired a second time is noticed from
+that one small file, and only the files written since are named to the page.
 
 ## Known limits
 
