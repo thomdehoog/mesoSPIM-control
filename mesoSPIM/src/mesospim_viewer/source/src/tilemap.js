@@ -128,6 +128,30 @@ export function tileMapper(viewer) {
       noted.textContent = note ?? "";
       caption.append(said, noted);
 
+      // Tiles that lie on the very same spot (the same place acquired at another angle, or
+      // lit from the other side) would cover each other, and only the last could be pointed
+      // at. They are drawn one inside the other instead: the first as the full tile, each
+      // further one a step smaller, so that every one of them shows and can be clicked.
+      const stacked = new Map();
+      for (const position of placed) {
+        const { x, y } = position.um;
+        const grain = Math.max(Math.max(x[1] - x[0], y[1] - y[0]) * 0.02, 1e-6);
+        const spot = [x[0], x[1], y[0], y[1]].map((edge) => Math.round(edge / grain)).join(" ");
+        if (!stacked.has(spot)) stacked.set(spot, []);
+        stacked.get(spot).push(position);
+      }
+      const drawnAt = new Map();
+      for (const group of stacked.values()) {
+        group.forEach((position, place) => {
+          const { x, y } = position.um;
+          const width = Math.max(x[1] - x[0], 0);
+          const height = Math.max(y[1] - y[0], 0);
+          const inset = (Math.min(width, height) / 2) * (place / group.length);
+          drawnAt.set(position.name, {
+            x: x[0] + inset, y: y[0] + inset, width: width - 2 * inset, height: height - 2 * inset,
+          });
+        });
+      }
       const cells = new Map();
       const resting = () => {
         const position = placed.find((one) => one.name === marked);
@@ -146,11 +170,7 @@ export function tileMapper(viewer) {
         cell.dataset.name = position.name;
         if (position.state) cell.dataset.state = position.state;
         cell.classList.toggle("framed", position.name === marked);
-        const box = svg("rect", {
-          x: position.um.x[0], y: position.um.y[0],
-          width: Math.max(position.um.x[1] - position.um.x[0], 0),
-          height: Math.max(position.um.y[1] - position.um.y[0], 0),
-        });
+        const box = svg("rect", drawnAt.get(position.name));
         const title = svg("title", { class: "label" });
         title.textContent = position.name;
         cell.append(box, title);
@@ -166,13 +186,7 @@ export function tileMapper(viewer) {
       // The selected tile's outline is drawn once more on top, so that its neighbours'
       // edges do not run over it. The cells themselves keep their order.
       const chosen = placed.find((one) => one.name === marked);
-      if (chosen) {
-        drawing.appendChild(svg("rect", {
-          class: "chosen",
-          x: chosen.um.x[0], y: chosen.um.y[0],
-          width: Math.max(chosen.um.x[1] - chosen.um.x[0], 0), height: Math.max(chosen.um.y[1] - chosen.um.y[0], 0),
-        }));
-      }
+      if (chosen) drawing.appendChild(svg("rect", { class: "chosen", ...drawnAt.get(chosen.name) }));
       const inView = svg("rect", { class: "in-view", visibility: "hidden" });
       drawing.appendChild(inView);
       root.append(drawing, caption);

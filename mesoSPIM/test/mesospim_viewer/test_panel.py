@@ -674,6 +674,60 @@ def test_many_positions_without_a_place_are_counted_and_not_listed(pages, viewer
     assert not errors, errors
 
 
+def test_an_acquisition_that_is_not_shown_has_its_map_too(pages, viewers, stacks):
+    """Once the places of its positions are known, a hundred positions of an acquisition
+    that is not on screen are a map like any other, and a click on a cell shows it."""
+    view = viewers(ui="simple")
+    view.add(stacks[0], layer="shown")
+    positions = [
+        {"name": f"Tile {number + 1}",
+         "um": {"x": [(number % 10) * 90.0, (number % 10) * 90.0 + 100.0],
+                "y": [(number // 10) * 90.0, (number // 10) * 90.0 + 100.0], "z": [0.0, 50.0]}}
+        for number in range(100)
+    ]
+    view.offer([{"name": "big", "shown": False, "live": False, "removable": True, "tiles": 100,
+                 "channels": ["488"], "positions": positions}])
+    page, errors = _opened(pages, view, layers=2)
+    assert len(until(lambda: page.evaluate(CELLS), lambda seen: len(seen) == 100)) == 100
+    assert page.evaluate("() => document.querySelector('.acquisition .positions.hint')") is None
+    assert not errors, errors
+
+
+def test_tiles_on_the_same_spot_are_drawn_one_inside_the_other(pages, viewers, stacks):
+    """The same place acquired at two angles, or lit from either side, gives tiles that
+    lie exactly on top of each other. Drawn alike, the last covered the others and only
+    it could be pointed at. Each further one is drawn a step smaller, inside the first."""
+    view = viewers(ui="simple")
+    view.add(stacks[0], layer="shown")
+    here = {"x": [0.0, 100.0], "y": [0.0, 100.0], "z": [0.0, 50.0]}
+    beside = {"x": [90.0, 190.0], "y": [0.0, 100.0], "z": [0.0, 50.0]}
+    view.offer([{"name": "angles", "shown": False, "live": False, "removable": True, "tiles": 4,
+                 "channels": ["488"], "positions": [
+                     {"name": "Tile 1", "um": here}, {"name": "Tile 2", "um": dict(here)},
+                     {"name": "Tile 3", "um": dict(here)}, {"name": "Tile 4", "um": beside}]}])
+    page, errors = _opened(pages, view, layers=2)
+    until(lambda: page.evaluate(CELLS), lambda seen: len(seen) == 4)
+    boxes = page.evaluate("""() => [...document.querySelectorAll('.tile-map .position')].map((cell) => {
+      const box = cell.querySelector('rect').getBoundingClientRect();
+      return { name: cell.dataset.name, left: box.left, top: box.top, width: box.width, height: box.height };
+    })""")
+    one, two, three, four = boxes
+    assert one["width"] > two["width"] > three["width"] > 4, "each inside the one before, and still big enough to hit"
+    assert four["width"] == pytest.approx(one["width"], rel=0.02), "a tile that merely overlaps keeps its size"
+    for outer, inner in ((one, two), (two, three)):
+        assert inner["left"] > outer["left"] and inner["top"] > outer["top"]
+        assert inner["left"] + inner["width"] < outer["left"] + outer["width"]
+    # Every one of the three can be pointed at: the middle is the innermost, the rim the first.
+    said = "() => document.querySelector('.map-caption .said').textContent"
+    page.mouse.move(three["left"] + three["width"] / 2, three["top"] + three["height"] / 2)
+    assert until(lambda: page.evaluate(said), lambda seen: seen == "Tile 3") == "Tile 3"
+    page.mouse.move((two["left"] + three["left"]) / 2, two["top"] + two["height"] / 2)
+    assert until(lambda: page.evaluate(said), lambda seen: seen == "Tile 2") == "Tile 2"
+    page.mouse.move((one["left"] + two["left"]) / 2, one["top"] + one["height"] / 2)
+    assert until(lambda: page.evaluate(said), lambda seen: seen == "Tile 1") == "Tile 1"
+    assert not errors, errors
+
+
 def test_a_run_that_starts_comes_in_on_top_and_selects_itself(pages, viewers, tmp_path):
     _two_runs(tmp_path)
     view = viewers(ui="simple")

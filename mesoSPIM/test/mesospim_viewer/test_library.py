@@ -860,6 +860,42 @@ def test_an_acquisition_not_shown_offers_its_positions_by_name(library, tmp_path
     assert entry["channels"] == ["488", "561"], "read from its first tile, without showing it"
 
 
+def test_an_acquisition_not_shown_learns_where_its_positions_lie(library, tmp_path):
+    """The panel draws positions as a map, and a map needs places. For an acquisition
+    that is not shown only the names were known, so a hundred positions had no map until
+    it was put on screen. The places are read from the tiles' descriptions with the looks
+    that follow, and each tile is read once."""
+    a_run(tmp_path, "run_a", tiles=3)
+    a_run(tmp_path, "run_b")
+    library.watch(tmp_path)
+    library.clock.tick()
+    library.poll()
+    entry = offered(library.viewer)["run_a"]
+    assert entry["shown"] is False
+    assert [position["um"]["x"] for position in entry["positions"]] == [[0.0, 160.0], [144.0, 304.0], [288.0, 448.0]]
+    assert library.dataset("run_a")._places_to_read == []
+    assert library.dataset("run_a").tiles == {}, "it is still not shown, and none of its data was touched"
+
+
+def test_places_are_read_in_the_time_a_look_has_left(viewers, tmp_path):
+    """A look that has run out of time reads one more tile's place and leaves the rest
+    for the next look, so that the tiles on screen are never kept waiting for it."""
+    from mesoSPIM.src.mesospim_viewer.watch import Library
+    from .tools import Clock
+
+    a_run(tmp_path, "run_a", tiles=4)
+    a_run(tmp_path, "run_b")
+    library = Library(viewers(), clock=Clock(), look_budget_s=0.0)
+    library.watch(tmp_path)
+    known = []
+    for _ in range(6):
+        library.clock.tick()
+        library.poll()
+        known.append(sum(1 for position in offered(library.viewer)["run_a"]["positions"] if position.get("um")))
+    assert known == sorted(known) and known[-1] == 4, known
+    assert known[0] < 4, "not all at once when there is no time"
+
+
 def test_a_run_of_the_watched_folder_taken_off_the_list_stays_off(library, tmp_path):
     a_run(tmp_path, "run_a")
     a_run(tmp_path, "run_b")

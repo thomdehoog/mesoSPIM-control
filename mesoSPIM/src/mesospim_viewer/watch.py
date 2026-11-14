@@ -277,6 +277,11 @@ class Dataset:
     # Read once for the panel while it is not shown: its positions' names and its channels.
     listed_positions: list[str] | None = None
     listed_channels: list[str] | None = None
+    # Where those positions lie, read from the tiles' descriptions a few at a time, so
+    # that the panel can draw the map of an acquisition before it is shown. The tiles
+    # still to be read wait in ``_places_to_read`` (None before the first of them).
+    listed_places: dict[str, dict] = field(default_factory=dict)
+    _places_to_read: list[Path] | None = None
     _resolved: dict[str, Path] = field(default_factory=dict)
 
     def tile_paths(self) -> list[Path]:
@@ -655,12 +660,44 @@ class Library:
                         break  # taken off the list or hidden while this look was going on
                     hurried = self.look_budget_s is not None and time.monotonic() - began > self.look_budget_s
                     self._look_at(dataset, path, now, hurried=hurried)
+        for dataset in datasets:
+            if not self._read_places(dataset, began):
+                break
         with self._lock:
             if self._closed:
                 return
             self._hand_over(now)
             self._offer()
             self._point(now)
+
+    def _read_places(self, dataset: Dataset, began: float) -> bool:
+        """Learn where the tiles of an acquisition that is not shown lie, a few with every
+        look, and return whether there is still time for more in this look.
+
+        The panel draws an acquisition's positions as a map, and for one that is not shown
+        nothing was known but the tiles' names: a hundred of them had no map until the
+        acquisition was put on screen. A tile's place is in its description, two small
+        files. They are read here, in the time a look has left over once the tiles on
+        screen have been seen to, and each tile is read once.
+        """
+        while True:
+            with self._lock:
+                if self._closed or dataset not in self.datasets or dataset.shown or dataset.path is None:
+                    return True
+                if dataset._places_to_read is None:
+                    dataset._places_to_read = list(reversed(dataset.tile_paths()))
+                if not dataset._places_to_read:
+                    return True
+                path = dataset._places_to_read.pop()
+            try:
+                place = store_place(read_store(path))
+            except (NotAStore, NotSupported):
+                place = {}  # not a tile the viewer reads: listed by its name alone
+            with self._lock:
+                dataset.listed_places[position_name(path)] = place
+            self._make_way()
+            if self.look_budget_s is not None and time.monotonic() - began > self.look_budget_s:
+                return False
 
     def _look(self, dataset: Dataset, now: float) -> None:
         """Look at every tile of an acquisition in one go (for one just shown or opened)."""
@@ -1082,7 +1119,8 @@ class Library:
                 # Kept once found: a run just finished may not show its tiles yet.
                 dataset.listed_positions = sorted({position_name(path) for path in dataset.tile_paths()}, key=_position_order)
             for name in dataset.listed_positions:
-                found.setdefault(name, {})
+                place = dataset.listed_places.get(name)
+                found.setdefault(name, {"um": place} if place else {})
         for held in dataset.previews:
             stack = held.preview.stack
             if stack.tile:
