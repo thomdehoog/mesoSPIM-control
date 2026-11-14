@@ -478,6 +478,90 @@ ${anchor}`,
 `,
   },
   {
+    // Many tiles, opening them. Every tile that finishes loading adds its
+    // bounding box to the coordinate space all layers share, and the engine
+    // then works out afresh how every tile already there sits in that space:
+    // for the hundredth tile, ninety-nine times over, and so on for each one
+    // after it. Opening 196 tiles of two channels spent 2.6 of its 9.5 seconds
+    // on this alone. Yet how a tile sits in the shared space depends only on
+    // the names and the scales of the axes and on the tile's own transform,
+    // none of which a new tile's bounding box changes. So the result is kept,
+    // and worked out again only when one of the things it is made from has
+    // changed: the axes of the shared space or of the layer's own space, the
+    // axes and the extent of the channel space, or what the tile says of
+    // itself (its axes, its rank and its matrix). Nothing else of them is read
+    // (see getRenderLayerTransform, just above it). (Whether two spaces have
+    // the same axes is itself asked a few hundred thousand times while many
+    // tiles open, so each space is given a mark for its axes once, and the
+    // marks are compared.)
+    module: "render_coordinate_transform.js",
+    anchor: `export function getWatchableRenderLayerTransform(globalCoordinateSpace, localCoordinateSpace, modelToLayerTransform, subsourceEntry, channelCoordinateSpace) {
+  return makeCachedDerivedWatchableValue(
+    (globalCoordinateSpace2, localCoordinateSpace2, modelToLayerTransform2, channelCoordinateSpace2) => getRenderLayerTransform(
+      globalCoordinateSpace2,
+      localCoordinateSpace2,
+      modelToLayerTransform2,
+      subsourceEntry,
+      channelCoordinateSpace2
+    ),
+    [
+      globalCoordinateSpace,
+      localCoordinateSpace,
+      modelToLayerTransform,
+      channelCoordinateSpace === void 0 ? constantWatchableValue(void 0) : channelCoordinateSpace
+    ],
+    renderLayerTransformsEqual
+  );
+`,
+    replacement: () => `const axesMarkOfSpace = /* @__PURE__ */ new WeakMap();
+const axesMarkByText = /* @__PURE__ */ new Map();
+function axesMark(space) {
+  let mark = axesMarkOfSpace.get(space);
+  if (mark === void 0) {
+    const text = space.names.join("\\u0001") + "\\u0002" + Array.from(space.scales).join("\\u0001");
+    mark = axesMarkByText.get(text);
+    if (mark === void 0) axesMarkByText.set(text, mark = { text });
+    axesMarkOfSpace.set(space, mark);
+  }
+  return mark;
+}
+function sameModelTransform(a, b) {
+  return a === b || a.rank === b.rank && a.sourceRank === b.sourceRank && axesMark(a.inputSpace) === axesMark(b.inputSpace) && axesMark(a.outputSpace) === axesMark(b.outputSpace) && (a.transform === b.transform || arraysEqual(a.transform, b.transform));
+}
+function sameChannelSpace(a, b) {
+  if (a === b) return true;
+  if (a === void 0 || b === void 0 || axesMark(a) !== axesMark(b)) return false;
+  const { bounds: boundsA } = a, { bounds: boundsB } = b;
+  return arraysEqual(boundsA.lowerBounds, boundsB.lowerBounds) && arraysEqual(boundsA.upperBounds, boundsB.upperBounds) && arraysEqual(boundsA.voxelCenterAtIntegerCoordinates, boundsB.voxelCenterAtIntegerCoordinates);
+}
+export function getWatchableRenderLayerTransform(globalCoordinateSpace, localCoordinateSpace, modelToLayerTransform, subsourceEntry, channelCoordinateSpace) {
+  let last;
+  return makeCachedDerivedWatchableValue(
+    (globalCoordinateSpace2, localCoordinateSpace2, modelToLayerTransform2, channelCoordinateSpace2) => {
+      if (last !== void 0 && last.global === axesMark(globalCoordinateSpace2) && last.local === axesMark(localCoordinateSpace2) && sameChannelSpace(last.channel, channelCoordinateSpace2) && sameModelTransform(last.model, modelToLayerTransform2)) {
+        return last.result;
+      }
+      const result = getRenderLayerTransform(
+        globalCoordinateSpace2,
+        localCoordinateSpace2,
+        modelToLayerTransform2,
+        subsourceEntry,
+        channelCoordinateSpace2
+      );
+      last = { global: axesMark(globalCoordinateSpace2), local: axesMark(localCoordinateSpace2), model: modelToLayerTransform2, channel: channelCoordinateSpace2, result };
+      return result;
+    },
+    [
+      globalCoordinateSpace,
+      localCoordinateSpace,
+      modelToLayerTransform,
+      channelCoordinateSpace === void 0 ? constantWatchableValue(void 0) : channelCoordinateSpace
+    ],
+    (a, b) => a === b || renderLayerTransformsEqual(a, b)
+  );
+`,
+  },
+  {
     // The chunk worker is the one compiled here, at the page's root.
     module: "data_management_context.js",
     anchor: 'new URL("./chunk_worker.bundle.js", import.meta.url)',
