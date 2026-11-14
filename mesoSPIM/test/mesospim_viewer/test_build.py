@@ -59,8 +59,9 @@ def test_each_worker_of_the_committed_page_carries_the_old_browser_shims_once():
 
 def test_each_worker_knows_the_dispose_symbol_before_the_engine_uses_it():
     """The Qt window's browser has no ``Symbol.dispose``. The engine names clean-up
-    methods with it, so it has to exist before the engine's first class is defined;
-    otherwise reading a shard's index fails and sharded data never appears."""
+    methods with it, so it is defined before the engine's first class is: the classes
+    and the code that later asks for the symbol then agree on its name. (Nothing was
+    seen to fail without this; it keeps the workers consistent.)"""
     for kind, path in _workers(PAGE_DIR).items():
         text = path.read_text(encoding="utf-8")
         defined = text.find('Symbol.for("Symbol.dispose")')

@@ -145,8 +145,8 @@ PAGE = """(() => {
     groups: [...document.querySelectorAll('.group')].map(g => g.dataset.group),
     notice: notice && !notice.hidden ? notice.querySelector('.text').textContent : null,
     empty: empty && !empty.hidden ? empty.querySelector('.title').textContent : null,
-    open: !document.querySelector('.card.load .open').hidden,
-    fit: !!fit && !fit.hidden,
+    open: !document.querySelector('.load .open').hidden,
+    fit: !!fit && !fit.hidden && !fit.disabled,
     x: at('x'), zoom: n.zoomFactor.value,
     loaded: v.layerManager.managedLayers.every(m => (m.layer?.dataSources ?? []).every(s => s.loadState !== undefined)),
   });
@@ -195,6 +195,80 @@ def test_the_window_shows_the_page_and_follows_its_folder_on_its_timer(tmp_path,
     assert library.names == ["run_b", "run_a"]
     after = _page_until(qt, window.web, lambda s: s["groups"] == ["run_b"])
     assert after["listed"] == [["run_b", True], ["run_a", False]]
+
+
+# How much of the window's picture is lit, read from the engine's own canvas.
+LIT = """(() => {
+  const v = window.viewer; if (!v?.display) return null;
+  const d = v.display; d.draw();
+  const gl = d.gl, canvas = d.canvas, panel = document.querySelector('.neuroglancer-rendered-data-panel');
+  if (!panel) return null;
+  const box = panel.getBoundingClientRect(), whole = canvas.getBoundingClientRect();
+  const sx = canvas.width / whole.width, sy = canvas.height / whole.height;
+  const x = Math.round((box.left - whole.left) * sx), w = Math.round(box.width * sx);
+  const h = Math.round(box.height * sy), y = canvas.height - Math.round((box.top - whole.top) * sy) - h;
+  const px = new Uint8Array(w * h * 4);
+  gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  let lit = 0;
+  for (let i = 0; i < px.length; i += 4) if (Math.max(px[i], px[i + 1], px[i + 2]) > 48) lit++;
+  return JSON.stringify({ lit, cells: document.querySelectorAll('.tile-map .position').length,
+                          browser: (navigator.userAgent.match(/Chrome\\/[0-9]+/) || ['?'])[0] });
+})()"""
+
+
+def _a_tile_from_the_writer(path, *, shards: bool) -> None:
+    """One two-channel tile written by the microscope's own writer: OME-Zarr 0.5 on zarr v3,
+    zstd-compressed, with or without shards."""
+    import numpy as np
+    from zarr.codecs import BloscCodec
+
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import ChunkScheme, PyramidSpec
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer_tczyx import (
+        TCZYX, Live3DPyramidWriterTCZYX,
+    )
+
+    planes, size = 16, 128
+    rng = np.random.default_rng(3)
+    yy, xx = np.ogrid[:size, :size]
+    for c in (0, 1):
+        writer = Live3DPyramidWriterTCZYX(
+            PyramidSpec(z_size_estimate=planes, y=size, x=size, levels=2),
+            TCZYX(t=0, c=c, n_channels=2, channel_labels=("488", "561"), channel_colors=("00FF66", "FFBF1A")),
+            path=str(path), chunk_scheme=ChunkScheme(base=(8, 64, 64), target=(8, 64, 64)),
+            compressor=BloscCodec(cname="zstd", clevel=5), shard_shape=(8, 128, 128) if shards else None,
+            voxel_size=(5.0, 1.0, 1.0), async_close=False, max_inflight_chunks=1,
+        )
+        for _ in range(planes):
+            frame = rng.integers(380, 460, size=(size, size)).astype(np.uint16)
+            for k in range(8):
+                cy, cx = (17 * (k + c * 3) + 20) % size, (29 * k + 15) % size
+                frame += (6000 * np.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / 60.0)).astype(np.uint16)
+            writer.push_slice(frame)
+        writer.close()
+
+
+@pytest.mark.qt
+@pytest.mark.parametrize("shards", [True, False], ids=["shards", "chunks"])
+def test_a_tile_from_the_microscopes_writer_is_drawn_in_the_window(tmp_path, qt_app, windows, shards):
+    """Compressed OME-Zarr 0.5 as the writer saves it, with shards (the default of
+    MP_OME_Zarr_Writer) and without, shown in the window's own, older browser: the picture
+    is there, and so is the map of the acquisition's tiles."""
+    pytest.importorskip("zarr")
+    app, qt = qt_app
+    acquisition = tmp_path / "run.ome.zarr"
+    acquisition.mkdir()
+    (acquisition / "zarr.json").write_text('{"zarr_format": 3, "node_type": "group", "attributes": {}}')
+    _a_tile_from_the_writer(acquisition / "Mag1_Tile0_Sh0_Rot0.ome.zarr", shards=shards)
+    window = windows(tmp_path)
+    assert _until(qt, lambda: window.library.shown) == ["run"]
+
+    def look():
+        raw = _evaluate(qt, window.web, LIT)
+        return json.loads(raw) if raw else None
+
+    seen = _until(qt, look, lambda got: got is not None and got["lit"] > 500, timeout_s=60)
+    assert seen is not None and seen["lit"] > 500, f"the tile was not drawn in the window: {seen}"
+    assert seen["cells"] == 1, "the acquisition's one tile is on the map in the panel"
 
 
 @pytest.mark.qt

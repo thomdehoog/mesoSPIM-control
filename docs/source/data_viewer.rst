@@ -272,9 +272,9 @@ Then by hand, in demo mode with the Data viewer open:
    ``'ome_version': '0.5'`` and its default ``'shards'``, run two tiles, and
    wait until the run turns **Saved**. The tiles must stay visible, sharp when
    zoomed in. Close the window, open it again and load the run with
-   **Open…**: it must appear again. (The window's old browser
-   could not read shards before; a current browser always could, so this is
-   the one place that shows it.)
+   **Open…**: it must appear again. (Sharded data is the default of this
+   writer, and the window's browser is an older one than the tests usually
+   run in, so it is worth seeing once on the real PC.)
 2. **The writer's own settings in the wizard.** In the file-naming wizard
    choose *MP OME Zarr TCZYX*. The page of settings should list eight rows,
    with ``shards`` set to ``None`` and no BigStitcher or write-cache rows.

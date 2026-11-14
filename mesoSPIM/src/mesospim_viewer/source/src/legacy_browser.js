@@ -47,11 +47,15 @@ if (typeof AbortSignal !== "undefined") {
 // ---- disposing (Chrome 134)
 // Neuroglancer's classes name their clean-up method `[Symbol.dispose]`. Where the
 // browser has no such symbol, that name is `undefined` at the moment a class is
-// defined, the method is filed under the text "undefined", and every later call of
-// `thing[Symbol.dispose]()` fails. The engine brings its own stand-in, but in the
-// workers it arrives after the first classes are defined. Reading a shard's index
-// ends with such a call, so sharded data never appeared in the Data viewer window.
-// Defined here, first of all, the symbol is the same one from the start.
+// defined, and the method is filed under the text "undefined". The engine brings its
+// own stand-in for the symbol, but in the workers it arrives after the first classes
+// are defined, so those classes and the code that later asks for the symbol do not
+// agree on its name. Defined here, first of all, it is the same symbol from the start.
+//
+// This is tidiness, not a repair of something seen to fail. It was first written in
+// the belief that sharded data could not be read without it; shown in the real Qt web
+// engine, sharded data was drawn correctly before this was added as well (see
+// test_window.py, which now shows a sharded tile in that engine).
 if (typeof Symbol === "function") {
   define(Symbol, "dispose", Symbol.for("Symbol.dispose"));
   define(Symbol, "asyncDispose", Symbol.for("Symbol.asyncDispose"));
