@@ -1,7 +1,7 @@
 /**
  * What the build does to the pinned neuroglancer 2.41.2, as one Vite plugin.
  *
- * Four things, all done while the page is built and never by editing the
+ * Five things, all done while the page is built and never by editing the
  * installed engine in `node_modules`: what is installed stays exactly as npm
  * put it there, so building twice, or on another machine after `npm ci`,
  * makes the same page.
@@ -35,6 +35,22 @@
  * 4. A source that is read again keeps showing its chunks until each one is
  *    replaced (google/neuroglancer#1126). Stock neuroglancer drops all of
  *    them at once, which blanks the picture until they are fetched again.
+ *
+ * 5. Many tiles. The engine draws every tile of an acquisition as a layer of
+ *    its own, and did a fixed amount of work for each on every frame, whether
+ *    the tile was on screen or not. With a hundred tiles that work, not the
+ *    picture, decided how smoothly the view moved. Two edits:
+ *
+ *    - In the flat view, a tile none of whose chunks meets the picture is
+ *      passed over before anything is set up for it. Before, each such tile
+ *      still had its buffers switched and cleared and a histogram pass run.
+ *    - In the volume view, the tiles of one channel are projected into the
+ *      same buffer and that buffer is copied to the picture once. Before, the
+ *      whole buffer was copied twice and cleared after every single tile. The
+ *      engine's depth test already keeps the brightest value along each line
+ *      of sight, across the chunks of one tile; it now does so across the
+ *      tiles of a channel too. Where two tiles overlap, the join shows the
+ *      brighter of the two, as in the flat view, and no longer their sum.
  *
  * The edits apply wherever a module is compiled, the page or a worker.
  *
@@ -341,6 +357,104 @@ ${anchor}`,
     gl.disable(WebGL2RenderingContext.BLEND);`,
     replacement: (anchor) => `${anchor}
     gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);`,
+  },
+  {
+    // Many tiles, the flat view: a tile with nothing in view is passed over.
+    // The view is tested against each of the layer's sources exactly as the
+    // drawing itself tests it, so a tile is passed over only when drawing it
+    // would have put nothing on the picture. What the drawing would still have
+    // done for such a tile is done here: its record of the detail on screen is
+    // started afresh, so that it does not keep saying what was last drawn.
+    module: "sliceview/frontend.js",
+    anchor: `    for (const renderLayer of this.visibleLayerList) {
+      const histogramCount = wireFrame ? 0 : renderLayer.getDataHistogramCount();
+`,
+    replacement: (anchor) => `    for (const renderLayer of this.visibleLayerList) {
+      if (!this.hasChunksInView(renderLayer)) {
+        const { renderScaleHistogram } = renderLayer;
+        if (renderScaleHistogram !== void 0) {
+          renderScaleHistogram.begin(
+            this.chunkManager.chunkQueueManager.frameNumberCounter.frameNumber
+          );
+        }
+        renderLayer.highestResolutionLoadedVoxelSize = void 0;
+        continue;
+      }
+${anchor.split("\n").slice(1).join("\n")}`,
+  },
+  {
+    module: "sliceview/frontend.js",
+    anchor: `  computeHistograms(count, histogramSpecifications) {
+`,
+    replacement: (anchor) => `  /**
+   * Whether any chunk of \`renderLayer\` intersects the current view.  A layer for which this is
+   * false draws nothing, and is skipped by \`updateRendering\` before any state is set up for it.
+   */
+  hasChunksInView(renderLayer) {
+    const layerInfo = this.visibleLayers.get(renderLayer);
+    if (layerInfo === void 0) return true;
+    const projectionParameters = this.projectionParameters.value;
+    let found = false;
+    const note = () => {
+      found = true;
+    };
+    for (const tsource of layerInfo.visibleSources) {
+      forEachPlaneIntersectingVolumetricChunk(
+        projectionParameters,
+        tsource.renderLayer.localPosition.value,
+        tsource,
+        getNormalizedChunkLayout(projectionParameters, tsource.chunkLayout),
+        note
+      );
+      if (found) return true;
+    }
+    return false;
+  }
+${anchor}`,
+  },
+  {
+    // Many tiles, the volume view: which layers are projected into the same
+    // buffer as the one after them. They are consecutive tiles of one channel:
+    // the same controls (colour and contrast) and the same projection.
+    module: "perspective_view/panel.js",
+    anchor: `      let currentTransparentRenderingState = 0 /* TRANSPARENT */;
+      for (const [renderLayer, attachment] of visibleLayers) {
+        if (renderLayer.isVolumeRendering) {
+`,
+    replacement: (anchor) => `      const sharesProjectionWithNext = /* @__PURE__ */ new Set();
+      {
+        let previous = null;
+        for (const [renderLayer] of visibleLayers) {
+          // Layers the loop below does nothing for do not come between two tiles.
+          if (!renderLayer.isVolumeRendering && !renderLayer.isTransparent) continue;
+          const projects = renderLayer.isVolumeRendering && isProjectionLayer(renderLayer);
+          if (previous !== null && projects && renderLayer.shaderControlState === previous.shaderControlState && renderLayer.mode.value === previous.mode.value) {
+            sharesProjectionWithNext.add(previous);
+          }
+          previous = projects ? renderLayer : null;
+        }
+      }
+${anchor}`,
+  },
+  {
+    // ...and such a layer is left in the buffer for the next one to be projected
+    // onto, where the depth test keeps the brighter (or, for the minimum, the
+    // darker) of the two. The copies to the picture and the clearing follow
+    // after the last tile of the channel.
+    module: "perspective_view/panel.js",
+    anchor: `          renderLayer.draw(renderContext, attachment);
+          gl.enable(WebGL2RenderingContext.DEPTH_TEST);
+          if (!needsSecondPickingPass && !isVolumeProjectionLayer) {
+            continue;
+          }
+`,
+    replacement: (anchor) => `${anchor}          if (isVolumeProjectionLayer && sharesProjectionWithNext.has(renderLayer)) {
+            renderContext.emitter = maxProjectionEmit;
+            bindMaxProjectionBuffer();
+            currentTransparentRenderingState = 2 /* MAX_PROJECTION */;
+            continue;
+          }
+`,
   },
   {
     // The chunk worker is the one compiled here, at the page's root.

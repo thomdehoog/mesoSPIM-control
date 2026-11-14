@@ -149,9 +149,35 @@ What the build does to the pinned engine is in `source/scripts/neuroglancer.mjs`
 applied while the page is built, never to the installed engine, so building
 twice makes the same page: the transparent ground, how channels and tiles are
 mixed (next section), a source read again keeping its chunks on screen until
-each is replaced (google/neuroglancer#1126), and the two background workers
-compiled for the old browser of the Data viewer window, the chunk worker with
-`worker_landed.js` added to it.
+each is replaced (google/neuroglancer#1126), drawing that does not grow with
+the number of tiles (below), and the two background workers compiled for the
+old browser of the Data viewer window, the chunk worker with `worker_landed.js`
+added to it.
+
+### Many tiles
+
+The engine draws every tile of an acquisition as a layer of its own, and as it
+comes it does a fixed amount of work for each on every frame. With a hundred
+tiles that work, and not the picture, decided how smoothly the view moved. The
+build changes two things:
+
+- **In the flat view** a tile with nothing on screen is passed over before
+  anything is set up for it. Zoomed in on one tile of a hundred, in two
+  channels, a frame took 407 buffer switches, 208 clears and 202 histogram
+  passes; it now takes 11, 10 and 4, whatever the number of tiles. The picture
+  is the same, pixel for pixel.
+- **In the volume view** the tiles of one channel are projected into the same
+  buffer, which is copied to the picture once. Before, the whole picture was
+  copied twice and cleared after every single tile: with 36 tiles in two
+  channels, 150 whole-picture passes a frame, now 10. The engine's depth test
+  already kept the brightest value along a line of sight across the chunks of
+  one tile; it now does across the tiles of a channel. So where two tiles
+  overlap, the join shows the brighter of the two, as in the flat view, and no
+  longer their sum, which showed as a lattice of brighter seams.
+
+What these do not change: with every tile in view, each still has to be drawn,
+and the blended ("Blend") projection is drawn as before. The counts are
+checked by `test_many_tiles.py`.
 
 ## How channels and tiles are mixed
 
