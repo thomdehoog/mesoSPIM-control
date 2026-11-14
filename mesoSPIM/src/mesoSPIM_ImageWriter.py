@@ -242,7 +242,9 @@ class mesoSPIM_ImageWriter(QtCore.QObject):
         # Status update
         t0 = time.perf_counter()
         if self.cur_image_counter % 5 == 0:
-            self.parent.sig_status_message.emit('Writing to disk...')
+            # A writer that can no longer save this stack says so (its `failure`); the
+            # status line then shows that sentence instead of the usual one.
+            self.parent.sig_status_message.emit(getattr(self.writer, 'failure', None) or 'Writing to disk...')
         status_ms = (time.perf_counter() - t0) * 1000
 
         # Metadata / WriteImage construction

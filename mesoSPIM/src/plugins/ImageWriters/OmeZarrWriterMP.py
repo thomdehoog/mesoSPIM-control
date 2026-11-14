@@ -9,6 +9,7 @@ import time
 
 # Setup multiprocessing with 'spawn' method
 import multiprocessing as mp
+import queue
 from multiprocessing import shared_memory
 mp.set_start_method("spawn", force=True)
 
@@ -16,6 +17,10 @@ mp.set_start_method("spawn", force=True)
 # spawned process (importing zarr etc.) takes seconds; a stack shorter than that, or one
 # stopped right after it was prepared, finalizes before the child has attached.
 ATTACH_TIMEOUT_S = 120.0
+# How long write_frame() waits for a free place in the shared buffer before it looks
+# whether the writer process is still running. Waiting itself is normal: it is how a slow
+# disk slows the camera down instead of losing frames.
+WRITER_CHECK_S = 1.0
 
 
 def wait_for_writer_attach(proc, attached, timeout=ATTACH_TIMEOUT_S, poll=0.05) -> bool:
@@ -136,6 +141,8 @@ class OMEZarrWriterMP(ImageWriter):
         self._free_q = None
         self._writer_proc = None
         self._writer_attached = None
+        # The writer process that was found dead while its stack was still being acquired.
+        self._lost_proc = None
         self.xml_writer = None
         self.req = None
         self._background_writers: list[tuple[mp.Process, str]] = []
@@ -436,7 +443,9 @@ class OMEZarrWriterMP(ImageWriter):
 
         # Get a free slot (blocks if all slots are in use -> back-pressure)
         t0 = time.perf_counter()
-        slot = self._free_q.get()
+        slot = self._free_slot()
+        if slot is None:
+            return  # the writer process has died: this stack cannot be written any more
         wait_ms = (time.perf_counter() - t0) * 1000
 
         # Copy the frame into shared memory. The caller passes image.T[::-1], a
@@ -469,6 +478,67 @@ class OMEZarrWriterMP(ImageWriter):
                 frame.strides
             )
 
+    @property
+    def failure(self) -> Optional[str]:
+        """What to tell the operator while the stack being acquired is not being written.
+
+        None as long as all is well. It is a sentence once the writer process of this stack
+        has died, and it is None again when the next stack starts with a new process.
+        """
+        if self._lost_proc is None or self._lost_proc is not self._writer_proc:
+            return None
+        return ("NOT SAVING: the file-writing process stopped unexpectedly, "
+                "the rest of this stack is lost (see the log)")
+
+    def _free_slot(self) -> Optional[int]:
+        """A free place in the shared buffer, or None when the writer process has died.
+
+        The writer process hands a place back once it has taken the frame out of it. When
+        all places are taken the camera waits here, which is how a slow disk slows the
+        acquisition down instead of losing frames. A writer process that has died (the
+        disk is full, the folder has gone, it ran out of memory) never hands a place back.
+        Waiting for it without end froze the acquisition, and the Stop button with it. So
+        the wait is in steps, and between two steps the process is looked at. If it is
+        gone, the rest of the stack is dropped and the log says so, once.
+        """
+        proc = self._writer_proc
+        if self._lost_proc is not None and self._lost_proc is proc:
+            return None
+        while True:
+            try:
+                return self._free_q.get(timeout=WRITER_CHECK_S)
+            except queue.Empty:
+                if proc is None or proc.is_alive():
+                    continue
+            try:  # a place it gave back just before it ended
+                return self._free_q.get_nowait()
+            except queue.Empty:
+                pass
+            self._lost_proc = proc
+            logger.error("OME-Zarr writer process (pid=%s) ended unexpectedly with exitcode=%s while its stack "
+                         "was still being acquired. The frames from here on are dropped and %s is incomplete. "
+                         "The terminal shows the error the process ended with.",
+                         proc.pid, proc.exitcode, getattr(self, 'current_acquire_file_path', 'the stack'))
+            return None
+
+    def _ask_writer_to_finish(self) -> bool:
+        """Tell this stack's writer process that no more frames are coming.
+
+        Returns False when it could not be told because it has died. The queue has as many
+        places as the shared buffer. A dead process leaves it full, and an ordinary put()
+        would then wait forever, so this one also waits in steps and looks at the process.
+        """
+        work_q, proc = self._work_q, self._writer_proc
+        if work_q is None:
+            return False
+        while True:
+            try:
+                work_q.put(None, timeout=WRITER_CHECK_S)
+                return True
+            except queue.Full:
+                if proc is None or not proc.is_alive():
+                    return False
+
     def finalize(self, finalize_image: FinalizeImage) -> None:
 
         logger.info("MP finalize: ENTER")
@@ -476,8 +546,12 @@ class OMEZarrWriterMP(ImageWriter):
         if self._work_q is not None:
             try:
                 logger.info("MP finalize: sending work_q sentinel")
-                self._work_q.put(None)
-                logger.info("MP finalize: work_q sentinel sent")
+                if self._ask_writer_to_finish():
+                    logger.info("MP finalize: work_q sentinel sent")
+                else:
+                    logger.error("MP finalize: the writer process has ended already (exitcode=%s): %s is "
+                                 "incomplete", getattr(self._writer_proc, 'exitcode', None),
+                                 self.current_acquire_file_path)
             except Exception:
                 logger.exception("Failed to send shutdown to writer process")
 
@@ -537,13 +611,18 @@ class OMEZarrWriterMP(ImageWriter):
             self.xml_writer.write()
 
     def abort(self) -> None:
+        proc, attached = self._writer_proc, self._writer_attached
         try:
-            if self._work_q is not None:
-                self._work_q.put(None)
-            if self._writer_proc is not None:
-                self._writer_proc.join(timeout=5.0)
+            self._ask_writer_to_finish()
+            if proc is not None:
+                # As in finalize(): a process that is still starting has not opened the shared
+                # memory yet. Taking the memory away under it makes it end with an error, and on
+                # Windows the block is deleted the moment our handle is the last one to close.
+                if attached is not None:
+                    wait_for_writer_attach(proc, attached)
+                proc.join(timeout=5.0)
         except Exception:
-            pass
+            logger.exception("Error while stopping the OME-Zarr writer process")
         finally:
             if self._shm is not None:
                 self._shm.close()

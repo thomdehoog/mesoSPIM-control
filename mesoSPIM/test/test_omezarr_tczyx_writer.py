@@ -219,6 +219,67 @@ def _write_stack(writer, request, planes: int) -> None:
     writer._wait_for_background_writers()
 
 
+def test_a_writer_process_that_dies_does_not_hang_the_acquisition(tmp_path, caplog):
+    """The writer process of a stack dies halfway (a full disk, a folder that has gone).
+    The microscope's side used to wait for it forever, with the Stop button frozen too. It
+    now drops the rest of that stack, says so once, and writes the next stack as usual."""
+    import logging
+    import time
+
+    writer = OMEZarrWriterMPTCZYX()
+    request = _request(tmp_path, SMALL_CHUNKS)
+    writer.open(request)
+    process = writer._writer_proc
+    image = lambda z: WriteImage(
+        image=frame(0, 0, 0, z), current_image_counter=z, tile_number=0,
+        laser=request.acq['laser'], shutter=request.acq['shutterconfig'], rot=request.acq['rot'],
+        x_res=1.0, y_res=1.0, z_res=5.0, acq=request.acq, acq_list=request.acq_list,
+    )
+    writer.write_frame(image(0))
+    assert writer.failure is None
+    process.kill()
+    process.join(30)
+
+    started = time.monotonic()
+    with caplog.at_level(logging.ERROR):
+        for z in range(1, 3 * writer._ring_size):          # more frames than the buffer has places
+            writer.write_frame(image(z))
+    assert time.monotonic() - started < 30, "write_frame() waited for a process that is gone"
+    said = [record for record in caplog.records if 'ended unexpectedly' in record.getMessage()]
+    assert len(said) == 1, "the loss is reported once, not once per frame"
+    assert 'NOT SAVING' in writer.failure, "the operator's status line is given a sentence"
+
+    started = time.monotonic()
+    writer.finalize(FinalizeImage(acq=request.acq, acq_list=request.acq_list))
+    assert time.monotonic() - started < 30, "finalize() waited for a process that is gone"
+    assert writer.failure is None, "the sentence belongs to the stack that was lost"
+
+    # The next stack, the tile's other channel, gets a new process and is written whole.
+    following = _request(tmp_path, SMALL_CHUNKS, row=1)
+    _write_stack(writer, following, planes=PLANES)
+    store = tmp_path / 'Sample.ome.zarr' / 'Mag1_Tile0_Sh0_Rot0.ome.zarr'
+    assert zarr.open_group(store, mode='r')['0'][0, 1, -1].max() > 0
+
+
+def test_stop_does_not_hang_on_a_writer_process_that_has_died(tmp_path):
+    """Stop is pressed after the writer process has died with its queue full. abort() used
+    to wait forever for room in that queue."""
+    import time
+
+    writer = OMEZarrWriterMPTCZYX()
+    request = _request(tmp_path, SMALL_CHUNKS)
+    writer.open(request)
+    writer._writer_attached.wait(60)
+    writer._writer_proc.kill()
+    writer._writer_proc.join(30)
+    for slot in range(writer._ring_size):                   # what write_frame() leaves behind
+        writer._work_q.put(writer._free_q.get(timeout=5))
+    started = time.monotonic()
+    writer.abort()
+    assert time.monotonic() - started < 30
+    assert writer._shm is None
+
+
 def test_running_again_over_a_stopped_run_writes_the_whole_stack(tmp_path):
     """A stack stopped at plane 7 leaves a store 7 planes deep. Run again under the same
     name, the full stack used to be cut to those 7 planes without a word. The store is now
