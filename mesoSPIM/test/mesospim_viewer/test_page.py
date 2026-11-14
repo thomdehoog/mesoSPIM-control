@@ -243,6 +243,30 @@ def test_a_tile_among_others_draws_as_it_does_alone(pages, viewers, tiles):
 # -- a layer is changed in place, never rebuilt ----------------------------------------------
 
 
+def test_the_memory_the_viewer_may_use_reaches_the_engine_and_stays(pages, viewers, tiles):
+    """The limits given to the viewer are the engine's limits on the page, and they are
+    still there after the scene has changed: a tile added must not put the old ones back."""
+    limits = """() => { const c = window.viewer.chunkQueueManager.capacities;
+      return [c.gpuMemory.sizeLimit.value, c.systemMemory.sizeLimit.value]; }"""
+    view = viewers(gpu_memory_mb=3000, system_memory_mb=6000)
+    view.add(tiles[0], layer="overview")
+    page, errors = pages.open(view.start())
+    pages.drawn(page, layers=2)
+    assert page.evaluate(limits) == [3_000_000_000, 6_000_000_000]
+    view.add(tiles[1], layer="overview")
+    pages.drawn(page, layers=2, sources=2)
+    assert page.evaluate(limits) == [3_000_000_000, 6_000_000_000]
+    assert not errors, errors
+    # Left unsaid, the engine keeps its own limits.
+    plain = viewers()
+    plain.add(tiles[0], layer="overview")
+    other, errors = pages.open(plain.start())
+    pages.drawn(other, layers=2)
+    assert other.evaluate(limits) == [1_000_000_000, 2_000_000_000]
+    with pytest.raises(ValueError, match="positive"):
+        viewers(gpu_memory_mb=0)
+
+
 def test_adding_a_tile_keeps_the_operators_adjustments(pages, viewers, tiles):
     view = viewers()
     view.add(tiles[0], layer="overview")

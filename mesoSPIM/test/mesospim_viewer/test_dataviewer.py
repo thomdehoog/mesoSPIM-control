@@ -426,6 +426,39 @@ def core_with_pixels(core: SimpleNamespace) -> SimpleNamespace:
     return core
 
 
+# -- what the configuration says about the viewer ---------------------------------------------------
+
+
+def test_the_configuration_may_set_how_much_memory_the_viewer_uses():
+    """A computer with a large graphics card can show a large acquisition in finer detail
+    if the viewer is allowed to keep more of it at hand. The limits are in megabytes."""
+    from mesoSPIM.src.mesoSPIM_DataViewer import viewer_settings
+
+    cfg = SimpleNamespace(data_viewer={'gpu_memory_MB': 4000, 'system_memory_MB': 8000})
+    assert viewer_settings(cfg) == {'gpu_memory_mb': 4000.0, 'system_memory_mb': 8000.0}
+    assert viewer_settings(SimpleNamespace(data_viewer={'gpu_memory_MB': 2500})) == {'gpu_memory_mb': 2500.0}
+
+
+def test_a_configuration_that_says_nothing_leaves_the_viewer_as_it_is():
+    from mesoSPIM.src.mesoSPIM_DataViewer import viewer_settings
+
+    assert viewer_settings(SimpleNamespace()) == {}
+    assert viewer_settings(SimpleNamespace(data_viewer={})) == {}
+    assert viewer_settings(SimpleNamespace(data_viewer=None)) == {}
+    assert viewer_settings(None) == {}
+
+
+def test_a_memory_limit_that_is_no_number_is_left_out_and_said_in_the_log(caplog):
+    """A slip in the configuration file must not keep the Data viewer from opening."""
+    import logging
+    from mesoSPIM.src.mesoSPIM_DataViewer import viewer_settings
+
+    cfg = SimpleNamespace(data_viewer={'gpu_memory_MB': 'lots', 'system_memory_MB': -5})
+    with caplog.at_level(logging.WARNING):
+        assert viewer_settings(cfg) == {}
+    assert "gpu_memory_MB" in caplog.text and "system_memory_MB" in caplog.text
+
+
 # -- closing mesoSPIM ----------------------------------------------------------------------------
 
 

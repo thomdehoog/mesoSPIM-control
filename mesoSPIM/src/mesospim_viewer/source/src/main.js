@@ -113,14 +113,25 @@ function buildViewer(ui) {
     // ground does without it. Annotations and the scale bar are unaffected.
     viewer.showAxisLines.value = false;
   }
-  tune(viewer, native);
+  tune(viewer, native, ui);
   window.viewer = viewer;
   return viewer;
 }
 
 /** Two settings of the engine that decide how quickly the picture follows the operator.
  * Both were measured on tiles laid out as the microscope's writer saves them. */
-function tune(viewer, native) {
+function tune(viewer, native, ui = {}) {
+  // How much image data is kept at hand: on the graphics card, and in the computer's
+  // memory. The engine's own limits (1 GB and 2 GB) suit any computer. On one with a
+  // large graphics card the microscope's configuration may raise them, so that a large
+  // acquisition is drawn in finer detail before the engine has to let chunks go.
+  try {
+    const { gpuMemory, systemMemory } = viewer.chunkQueueManager.capacities;
+    if (ui.memory?.gpu > 0) gpuMemory.sizeLimit.value = ui.memory.gpu;
+    if (ui.memory?.system > 0) systemMemory.sizeLimit.value = ui.memory.system;
+  } catch (error) {
+    console.warn("the memory limits could not be set", error);
+  }
   // How many chunks are fetched at once. The engine starts up to 100, but a browser
   // opens six connections to one address: the other 94 wait in the browser's own queue,
   // where the engine can no longer change their order or drop them. After a drag of the

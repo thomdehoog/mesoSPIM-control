@@ -67,9 +67,23 @@ class Viewer:
         transparent: bool = False,
         ui: str = "full",
         layout: str = "xy",
+        gpu_memory_mb: float | None = None,
+        system_memory_mb: float | None = None,
     ) -> None:
+        """``gpu_memory_mb`` and ``system_memory_mb`` say how much image data the page may
+        keep at hand, in megabytes: on the graphics card (what is being drawn) and in the
+        computer's memory (what was drawn a moment ago and may be wanted again). Left out,
+        the page keeps its own limits of 1000 and 2000 MB. More lets a large acquisition
+        be shown in finer detail, above all as a volume, on a computer that has the room."""
         if ui not in UI:
             raise ValueError(f"ui must be one of {UI}")
+        memory = {}
+        for name, megabytes in (("gpu", gpu_memory_mb), ("system", system_memory_mb)):
+            if megabytes is None:
+                continue
+            if not megabytes > 0:
+                raise ValueError(f"{name}_memory_mb must be a positive number of megabytes, not {megabytes!r}")
+            memory[name] = int(megabytes * 1_000_000)
         if layout not in LAYOUTS:
             raise ValueError(f"layout must be one of {LAYOUTS}")
         self._host = host
@@ -82,6 +96,8 @@ class Viewer:
         self._previews = 0
         self._layout = layout
         self._ui = {"transparent": transparent, "chrome": ui}
+        if memory:
+            self._ui["memory"] = memory
         self._lock = threading.RLock()
         self._stopped = False
         self._server: ViewServer | None = None

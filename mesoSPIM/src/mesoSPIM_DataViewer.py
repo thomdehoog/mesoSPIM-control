@@ -81,6 +81,35 @@ def _window_class(main_window):
         return None
 
 
+def viewer_settings(cfg) -> dict:
+    """What the microscope's configuration file says about the Data viewer, as the
+    settings the viewer takes.
+
+    The configuration may hold a ``data_viewer`` section. Two entries are read from it,
+    both optional and both in megabytes: ``gpu_memory_MB``, how much image data the
+    viewer may keep on the graphics card, and ``system_memory_MB``, how much it may keep
+    in the computer's memory. An entry that is not a positive number is left out with a
+    warning in the log, and the viewer then keeps its own limit for it.
+    """
+    section = getattr(cfg, 'data_viewer', None)
+    if not isinstance(section, dict):
+        return {}
+    settings = {}
+    for key, setting in (('gpu_memory_MB', 'gpu_memory_mb'), ('system_memory_MB', 'system_memory_mb')):
+        if key not in section or section[key] is None:
+            continue
+        try:
+            megabytes = float(section[key])
+        except (TypeError, ValueError):
+            megabytes = 0.0
+        if megabytes > 0:
+            settings[setting] = megabytes
+        else:
+            logger.warning(f"data_viewer['{key}'] in the configuration is {section[key]!r}, which is not a "
+                           f"positive number of megabytes. The Data viewer keeps its own limit.")
+    return settings
+
+
 def open_window(main_window):
     """Open the Data viewer, or bring the one already open to the front."""
     window = getattr(main_window, 'data_viewer_window', None)
@@ -93,7 +122,9 @@ def open_window(main_window):
     window_class = _window_class(main_window)
     if window_class is None:
         return None
-    window = window_class(acquisition_folder(main_window))
+    from mesoSPIM.src.mesospim_viewer import Viewer
+    viewer = Viewer(ui='simple', **viewer_settings(getattr(main_window, 'cfg', None)))
+    window = window_class(acquisition_folder(main_window), viewer=viewer)
     window.resize(1280, 820)
     window.show()
     main_window.data_viewer_window = window
