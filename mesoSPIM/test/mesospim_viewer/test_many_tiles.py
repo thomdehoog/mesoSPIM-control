@@ -129,3 +129,48 @@ def test_the_volume_view_copies_the_picture_once_a_channel_not_once_a_tile(pages
     assert frame["drawArrays"] <= 2 * 2 + 8, f"the picture is still copied for every tile: {frame}"
     assert page.evaluate(PICTURE)["lit"] >= 300, "and the volume is still there"
     assert not errors, errors
+
+
+@slow_without_a_graphics_card
+def test_a_blended_volume_is_copied_once_a_channel_at_rest_and_can_still_be_pointed_at(pages, viewers, tmp_path):
+    """Blend draws a volume straight into the picture, so on the move there is nothing to
+    share. Once the camera rests the engine draws every tile a second time, to learn what
+    lies under the pointer, and it used to copy that across the whole picture and clear it
+    after each tile. The tiles of a channel now share the one copy. What the pointer rests
+    on is still found: its place in micrometres and the value there."""
+    view = viewers(ui="simple")
+    for tile in _grid(tmp_path, 2, 2):
+        view.add(tile, layer="run")
+    view.fit()
+    page, errors = pages.open(view.start(), width=800, height=560)
+    pages.drawn(page, layers=2, sources=4)
+    page.click('.segmented.view button[data-layout="3d"]')
+    page.click('.card.volume button[data-mode="on"]')
+    deadline = time.time() + 60
+    while time.time() < deadline and page.evaluate(PICTURE)["lit"] < 300:
+        time.sleep(0.5)
+    assert page.evaluate(PICTURE)["lit"] >= 300, "the volume is drawn"
+    time.sleep(2.0)   # the camera is at rest: the frame now includes the second drawing
+    page.evaluate(COUNT)
+    frame = page.evaluate(ONE_FRAME)
+    assert frame["drawArraysInstanced"] > 0, "the chunks of the volume are drawn"
+    assert frame["drawArrays"] <= 2 * 2 + 8, f"the picture is still copied for every tile: {frame}"
+    # Pointing: sweep the pointer over the picture until it rests on something bright.
+    box = page.evaluate("""() => { const r = document.querySelector('.neuroglancer-rendered-data-panel').getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height]; }""")
+    found = None
+    for step in range(1, 16):
+        for row in (0.35, 0.5, 0.65):
+            page.mouse.move(box[0] + box[2] * step / 16, box[1] + box[3] * row)
+            time.sleep(0.25)
+            seen = page.evaluate("""() => { const mouse = window.viewer.mouseState;
+              return { active: mouse.active, layer: mouse.pickedRenderLayer !== null,
+                       said: document.getElementById('readout')?.textContent ?? '' }; }""")
+            if seen["active"] and seen["layer"]:
+                found = seen
+                break
+        if found:
+            break
+    assert found is not None, "nothing of the blended volume could be pointed at"
+    assert "µm" in found["said"], found
+    assert not errors, errors

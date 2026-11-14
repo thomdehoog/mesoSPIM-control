@@ -413,9 +413,9 @@ ${anchor.split("\n").slice(1).join("\n")}`,
 ${anchor}`,
   },
   {
-    // Many tiles, the volume view: which layers are projected into the same
-    // buffer as the one after them. They are consecutive tiles of one channel:
-    // the same controls (colour and contrast) and the same projection.
+    // Many tiles, the volume view: which layers share a buffer with the one
+    // after them. They are consecutive tiles of one channel: the same controls
+    // (colour and contrast) and the same way of drawing the volume.
     module: "perspective_view/panel.js",
     anchor: `      let currentTransparentRenderingState = 0 /* TRANSPARENT */;
       for (const [renderLayer, attachment] of visibleLayers) {
@@ -427,11 +427,11 @@ ${anchor}`,
         for (const [renderLayer] of visibleLayers) {
           // Layers the loop below does nothing for do not come between two tiles.
           if (!renderLayer.isVolumeRendering && !renderLayer.isTransparent) continue;
-          const projects = renderLayer.isVolumeRendering && isProjectionLayer(renderLayer);
-          if (previous !== null && projects && renderLayer.shaderControlState === previous.shaderControlState && renderLayer.mode.value === previous.mode.value) {
+          const volume = renderLayer.isVolumeRendering;
+          if (previous !== null && volume && renderLayer.shaderControlState === previous.shaderControlState && renderLayer.mode.value === previous.mode.value) {
             sharesProjectionWithNext.add(previous);
           }
-          previous = projects ? renderLayer : null;
+          previous = volume ? renderLayer : null;
         }
       }
 ${anchor}`,
@@ -441,6 +441,14 @@ ${anchor}`,
     // onto, where the depth test keeps the brighter (or, for the minimum, the
     // darker) of the two. The copies to the picture and the clearing follow
     // after the last tile of the channel.
+    //
+    // A blended volume is drawn straight into the picture, so there is nothing
+    // to share while it moves. Once the camera rests, though, the engine draws
+    // every such layer a second time, to learn what lies under the pointer, and
+    // after each one copies that buffer across the whole picture and clears it.
+    // For the tiles of one channel the second drawings are left in the buffer
+    // together, which keeps the brightest under each pixel just as the copies
+    // would, and are copied once, after the last of them.
     module: "perspective_view/panel.js",
     anchor: `          renderLayer.draw(renderContext, attachment);
           gl.enable(WebGL2RenderingContext.DEPTH_TEST);
@@ -451,6 +459,19 @@ ${anchor}`,
     replacement: (anchor) => `${anchor}          if (isVolumeProjectionLayer && sharesProjectionWithNext.has(renderLayer)) {
             renderContext.emitter = maxProjectionEmit;
             bindMaxProjectionBuffer();
+            currentTransparentRenderingState = 2 /* MAX_PROJECTION */;
+            continue;
+          }
+          if (sharesProjectionWithNext.has(renderLayer)) {
+            gl.enable(WebGL2RenderingContext.BLEND);
+            gl.blendFuncSeparate(
+              WebGL2RenderingContext.ONE,
+              WebGL2RenderingContext.ONE,
+              WebGL2RenderingContext.ZERO,
+              WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA
+            );
+            gl.depthMask(false);
+            gl.depthFunc(WebGL2RenderingContext.LESS);
             currentTransparentRenderingState = 2 /* MAX_PROJECTION */;
             continue;
           }
