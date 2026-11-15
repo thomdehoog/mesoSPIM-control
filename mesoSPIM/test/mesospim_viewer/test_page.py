@@ -281,11 +281,11 @@ def test_a_viewer_left_to_choose_asks_the_page_which_graphics_card_it_draws_on(p
         return ("The card of this test", 3500)
 
     monkeypatch.setattr(module, "card_mb", a_large_card)
-    view = viewers(gpu_memory_mb="auto")
+    view = viewers(gpu_memory_mb="auto", system_memory_mb=8000)
     view.add(tiles[0], layer="overview")
     page, errors = pages.open(view.start())
     pages.drawn(page, layers=2)
-    assert until(lambda: page.evaluate(limits), lambda seen: seen[0] != 1_000_000_000, 10) == [3_500_000_000, 2_000_000_000]
+    assert until(lambda: page.evaluate(limits), lambda seen: seen[0] != 1_000_000_000, 10) == [3_500_000_000, 8_000_000_000]
     assert len(named) == 1 and isinstance(named[0], str) and named[0], "the page said what draws it"
     view.add(tiles[1], layer="overview")
     pages.drawn(page, layers=2, sources=2)
