@@ -37,6 +37,23 @@ A run saved as TIFF, raw or HDF5 cannot be read while it is written, so it
 stays on screen as the thinned-out copy until the whole run is over, and is
 then shown from its files, at full size.
 
+Large acquisitions
+------------------
+
+An acquisition of twelve tiles or more, once all its tiles are finished, is
+given one small picture of the whole. While you are zoomed out, the viewer
+draws that picture in place of the tiles: from far away it shows the same, and
+it is one thing to draw where a hundred tiles are a hundred. As you zoom in,
+the tiles themselves take over from the point where the small picture would
+start to look coarse. You do not have to do anything, and there is nothing to
+see of the change but that moving around a large acquisition stays quick.
+
+The small picture is made in memory from each tile's own smaller copies, a
+moment after the acquisition is shown. Nothing is written to disk. Where two
+tiles overlap it keeps the brighter of the two, as the viewer does when it
+draws the tiles. A run that is still being acquired has none: its tiles are
+drawn as they are until it is over.
+
 Runs saved as TIFF, raw or HDF5
 -------------------------------
 
@@ -379,7 +396,10 @@ Then by hand, in demo mode with the Data viewer open:
     activity for a few minutes afterwards: once the tiles are in, the viewer
     should leave the drive alone. An acquisition from an earlier day should be
     there within seconds even from a network drive, because its tiles are
-    taken in without listing their folders.
+    taken in without listing their folders. Zoomed all the way out, panning
+    and the Z slider should feel as quick as for a single tile; zoom in on one
+    tile and it should turn sharp, with no moment in between where the picture
+    is empty.
 12. **A map before the acquisition is shown.** With two acquisitions in the
     list, click the one that is not shown (its eye is crossed out) to fold its
     positions out. After a moment its map should be there. A click on a cell

@@ -561,6 +561,93 @@ export function getWatchableRenderLayerTransform(globalCoordinateSpace, localCoo
   );
 `,
   },
+  // -- Many tiles, zoomed out: one overview picture stands in for them ----------
+  //
+  // With every tile of a large acquisition in view, each is still a source of
+  // its own that the engine sets up, draws and loads for, and that work grows
+  // with the number of tiles however little each one does. Python can add one
+  // more source to a channel's layer: a small picture of the whole acquisition,
+  // put together from every tile's smallest copies (overview.py). The five
+  // edits below let that one source stand in for the tiles while the view is
+  // zoomed out, and step back when it is zoomed in.
+  //
+  // The rule is carried by the sources themselves. A source of the overview
+  // says so; a tile says at how many times its own finest voxel the overview
+  // is as fine as it (`across`, and `volume` for the volume view). Then:
+  //   - a tile is left out while what the screen asks for is that coarse or
+  //     coarser, so the overview serves as well;
+  //   - the overview is left out while the screen asks for finer than it has.
+  // "Left out" means not drawn and not loaded: the choice is made where the
+  // engine picks which copy of a source to use, in code its page and its
+  // background worker share, so both decide alike.
+  {
+    // 1. A source is given its rule when the engine makes its list of copies.
+    //    The page keeps the rules (overview.js) and is asked by address.
+    module: "sliceview/frontend.js",
+    anchor: `        renderLayer: layer,
+        source,
+        lowerChunkDisplayBound,
+`,
+    replacement: (anchor) => `        renderLayer: layer,
+        source,
+        mesospim: globalThis.mesospimOverviewRule === void 0 ? void 0 : globalThis.mesospimOverviewRule(source),
+        lowerChunkDisplayBound,
+`,
+  },
+  {
+    // 2. ...and the rule travels with the source to the background worker,
+    module: "sliceview/frontend.js",
+    anchor: `    chunkLayout: tsource.chunkLayout.toObject()
+  };
+}
+export function serializeAllTransformedSources(allSources) {`,
+    replacement: () => `    chunkLayout: tsource.chunkLayout.toObject(),
+    mesospim: tsource.mesospim
+  };
+}
+export function serializeAllTransformedSources(allSources) {`,
+  },
+  {
+    // 3. ...which keeps it.
+    module: "sliceview/backend.js",
+    anchor: `        effectiveVoxelSize: serializedSource.effectiveVoxelSize,
+`,
+    replacement: (anchor) => `${anchor}        mesospim: serializedSource.mesospim,
+`,
+  },
+  {
+    // 4. The flat view: no copy of a source that is left out is chosen. (A
+    //    tile is left out a little later than the overview comes in, so that
+    //    at the zoom where they change over both are there, never neither.)
+    module: "sliceview/base.js",
+    anchor: `  const smallestVoxelSize = sources[0].effectiveVoxelSize;
+  const renderScaleTarget = renderLayer.renderScaleTarget.value;
+`,
+    replacement: (anchor) => `${anchor}  {
+    const rule = sources[0].mesospim;
+    if (rule !== void 0) {
+      const finest = Math.min(smallestVoxelSize[0], smallestVoxelSize[1], smallestVoxelSize[2]);
+      const asked = pixelSize * renderScaleTarget;
+      if (rule.overview ? asked < finest : asked >= finest * rule.across * 1.02) return;
+    }
+  }
+`,
+  },
+  {
+    // 5. The volume view: the same, by the volume of a voxel as seen.
+    module: "volume_rendering/base.js",
+    anchor: `  let bestScaleIndex = transformedSources.length - 1;
+  let bestViewVolume = getViewVolume(bestScaleIndex);
+`,
+    replacement: (anchor) => `  {
+    const rule = transformedSources[0].mesospim;
+    if (rule !== void 0) {
+      const finest = getViewVolume(0);
+      if (rule.overview ? targetViewVolume < finest : targetViewVolume >= finest * rule.volume * 1.06) return;
+    }
+  }
+${anchor}`,
+  },
   {
     // The chunk worker is the one compiled here, at the page's root.
     module: "data_management_context.js",

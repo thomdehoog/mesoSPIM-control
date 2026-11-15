@@ -74,6 +74,10 @@ SETTLED_S = 600.0
 # computer's own clock, whether its newest file is still the same one. If it is not, the
 # tile is being written after all, and is listed and watched.
 CONFIRM_SETTLED_S = 15.0
+# An acquisition of at least this many tiles, all of them finished, is given one small
+# picture of the whole for the view from far away (overview.py). With fewer tiles the
+# page draws them as they are just as well.
+OVERVIEW_FROM_TILES = 12
 # A tile whose stack is being acquired right now, and shown from the camera's frames,
 # is looked at on disk only this often. Its files are kept from the page until the
 # stack is whole, so looking every second would load the acquisition's drive with
@@ -319,6 +323,10 @@ class Dataset:
     # The files a run that is being acquired is saved into, when it is saved as TIFF,
     # raw or HDF5: shown from the camera's frames meanwhile, opened from them afterwards.
     files: set[Path] = field(default_factory=set)
+    # How many tiles the last look found on disk, and whether the page has been given
+    # an overview picture of them.
+    found_tiles: int = -1
+    has_overview: bool = False
     _resolved: dict[str, Path] = field(default_factory=dict)
 
     def tile_paths(self) -> list[Path]:
@@ -716,6 +724,8 @@ class Library:
                 # A run paused by Live off is left where it is, on disk too.
                 wanted = dataset in self.datasets and dataset.shown and (self.collecting or not dataset.in_run)
                 paths = dataset.tile_paths() if wanted else []
+                if wanted:
+                    dataset.found_tiles = len(paths)
             for path in paths:
                 self._make_way()
                 with self._lock:
@@ -734,6 +744,14 @@ class Library:
                 return
             self._open_from_files(now)
             self._hand_over(now)
+            overviews = [(dataset, self._wants_overview(dataset, now)) for dataset in self.datasets]
+        for dataset, wanted in overviews:
+            # Outside the library's turn: making one reads the tiles' descriptions.
+            if wanted or dataset.has_overview:
+                dataset.has_overview = self.viewer.offer_overview(dataset.name, wanted)
+        with self._lock:
+            if self._closed:
+                return
             self._offer()
             self._point(now)
 
@@ -1087,6 +1105,18 @@ class Library:
                 return
             self._offer()
             self._point(self.clock())
+
+    @staticmethod
+    def _wants_overview(dataset: Dataset, now: float) -> bool:
+        """Whether an acquisition should have one small picture of all its tiles: it is
+        shown, it has many tiles, every one of them is on the list and finished, and
+        the microscope is not running it. A picture of tiles that are still changing
+        would be out of date as soon as it was made."""
+        if not dataset.shown or dataset.in_run or dataset.previews or dataset.running is not None:
+            return False
+        if len(dataset.tiles) < OVERVIEW_FROM_TILES or len(dataset.tiles) != dataset.found_tiles:
+            return False
+        return all((tile.in_a_file or tile.whole()) and not tile.awake(now) for tile in dataset.tiles.values())
 
     def _open_from_files(self, now: float) -> None:
         """A run saved as TIFF, raw or HDF5 files has ended: show it from those files.

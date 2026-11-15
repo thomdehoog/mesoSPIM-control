@@ -51,6 +51,7 @@ import {
 import { autoStep, isAuto, operatorMoved, setAuto, watchContrast } from "./contrast.js";
 import { landed, landedAnywhere } from "./engine/landed.js";
 import { applyLayers, watchRetiring } from "./layers.js";
+import { overviewRules, watchOverviews } from "./overview.js";
 import { mountPanel } from "./panel.js";
 import "./page.css";
 
@@ -350,6 +351,7 @@ async function main() {
   bindReports(viewer);
   watchOperator(viewer);
   watchRetiring(viewer);
+  watchOverviews(viewer);
   // A window made larger or smaller, or a panel folded away, changes the room the
   // picture has. While the view is still framing everything it is fitted again, so the
   // picture is not left cropped or small with the Fit button hidden. A view the
@@ -363,6 +365,7 @@ async function main() {
   });
   // For the tests, and for a look from the browser's console.
   window.mesospim = {
+    overviewRules,
     framing,
     following,
     acquiring,

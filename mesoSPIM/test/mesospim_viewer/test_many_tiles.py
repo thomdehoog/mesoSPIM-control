@@ -174,3 +174,93 @@ def test_a_blended_volume_is_copied_once_a_channel_at_rest_and_can_still_be_poin
     assert found is not None, "nothing of the blended volume could be pointed at"
     assert "µm" in found["said"], found
     assert not errors, errors
+
+
+@slow_without_a_graphics_card
+def test_an_overview_stands_in_for_the_tiles_when_zoomed_out(pages, viewers, tmp_path):
+    """Sixteen tiles in two channels, all in view. Drawn as they are, a frame does a little
+    work for each of them. With the overview, one small picture of the whole acquisition
+    is drawn in their place while the view is zoomed out, so a frame costs the same as
+    for a single tile. Zoomed in, the tiles themselves are drawn again, and on the way
+    in and out the picture is never empty."""
+    from .test_interaction import RECORD, START, STOP
+    from .tools import until
+
+    view = viewers(ui="simple")
+    for tile in _grid(tmp_path, 4, 4):
+        view.add(tile, layer="run")
+    view.fit()
+    page, errors = pages.open(view.start(), width=800, height=560)
+    pages.drawn(page, layers=2, sources=16)
+    time.sleep(1.0)
+    as_tiles = page.evaluate(PICTURE)["lit"]
+    assert as_tiles > 1000, "there is specimen on the picture"
+    page.evaluate(COUNT)
+    every_tile = page.evaluate(ONE_FRAME)
+
+    assert view.offer_overview("run") is True
+    in_force = "() => Object.values(window.mesospim.overviewRules()).filter((rule) => rule.across).length"
+    assert until(lambda: page.evaluate(in_force), lambda count: count == 16, 40) == 16, "the tiles' rules were never switched on"
+    time.sleep(1.0)
+    one_picture = page.evaluate(ONE_FRAME)
+    assert one_picture["bindFramebuffer"] <= 12 < every_tile["bindFramebuffer"], (
+        f"zoomed out, a frame still does something for every tile: {one_picture}, before {every_tile}"
+    )
+    assert one_picture["drawArraysInstanced"] <= 4, f"histograms are still measured tile by tile: {one_picture}"
+    as_overview = page.evaluate(PICTURE)["lit"]
+    assert abs(as_overview - as_tiles) < 0.1 * as_tiles, f"the picture changed: {as_tiles} lit before, {as_overview} now"
+
+    # Zooming in and out again: no frame in between is empty.
+    page.evaluate(RECORD)
+    box = page.evaluate("""() => { const r = document.querySelector('.neuroglancer-rendered-data-panel').getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2]; }""")
+    page.mouse.move(*box)
+    page.evaluate(START)
+    for step in (-150,) * 6 + (150,) * 6:
+        page.mouse.wheel(0, step)
+        time.sleep(0.25)
+    time.sleep(1.5)
+    frames = page.evaluate(STOP)
+    assert len(frames) >= 8, f"only {len(frames)} frames were drawn while zooming"
+    assert not [frame for frame in frames if frame["lit"] == 0], "a frame was empty where tiles and overview change over"
+
+    # Zoomed in on the first tile, the tiles themselves are drawn: the picture is that of
+    # a viewer without any overview, and only the tiles in view cost anything.
+    _look_at_the_first_tile(page)
+    time.sleep(3.0)
+    close_up = page.evaluate(ONE_FRAME)
+    assert close_up["drawArrays"] > 0 and page.evaluate(PICTURE)["lit"] > 1000
+    plain = viewers(ui="simple")
+    for tile in sorted(tmp_path.glob("tile_*.ome.zarr")):
+        plain.add(tile, layer="run")
+    plain.fit()
+    other, other_errors = pages.open(plain.start(), width=800, height=560)
+    pages.drawn(other, layers=2, sources=16)
+    _look_at_the_first_tile(other)
+    time.sleep(3.0)
+    assert page.evaluate(PICTURE)["lit"] == other.evaluate(PICTURE)["lit"], "zoomed in, the picture is the tiles' own"
+    assert not errors and not other_errors, (errors, other_errors)
+
+
+@slow_without_a_graphics_card
+def test_the_overview_stands_in_for_the_tiles_in_the_volume_view_too(pages, viewers, tmp_path):
+    from .tools import until
+
+    view = viewers(ui="simple")
+    for tile in _grid(tmp_path, 4, 4):
+        view.add(tile, layer="run")
+    view.fit()
+    page, errors = pages.open(view.start(), width=800, height=560)
+    pages.drawn(page, layers=2, sources=16)
+    assert view.offer_overview("run") is True
+    in_force = "() => Object.values(window.mesospim.overviewRules()).filter((rule) => rule.across).length"
+    assert until(lambda: page.evaluate(in_force), lambda count: count == 16, 40) == 16
+    page.click('.segmented.view button[data-layout="3d"]')
+    assert until(lambda: page.evaluate(PICTURE)["lit"], lambda lit: lit >= 300, 60) >= 300, "the volume is drawn"
+    time.sleep(2.0)
+    page.evaluate(COUNT)
+    frame = page.evaluate(ONE_FRAME)
+    # Every tile used to be marched through on its own: thirty-two volumes. One per channel now.
+    assert 0 < frame["drawArraysInstanced"] <= 40, f"the volume is still drawn tile by tile: {frame}"
+    assert page.evaluate(PICTURE)["lit"] >= 300
+    assert not errors, errors

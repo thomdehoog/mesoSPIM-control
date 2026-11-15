@@ -101,6 +101,20 @@ class Preview:
     retiring: bool = False
 
 
+@dataclass(frozen=True)
+class OverviewSource:
+    """A small picture of all the tiles of a layer, as the page is told of it.
+
+    ``tiles`` gives, for the address of every tile it stands in for, how many times
+    coarser the overview is than the tile (across, and by the volume of a voxel). The
+    page draws the overview in place of a tile once the screen asks for nothing finer.
+    """
+
+    id: str
+    url: str
+    tiles: dict[str, list[float]]
+
+
 def source_json(placement: Placement) -> dict:
     """A neuroglancer data source: the address, and a transform when shifted.
 
@@ -239,6 +253,9 @@ class Layer:
     # earlier reading under a name of its own, when it was set aside (on the monotonic
     # clock), and the name of the source that takes over from it.
     outgoing: list[tuple[Placement, float, str]] = field(default_factory=list)
+    # One overview picture for each channel's tiles, by the channel's label ("" where
+    # every store holds all channels and one overview serves them all).
+    overviews: dict[str, OverviewSource] = field(default_factory=dict)
     # Whether the page keeps setting the contrast from what is on screen, until
     # the operator sets it themselves: for an acquisition that is being written,
     # whose brightness nobody knows yet.
@@ -327,6 +344,10 @@ class Layer:
                         # A preview has a channel axis of its own (live.py); a layer
                         # whose stores have none reads the preview at its index.
                         pinned = preview.index
+            overview = self.overviews.get(channel.label) or self.overviews.get("")
+            if overview is not None and placements:
+                sources.append({"url": overview.url})
+                ids.append(f"overview-{overview.id}")
             handover = []
             for earlier, _since, current in self.outgoing:
                 if current not in ids:
@@ -356,6 +377,12 @@ class Layer:
                 # Pairs of a source and the earlier reading of the same store it takes
                 # over from (see ``outgoing``).
                 "_handover": handover,
+                # The source that is an overview of this layer's tiles, and its rule
+                # for each of them (see OverviewSource); None without one.
+                "_overview": (
+                    {"key": f"overview/{overview.id}", "tiles": overview.tiles}
+                    if overview is not None and placements else None
+                ),
             }
             if pinned is not None:
                 # Which channel of the store this layer reads: the engine keeps the c

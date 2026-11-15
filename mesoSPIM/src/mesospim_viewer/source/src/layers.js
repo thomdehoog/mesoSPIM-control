@@ -21,6 +21,7 @@
  */
 import { makeLayer, deleteLayer } from "neuroglancer/unstable/layer/index.js";
 import { layerDataSourceSpecificationFromJson } from "neuroglancer/unstable/layer/layer_data_source.js";
+import { forgetOverview, reflectOverview } from "./overview.js";
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -228,6 +229,7 @@ export function applyLayers(viewer, specs, between) {
     remember(managed);
     deleteLayer(managed);
     held.delete(managed.name);
+    forgetOverview(managed.name);
     changed = true;
   }
   between?.(manager.managedLayers.length);
@@ -273,6 +275,9 @@ export function applyLayers(viewer, specs, between) {
     const here = manager.managedLayers.findIndex((managed) => managed.name === spec.name);
     if (here !== -1 && here !== at) manager.reorderManagedLayer(here, at);
   });
+  // Which source of a layer is an overview of its tiles, and from which zoom on it
+  // stands in for them (overview.js).
+  for (const spec of specs) reflectOverview(viewer, spec.name, spec._overview);
   // Heard after every scene, not only when a layer came or went: what Python
   // says about a layer (whether its contrast sets itself, say) may have changed.
   for (const listener of listeners) listener(changed);

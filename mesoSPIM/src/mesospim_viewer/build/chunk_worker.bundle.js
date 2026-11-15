@@ -8877,6 +8877,14 @@ function* filterVisibleSources(sliceView, renderLayer, sources) {
   const pixelSize = sliceView.projectionParameters.value.pixelSize * 1.1;
   const smallestVoxelSize = sources[0].effectiveVoxelSize;
   const renderScaleTarget = renderLayer.renderScaleTarget.value;
+  {
+    const rule = sources[0].mesospim;
+    if (rule !== void 0) {
+      const finest = Math.min(smallestVoxelSize[0], smallestVoxelSize[1], smallestVoxelSize[2]);
+      const asked = pixelSize * renderScaleTarget;
+      if (rule.overview ? asked < finest : asked >= finest * rule.across * 1.02) return;
+    }
+  }
   const canImproveOnVoxelSize = (voxelSize) => {
     const targetSize = pixelSize * renderScaleTarget;
     for (let i = 0; i < 3; ++i) {
@@ -9506,6 +9514,7 @@ function deserializeTransformedSources(rpc2, serializedSources, layer) {
         lowerChunkDisplayBound: serializedSource.lowerChunkDisplayBound,
         upperChunkDisplayBound: serializedSource.upperChunkDisplayBound,
         effectiveVoxelSize: serializedSource.effectiveVoxelSize,
+        mesospim: serializedSource.mesospim,
         chunkDisplayDimensionIndices: serializedSource.chunkDisplayDimensionIndices,
         fixedLayerToChunkTransform: serializedSource.fixedLayerToChunkTransform,
         combinedGlobalLocalToChunkTransform: serializedSource.combinedGlobalLocalToChunkTransform,
@@ -15294,6 +15303,13 @@ function forEachVisibleVolumeRenderingChunk(projectionParameters, localPosition,
     const tsource2 = transformedSources[scaleIndex];
     return Math.abs(tsource2.chunkLayout.detTransform * viewDet);
   };
+  {
+    const rule = transformedSources[0].mesospim;
+    if (rule !== void 0) {
+      const finest = getViewVolume(0);
+      if (rule.overview ? targetViewVolume < finest : targetViewVolume >= finest * rule.volume * 1.06) return;
+    }
+  }
   let bestScaleIndex = transformedSources.length - 1;
   let bestViewVolume = getViewVolume(bestScaleIndex);
   for (let scaleIndex = bestScaleIndex; scaleIndex >= 0; --scaleIndex) {

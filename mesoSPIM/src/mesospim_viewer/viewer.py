@@ -29,7 +29,7 @@ from typing import Callable
 
 from .omezarr import Channel, Store, read_store, sample_window
 from .server import ViewServer
-from .state import LAYOUTS, Layer, Placement, Preview, engine_state, state_json
+from .state import LAYOUTS, Layer, OverviewSource, Placement, Preview, engine_state, state_json
 
 
 def _measure(layer: Layer, placement: Placement) -> None:
@@ -301,6 +301,69 @@ class Viewer:
         self.start()
         assert self._server is not None
         self._server.stores.guard(Path(path).expanduser(), held_back)
+
+    def offer_overview(self, layer: str, on: bool = True) -> bool:
+        """Give a layer one small picture of all its tiles, for the view from far away,
+        or with ``on=False`` take it away again. Returns whether the layer has one now.
+
+        With many tiles on screen at once, the page does a little work for every one of
+        them on every frame, and loads something of every one. The overview is a single
+        source that shows the same from far away; the page draws it while the view is
+        zoomed out, and the tiles themselves from where the overview would look coarse
+        (``overview.py``). It is made from the tiles as they are now, so it is asked
+        for again whenever a tile has changed, and that is cheap while none has.
+        """
+        import hashlib
+
+        from .overview import Overview, signature
+
+        with self._lock:
+            held = self._layers.get(layer)
+            if held is None or self._server is None:
+                return False
+            if not on or not held.placements:
+                if held.overviews:
+                    for old in held.overviews.values():
+                        self._server.overviews.pop(old.id, None)
+                    held.overviews = {}
+                    self._publish()
+                return False
+            groups: dict[str, list[Placement]] = {}
+            for placement in held.placements:
+                label = placement.channel.label if (held.split and placement.channel is not None) else ""
+                groups.setdefault(label, []).append(placement)
+            wanted = {}
+            for label, placements in groups.items():
+                mark = repr((layer, label, signature([p.store for p in placements])))
+                wanted[label] = (hashlib.sha1(mark.encode()).hexdigest()[:12], placements)
+            if {label: number for label, (number, _) in wanted.items()} == {
+                label: source.id for label, source in held.overviews.items()
+            }:
+                return True  # the ones it has are of the tiles as they are
+            base = self._server.url
+            keys = {p.store.path: self._server.stores.register(p.store.path) for p in held.placements}
+        # Made with the viewer let go: the tiles' descriptions are read from disk for it.
+        made = {}
+        for label, (number, placements) in wanted.items():
+            picture = Overview(layer, [(p.store, f"data/{keys[p.store.path]}") for p in placements])
+            if not picture.usable:
+                made = {}
+                break
+            made[label] = (number, picture)
+        with self._lock:
+            held = self._layers.get(layer)
+            if held is None or self._server is None or self._stopped:
+                return False
+            for old in held.overviews.values():
+                self._server.overviews.pop(old.id, None)
+            held.overviews = {}
+            for label, (number, picture) in made.items():
+                self._server.overviews[number] = picture
+                held.overviews[label] = OverviewSource(
+                    id=number, url=f"{base}overview/{number}/|zarr2:", tiles=picture.rules()
+                )
+            self._publish()
+            return bool(held.overviews)
 
     def remove_store(self, layer: str, path: str | Path) -> bool:
         """Take one store out of a layer; the layer goes with its last store."""

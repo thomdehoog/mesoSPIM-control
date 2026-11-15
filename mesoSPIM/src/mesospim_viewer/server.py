@@ -413,6 +413,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send_file(target, head=head, cache="no-cache")
             return
+        if route.startswith("/overview/"):
+            # A small picture of a whole acquisition, put together in memory (overview.py).
+            pieces = route[len("/overview/") :].split("/", 1)
+            picture = self.server.overviews.get(pieces[0])
+            try:
+                body = picture.read(pieces[1] if len(pieces) > 1 else "") if picture is not None else None
+            except Exception:  # noqa: BLE001 -- a tile it is made from has gone
+                body = None
+            if body is None:
+                self._send_empty(HTTPStatus.NOT_FOUND)
+            else:
+                self._send_bytes(body, head=head)
+            return
         if route.startswith("/live/"):
             pieces = route[len("/live/") :].split("/", 1)
             source = self.server.live.get(pieces[0])
@@ -595,6 +608,8 @@ class ViewServer(ThreadingHTTPServer):
         self.collect_listeners: list[Callable[[bool], None]] = []
         # Stacks shown from memory while they are acquired, by the name in their address.
         self.live: dict[str, object] = {}
+        # Small pictures of whole acquisitions, made in memory, by the name in their address.
+        self.overviews: dict[str, object] = {}
         self.last_view: dict | None = None
         self.last_view_at: float = 0.0
         # Set when the viewer stops. Connections a page already has stay open after the

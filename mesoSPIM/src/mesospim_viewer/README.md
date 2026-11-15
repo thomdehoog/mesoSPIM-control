@@ -163,7 +163,7 @@ added to it.
 The engine draws every tile of an acquisition as a layer of its own, and as it
 comes it does a fixed amount of work for each on every frame. With a hundred
 tiles that work, and not the picture, decided how smoothly the view moved. The
-build changes four things:
+build changes four things, and a fifth, the overview, is described after them:
 
 - **In the flat view** a tile with nothing on screen is passed over before
   anything is set up for it. Zoomed in on one tile of a hundred, in two
@@ -200,8 +200,25 @@ for every tile in view, and nobody reads it during a drag. With a hundred
 tiles of two channels in view, a frame of a drag no longer carries 202
 histogram passes.
 
-What these do not change: with every tile in view, each still has to be drawn.
-The counts are checked by `test_many_tiles.py`.
+With every tile in view, each still has to be drawn, however little each one
+costs. The last step is therefore **one overview picture** that stands in for
+the tiles while the view is zoomed out (`overview.py`, `source/src/overview.js`
+and the build's last five edits to the engine). Python puts it together in
+memory from each tile's own smaller copies, about a screenful across, and adds
+it to each channel's layer as one more source. Every source carries a rule:
+the overview is left out while the screen asks for finer than it has, and a
+tile is left out while the screen asks for nothing finer than the overview.
+"Left out" means neither drawn nor loaded, and the choice is made in code the
+engine's page and its background worker share. With 36 tiles in two channels
+zoomed out, a frame of the flat view takes 11 buffer switches where it took
+151, and one of the volume view 8 chunk draws where it took 3456. Zoomed in,
+the picture and its cost are those of the tiles alone.
+
+An acquisition gets its overview once it has twelve tiles or more and all of
+them are finished; one that is being acquired has none. A tile's rule is
+switched on only when the overview's own picture is on screen, so the picture
+is never empty while it loads. The counts are checked by `test_many_tiles.py`,
+the picture itself by `test_overview.py`.
 
 ## How channels and tiles are mixed
 
