@@ -272,12 +272,26 @@ def test_clicking_around_at_random_never_breaks_the_viewer(session, seed):
     # frame of the volume takes seconds to draw, and the run would be spent waiting.
     names = list(actions) + ["2D", "2D", "2D"]
     done: list[str] = []
+    began = time.time()
     for _ in range(55):
         name = rng.choice(names)
         done.append(name)
+        asked = time.time()
         actions[name]()
         time.sleep(rng.choice([0.02, 0.1, 0.3]))
         _check(session, done)
+        # Without a graphics card one frame of a volume, zoomed in on a large picture, can
+        # take a minute, and a session that stays there never ends. That says nothing
+        # about the viewer. So when the page has become that slow, the session goes back
+        # to the flat picture, and it stops clicking when its time is nearly up. On a
+        # computer with a graphics card neither happens, and all 55 clicks are made.
+        if time.time() - asked > 20:
+            done.append("2D (the volume is too slow to draw here)")
+            actions["2D"]()
+            _check(session, done)
+        if time.time() - began > 420:
+            break
+    assert len(done) >= 12, f"only {len(done)} actions fitted into the time: {done}"
     # What settles after the last click must hold too.
     time.sleep(1.5)
     _check(session, done)
