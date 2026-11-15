@@ -20,7 +20,9 @@ import pytest
 from mesoSPIM.src.mesospim_viewer import Acquisitions, Library, Stack
 from mesoSPIM.src.mesospim_viewer.demo import write_tile
 from mesoSPIM.src.mesospim_viewer.landing import COLD_EVERY
-from mesoSPIM.src.mesospim_viewer.watch import FED_EVERY_S, GIVE_UP_S, HAND_OVER_S, LIVE_S, PLANES_PER_S, SETTLE_S, plain_name
+from mesoSPIM.src.mesospim_viewer.watch import (
+    FED_EVERY_S, GIVE_UP_S, HAND_OVER_S, LIVE_S, PLANES_PER_S, SETTLE_S, plain_name,
+)
 
 from .stores import Slabs, an_acquisition
 from .tools import follow, landed, offered, sources, status
@@ -346,6 +348,30 @@ def test_a_stack_that_never_completes_on_disk_is_handed_over_all_the_same(librar
     assert landed(view) == [("data/0", files)] and status(view.url + "data/0/" + files[0]) == 200
     look(library, HAND_OVER_S)
     assert previews(view) == []
+
+
+def test_a_late_file_of_a_stack_given_up_on_is_shown_at_once_though_the_tile_is_being_fed(library, tmp_path):
+    """A writer that falls behind can still be saving one channel when the microscope
+    is well into the next. The viewer stops waiting for the first channel after a
+    while and shows what there is of it. Whatever lands of it after that goes to the
+    page within a second, although the tile is otherwise looked at only now and then
+    while the camera's frames are showing its next stack."""
+    library.watch(tmp_path)
+    view = library.viewer
+    tile = Slabs(an_acquisition(tmp_path, "run") / TILE.format(0), planes=16, slab=8)
+    library.begin_stack(a_stack(tmp_path, planes=16))
+    feed(library, range(0, 16))
+    look(library)
+    early = tile.write(0)
+    look(library)
+    library.begin_stack(a_stack(tmp_path, channel="561", planes=16))  # the next channel begins
+    feed(library, range(0, 4))
+    look(library, GIVE_UP_S)
+    assert landed(view) == [("data/0", early)], "the first channel is shown as far as it got"
+    look(library, FED_EVERY_S)
+    late = tile.write(1)
+    look(library)
+    assert landed(view) == [("data/0", early), ("data/0", late)], "the late files are not kept waiting"
 
 
 def test_a_stack_stopped_and_started_again_stays_held_back_until_the_second_try_is_whole(library, tmp_path, monkeypatch):

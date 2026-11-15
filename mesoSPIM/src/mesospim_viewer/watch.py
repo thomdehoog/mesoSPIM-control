@@ -101,6 +101,10 @@ SETTLE_S = 2.0
 HAND_OVER_S = 15.0
 # A stack that never completes on disk (the run was stopped) is handed over anyway.
 GIVE_UP_S = 90.0
+# The writer may only have been slow, though. For this long after a stack was handed
+# over with files still missing, its tile is looked at every second, so that a file
+# that does land late is on the picture within a second or so.
+LATE_FILES_S = 120.0
 # The preview takes in at most this many planes a second.
 PLANES_PER_S = 4.0
 # Previews of finished stacks stay in memory up to this much; the oldest go first.
@@ -249,6 +253,9 @@ class Tile:
     # which one that was (see CONFIRM_SETTLED_S). None once that has been done.
     confirm_at: float | None = None
     settled_newest: int = 0
+    # Until when files of a stack that was handed over incomplete may still land (see
+    # LATE_FILES_S).
+    late_until: float = -1e9
 
     def held_back(self, file: str) -> bool:
         held, progress = self.held, self.progress
@@ -828,6 +835,9 @@ class Library:
                 dataset.running is not None
                 and any(held.ended is None for held in mine)
                 and not any(held.ended is not None for held in mine)
+                # Nor is a stack that was handed over with files still missing: what
+                # lands of it now goes straight to the page.
+                and now >= tile.late_until
             )
             if fed and now - tile.looked_at < FED_EVERY_S:
                 return
@@ -1205,6 +1215,8 @@ class Library:
     def _release(self, dataset: Dataset, tile: Tile, held: Held, now: float) -> None:
         """Let the page have a stack from disk, and its preview go once that is drawn."""
         held.released = True
+        if tile.progress is not None and held.stack is not None and not tile.progress.complete(held.stack):
+            tile.late_until = now + LATE_FILES_S
         self._hold(dataset, tile)
         files, held.files = held.files, []
         self._pass_on(dataset, tile, held, files)
