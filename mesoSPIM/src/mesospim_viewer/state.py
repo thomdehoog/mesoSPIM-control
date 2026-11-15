@@ -96,6 +96,7 @@ class Preview:
     index: int = 0  # which channel of the preview's own store it is
     voxel_um: tuple[float, float, float] | None = None  # of the stack itself: z, y, x
     timed: bool = True
+    times: int = 1  # the time points there are once this stack is acquired: its own, counted from one
     # The stack is on disk now and the tile there is taking over: the page lets
     # the preview go as soon as the tile's picture is up.
     retiring: bool = False
@@ -113,6 +114,14 @@ class OverviewSource:
     id: str
     url: str
     tiles: dict[str, list[float]]
+
+
+def store_times(store: Store) -> int:
+    """How many time points a store holds (one for a store without a time axis)."""
+    for index, axis in enumerate(store.axes):
+        if axis.name == "t":
+            return int(store.shape[index])
+    return 1
 
 
 def source_json(placement: Placement) -> dict:
@@ -377,6 +386,14 @@ class Layer:
                 # Pairs of a source and the earlier reading of the same store it takes
                 # over from (see ``outgoing``).
                 "_handover": handover,
+                # How many time points there really are. The page is told that a store
+                # has room for more (see Stores.make_room), so the engine's own extent
+                # along time is no measure of it.
+                "_times": max(
+                    [store_times(placement.store) for placement in placements]
+                    + [preview.times for preview in self.previews if preview.channel.label == channel.label]
+                    + [1]
+                ),
                 # The source that is an overview of this layer's tiles, and its rule
                 # for each of them (see OverviewSource); None without one.
                 "_overview": (

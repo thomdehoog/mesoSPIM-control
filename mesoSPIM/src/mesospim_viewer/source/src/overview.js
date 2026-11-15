@@ -24,12 +24,39 @@ const ADDRESS = /\/(data|overview)\/([^/.|]+)/;
 const SWITCH_AFTER_MS = 1200; // at the earliest: the engine's counts lag a little
 const SWITCH_BY_MS = 15000; // at the latest, whatever the counts say
 
-globalThis.mesospimOverviewRule = (source) => {
-  const url = source?.parameters?.url;
-  if (typeof url !== "string") return undefined;
-  const found = ADDRESS.exec(url);
-  return found === null ? undefined : rules.get(`${found[1]}/${found[2]}`);
+// How many time points a store really holds, by address. The page is told that a store
+// has room for more (so that one more time point is not a new store to it), and the
+// engine, which reads ahead of a view that moves through time, must not read ahead
+// into time points that are not there.
+const times = new Map();
+const timesOfLayer = new Map(); // by layer name: what was last said, as text
+
+const keyOf = (url) => {
+  const found = typeof url === "string" ? ADDRESS.exec(url) : null;
+  return found === null ? null : `${found[1]}/${found[2]}`;
 };
+
+globalThis.mesospimOverviewRule = (source) => {
+  const key = keyOf(source?.parameters?.url);
+  if (key === null) return undefined;
+  const rule = rules.get(key);
+  const held = times.get(key);
+  if (rule === undefined && held === undefined) return undefined;
+  return held === undefined ? rule : { ...rule, times: held };
+};
+
+/** Take in how many time points a layer's stores really hold (`spec._times`). */
+export function reflectTimes(viewer, spec) {
+  const keys = (spec.source ?? []).map((source) => keyOf(source.url)).filter((key) => key !== null && key.startsWith("data/"));
+  const said = JSON.stringify([spec._times ?? null, keys]);
+  if (timesOfLayer.get(spec.name) === said) return;
+  timesOfLayer.set(spec.name, said);
+  for (const key of keys) {
+    if (spec._times > 0) times.set(key, spec._times);
+    else times.delete(key);
+  }
+  readAgain(viewer.layerManager.getLayerByName(spec.name));
+}
 
 // The engine reads a source's rule when it makes its list of the source's copies, and
 // makes that list anew when the source's transform is said to have changed.
@@ -71,6 +98,7 @@ export function forgetOverview(name) {
   const entry = layers.get(name);
   for (const key of entry?.keys ?? []) rules.delete(key);
   layers.delete(name);
+  timesOfLayer.delete(name);
 }
 
 export function watchOverviews(viewer) {

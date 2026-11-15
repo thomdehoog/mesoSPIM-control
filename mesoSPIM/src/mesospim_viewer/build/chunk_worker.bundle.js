@@ -9557,7 +9557,10 @@ function getPrefetchChunkOffsets(velocityEstimator, tsource) {
     const cdf = (x) => 0.5 * (1 + erf((x - adjustedMean) / adjustedStddevTimesSqrt2));
     const curChunk = tsource.curPositionInChunks[chunkDim];
     const minChunk = Math.floor(tsource.lowerClipBound[chunkDim] / chunkSize);
-    const maxChunk = Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1;
+    const maxChunk = Math.min(
+      Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1,
+      !isDisplayDimension && tsource.mesospim !== void 0 && tsource.mesospim.times !== void 0 ? Math.ceil(tsource.mesospim.times / chunkSize) - 1 : Infinity
+    );
     let groupStart = offsets.length;
     for (let i = 1; i <= MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS; ++i) {
       if (!isDisplayDimension && curChunk + i > maxChunk) break;

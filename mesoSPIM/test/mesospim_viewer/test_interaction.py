@@ -470,10 +470,11 @@ def test_hiding_and_showing_a_channel_and_pointing_at_tiles_does_not_flicker(ses
 
 
 def test_a_tile_that_gains_a_time_point_stays_on_the_picture(pages, viewers, tmp_path):
-    """In a time lapse every tile's store grows by a time point, again and again. The page
-    has to read such a store afresh, and it used to empty the tile's source to do so:
-    the tile went black for about half a second, once per tile and time point. The
-    reading that is on screen now stays until the new one's picture is up."""
+    """In a time lapse every tile's store grows by a time point, again and again. The
+    page used to read such a store afresh, and emptied the tile's source to do so: the
+    tile went black for about half a second, once per tile and time point. Now the page
+    is told from the start that the store has room for more time points, so nothing is
+    read afresh and the picture stays as it is."""
     store = write_tile(tmp_path / "growing.ome.zarr", origin_um=(0, 0, 0), seed=3, timepoints=1)
     view = viewers(ui="simple")
     view.add(store, layer="lapse")
@@ -497,12 +498,10 @@ def test_a_tile_that_gains_a_time_point_stays_on_the_picture(pages, viewers, tmp
         view.add(store, layer="lapse")
 
     frames = _recorded(page, grow, settle_s=4.0)
-    assert frames, "the picture was drawn again while the store was read afresh"
-    least = min(frame["lit"] for frame in frames)
+    least = min((frame["lit"] for frame in frames), default=full)
     assert least >= 0.9 * full, f"the tile dropped out of the picture: {least} of {full} lit samples"
-    extent = """() => { const s = window.viewer.navigationState.position.coordinateSpace.value;
-                        const t = s.names.indexOf('t'); return s.bounds.upperBounds[t] - s.bounds.lowerBounds[t]; }"""
-    assert until(lambda: page.evaluate(extent), lambda seen: seen == 3, 20) == 3, "the new time points are there"
+    time_points = "() => window.mesospim.timePoints()"
+    assert until(lambda: page.evaluate(time_points), lambda seen: seen == 3, 20) == 3, "the new time points are there"
     counts = "() => window.viewer.layerManager.managedLayers.map(m => m.layer.dataSources.length)"
     assert until(lambda: page.evaluate(counts), lambda seen: seen == [1, 1], 20) == [1, 1], "the earlier reading was let go"
     assert not errors, errors

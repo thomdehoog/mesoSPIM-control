@@ -50,7 +50,7 @@ import {
 } from "./camera.js";
 import { autoStep, isAuto, operatorMoved, setAuto, watchContrast } from "./contrast.js";
 import { landed, landedAnywhere } from "./engine/landed.js";
-import { applyLayers, watchRetiring } from "./layers.js";
+import { applyLayers, timePoints, watchRetiring } from "./layers.js";
 import { overviewRules, watchOverviews } from "./overview.js";
 import { mountPanel } from "./panel.js";
 import "./page.css";
@@ -352,6 +352,21 @@ async function main() {
   watchOperator(viewer);
   watchRetiring(viewer);
   watchOverviews(viewer);
+  // The moment the picture gets a time axis, the view goes to the first time point.
+  // Left to itself the engine starts in the middle of an axis it does not draw, and
+  // loads a screenful of that time point before anything moves it. A store is said to
+  // have room for more time points than it holds, so the middle may not even exist.
+  {
+    const { position } = viewer.navigationState;
+    let timed = false;
+    position.coordinateSpace.changed.add(() => {
+      const space = position.coordinateSpace.value;
+      const axis = space?.names?.indexOf("t") ?? -1;
+      const now = axis !== -1 && Number.isFinite(space.bounds.lowerBounds[axis]);
+      if (now && !timed) toFirstTimePoint(viewer);
+      timed = now;
+    });
+  }
   // A window made larger or smaller, or a panel folded away, changes the room the
   // picture has. While the view is still framing everything it is fitted again, so the
   // picture is not left cropped or small with the Fit button hidden. A view the
@@ -366,6 +381,7 @@ async function main() {
   // For the tests, and for a look from the browser's console.
   window.mesospim = {
     overviewRules,
+    timePoints,
     framing,
     following,
     acquiring,

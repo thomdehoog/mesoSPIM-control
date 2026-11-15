@@ -316,18 +316,18 @@ def test_a_time_point_appended_to_a_tile_is_held_back_like_any_other_stack(libra
     library.begin_stack(a_stack(tmp_path, channels=("488",), planes=16, time_point=1))
     feed(library, range(0, 8))
     look(library)
-    assert sources(view, "run") == {"store-0": "data/0.1/", "live-1": "live/live-1/"}
+    assert sources(view, "run") == {"store-0": "data/0/", "live-1": "live/live-1/"}
     held = tile.write(0, t=1)
     look(library)
-    assert landed(view) == [] and status(view.url + "data/0.1/" + held[0]) == 404
-    assert status(view.url + "data/0.1/" + tile.files(0, t=0)[0]) == 200
+    assert landed(view) == [] and status(view.url + "data/0/" + held[0]) == 404
+    assert status(view.url + "data/0/" + tile.files(0, t=0)[0]) == 200
     feed(library, range(8, 16))
     library.end_stack()
     held += tile.write(1, t=1)
     look(library)
     look(library, SETTLE_S)
     assert [sorted(files) for _, files in landed(view)] == [sorted(held)]
-    assert status(view.url + "data/0.1/" + held[0]) == 200
+    assert status(view.url + "data/0/" + held[0]) == 200
 
 
 def test_a_stack_that_never_completes_on_disk_is_handed_over_all_the_same(library, tmp_path):

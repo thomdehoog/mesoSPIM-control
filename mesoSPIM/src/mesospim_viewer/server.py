@@ -178,6 +178,8 @@ class Stores:
         self._next = 0
         # Folders of the stores that were found to lie inside their store: (key, folder) -> path.
         self._folders: dict[tuple[str, str], Path] = {}
+        # For how many time points the page is told a store has room (see make_room).
+        self._room: dict[str, int] = {}
 
     def register(self, root: Path) -> str:
         root = root.resolve()
@@ -228,6 +230,47 @@ class Stores:
         except ValueError:
             return None
         return target
+
+    def make_room(self, root: Path, time_points: int) -> None:
+        """Tell the page that the store has room for ``time_points`` along time, however
+        many it holds now.
+
+        A time lapse makes a tile's store longer along time with every time point. The
+        page keeps a store's description for as long as it lives, so each time the store
+        grew it had to be given the store under a new address, and it then loaded
+        everything on screen a second time. Told from the start that there is room for
+        more, it has nothing to read again: a new time point is only more files landing.
+        Only the description the page is handed says so (the arrays' ``shape``); nothing
+        on disk is changed, and the time points that are not there yet read as empty.
+        """
+        key = self.register(root)
+        with self._lock:
+            self._room[key] = int(time_points)
+
+    def roomy(self, key: str, target: Path) -> bytes | None:
+        """The description file ``target`` of a store as the page is to see it, when the
+        store was given room along time; None for any other file."""
+        if target.name not in ("zarr.json", ".zarray"):
+            return None
+        with self._lock:
+            room = self._room.get(key.partition(".")[0])
+        if not room:
+            return None
+        try:
+            described = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+        def widen(array: object) -> None:
+            shape = array.get("shape") if isinstance(array, dict) else None
+            if isinstance(shape, list) and len(shape) >= 4 and isinstance(shape[0], int) and shape[0] < room:
+                shape[0] = room
+
+        widen(described)
+        gathered = described.get("consolidated_metadata") if isinstance(described, dict) else None
+        for array in (gathered or {}).get("metadata", {}).values() if isinstance(gathered, dict) else ():
+            widen(array)
+        return json.dumps(described).encode("utf-8")
 
     def in_a_file(self, key: str, relative: str) -> tuple[bool, bytes | None]:
         """For a store that is a stack in a TIFF, raw or HDF5 file: whether it is one, and
@@ -410,6 +453,10 @@ class Handler(BaseHTTPRequestHandler):
             target = self.server.stores.file(key, relative)
             if target is None:
                 self._send_empty(HTTPStatus.NOT_FOUND)
+                return
+            roomy = self.server.stores.roomy(key, target)
+            if roomy is not None:
+                self._send_bytes(roomy, head=head)
                 return
             self._send_file(target, head=head, cache="no-cache")
             return

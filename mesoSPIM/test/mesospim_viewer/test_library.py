@@ -199,7 +199,11 @@ def test_files_landing_in_a_tile_that_is_shown_are_named_to_the_page_once_each(l
     assert view.state["layers"] == before, "and nothing about the layers has changed"
 
 
-def test_a_tile_that_gains_a_time_point_is_read_again_alone(library, tmp_path):
+def test_a_tile_that_gains_a_time_point_is_the_same_store_to_the_page(library, tmp_path):
+    """A time lapse makes a tile's store longer with every time point. The page is told
+    from the start that the store has room for more, so a time point more changes nothing
+    it has to read again: the store keeps its address, and the new files are named as
+    they land."""
     acquisition = an_acquisition(tmp_path, "run")
     growing = Slabs(acquisition / TILE.format(0))
     growing.write_stack()
@@ -210,17 +214,19 @@ def test_a_tile_that_gains_a_time_point_is_read_again_alone(library, tmp_path):
     growing.create(timepoints=2)  # the writer grows the arrays first; the chunks land after
     library.clock.tick()
     library.poll()
-    assert sources(view, "run") == {"store-0": "data/0.1/", "store-1": "data/1/"}
+    assert sources(view, "run") == {"store-0": "data/0/", "store-1": "data/1/"}
     assert [store.shape[0] for store in view.stores("run")] == [2, 1]
+    assert view.scene["layers"][0]["_times"] == 2, "the page is told how many time points there are"
     files = growing.write(0, t=1)
     library.clock.tick()
     library.poll()
-    assert landed(view) == [("data/0", files)], "named by the store, whatever address it is read at"
-    assert status(view.url + "data/0.1/" + files[0]) == 200
+    assert landed(view) == [("data/0", files)]
+    assert status(view.url + "data/0/" + files[0]) == 200
     growing.create(timepoints=3)
     library.clock.tick()
     library.poll()
-    assert sources(view, "run") == {"store-0": "data/0.2/", "store-1": "data/1/"}
+    assert sources(view, "run") == {"store-0": "data/0/", "store-1": "data/1/"}
+    assert view.scene["layers"][0]["_times"] == 3
 
 
 def test_a_tile_that_has_just_appeared_is_looked_at_again_the_next_second(library, tmp_path):
@@ -293,7 +299,8 @@ def test_a_tile_that_is_whole_is_not_listed_again_only_its_description_is_read(l
     tile.create(timepoints=2)
     library.clock.tick(DOZING_S + 1)
     library.poll()
-    assert sources(view, "run") == {"store-0": "data/0.1/"}, "the store is given to the page anew: it has grown"
+    assert sources(view, "run") == {"store-0": "data/0/"} and view.scene["layers"][0]["_times"] == 2, (
+        "the page is told of the time point more, and has nothing to read again")
     files = tile.write(0, t=1)
     library.clock.tick()
     library.poll()

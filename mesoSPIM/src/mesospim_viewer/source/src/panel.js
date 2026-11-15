@@ -28,7 +28,7 @@ import { SidePanel } from "neuroglancer/unstable/ui/side_panel.js";
 import { TrackableSidePanelLocation } from "neuroglancer/unstable/ui/side_panel_location.js";
 import { frameBounds, framing, layoutOf, setLayout, volumeDrawing } from "./camera.js";
 import { stateWords, tileMapper, tileOutlines, watchPicture } from "./tilemap.js";
-import { about } from "./layers.js";
+import { about, onLayersChanged, timePoints } from "./layers.js";
 import { atRest, onAutoChanged, onRest } from "./contrast.js";
 import "./panel.css";
 
@@ -881,7 +881,9 @@ function axisSlider(viewer, axis, id, describe, changed) {
     const index = space?.names?.indexOf(axis) ?? -1;
     if (index === -1 || !space.bounds) return null;
     const low = space.bounds.lowerBounds[index];
-    const high = space.bounds.upperBounds[index];
+    let high = space.bounds.upperBounds[index];
+    // Along time, as far as there are time points, not as far as the stores have room.
+    if (axis === "t" && timePoints() > 0) high = Math.min(high, low + timePoints());
     if (!Number.isFinite(low) || !Number.isFinite(high) || high - low <= 1) return null;
     // Bounds run from the first voxel's near edge to the last one's far edge
     // (-0.5 .. n - 0.5), so voxel i is centred on i and the slider steps
@@ -911,6 +913,8 @@ function axisSlider(viewer, axis, id, describe, changed) {
   input.addEventListener("change", () => input.blur());
   position.changed.add(reflect);
   position.coordinateSpace.changed.add(reflect);
+  // A time point more is said by Python, and changes nothing in the engine's own space.
+  if (axis === "t") onLayersChanged(reflect);
   reflect();
   return box;
 }

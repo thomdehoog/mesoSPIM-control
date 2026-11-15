@@ -29,7 +29,7 @@ from typing import Callable
 
 from .omezarr import Channel, Store, read_store, sample_window
 from .server import ViewServer
-from .state import LAYOUTS, Layer, OverviewSource, Placement, Preview, engine_state, state_json
+from .state import LAYOUTS, Layer, OverviewSource, Placement, Preview, engine_state, state_json, store_times
 
 
 def _measure(layer: Layer, placement: Placement) -> None:
@@ -53,6 +53,9 @@ UI = ("full", "simple", "bare")
 # page lets it go by itself, as soon as the new reading's picture is up (twelve seconds
 # at the latest); after this time it is no longer named at all.
 HAND_OVER_S = 30.0
+# The page is told that a store with a time axis has room for at least this many time
+# points, and for twice as many as it holds (see Stores.make_room).
+ROOM_FOR_TIME_POINTS = 64
 
 
 def _si_factor(unit: str) -> float:
@@ -98,6 +101,8 @@ class Viewer:
         # How often each store's shape has changed while shown: the count is part
         # of the address the page reads the store at (see _url_for).
         self._revisions: dict[Path, int] = {}
+        # For how many time points the page was told each store has room.
+        self._room: dict[Path, int] = {}
         self._previews = 0
         self._layout = layout
         self._ui = {"transparent": transparent, "chrome": ui}
@@ -205,7 +210,21 @@ class Viewer:
             at = next(
                 (i for i, p in enumerate(held.placements) if p.store.path == store.path), None
             )
-            if at is not None and held.placements[at].store.shape != store.shape:
+            # A store that only gained time points, within the room the page was told it
+            # has, is the same store to the page: nothing is read again.
+            timed = bool(store.axes) and store.axes[0].name == "t"
+            fits = False
+            if timed:
+                room = self._room.get(store.path)
+                fits = (
+                    room is not None and at is not None and store.shape[0] <= room
+                    and held.placements[at].store.shape[1:] == store.shape[1:]
+                )
+                if room is None or store.shape[0] > room:
+                    room = max(ROOM_FOR_TIME_POINTS, 2 ** (2 * store.shape[0] - 1).bit_length())
+                    self._room[store.path] = room
+                    self._server.stores.make_room(store.path, room)
+            if at is not None and held.placements[at].store.shape != store.shape and not fits:
                 # The same store with another shape -- a time point was appended,
                 # or a stack was cut short -- so the page must read its
                 # description afresh: under a new address, since the engine keeps
@@ -409,6 +428,7 @@ class Viewer:
                     channel=channel,
                     index=getattr(stack, "channel_index", 0),
                     voxel_um=getattr(stack, "voxel_um", None),
+                    times=int(getattr(stack, "time_point", 0)) + 1,
                 )
             )
             self._publish()

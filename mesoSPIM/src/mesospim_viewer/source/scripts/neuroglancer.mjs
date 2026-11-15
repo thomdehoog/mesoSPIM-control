@@ -649,6 +649,23 @@ export function serializeAllTransformedSources(allSources) {`,
 ${anchor}`,
   },
   {
+    // 6. Reading ahead through time stops at the last time point there is. The
+    //    page is told that a store has room for more time points than it holds,
+    //    so that a time lapse's next time point is not a new store to it and
+    //    nothing on screen is loaded a second time (Stores.make_room). The engine
+    //    reads ahead of a view that moves through time, as far as a store's
+    //    extent goes, and would ask for time points that do not exist yet. How
+    //    many there really are travels with a source's rule (`times`).
+    module: "sliceview/backend.js",
+    anchor: `    const maxChunk = Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1;
+`,
+    replacement: () => `    const maxChunk = Math.min(
+      Math.ceil(tsource.upperClipBound[chunkDim] / chunkSize) - 1,
+      !isDisplayDimension && tsource.mesospim !== void 0 && tsource.mesospim.times !== void 0 ? Math.ceil(tsource.mesospim.times / chunkSize) - 1 : Infinity
+    );
+`,
+  },
+  {
     // The chunk worker is the one compiled here, at the page's root.
     module: "data_management_context.js",
     anchor: 'new URL("./chunk_worker.bundle.js", import.meta.url)',

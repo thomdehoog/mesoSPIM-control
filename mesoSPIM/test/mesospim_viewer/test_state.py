@@ -11,6 +11,7 @@ has. Python only.
 
 from __future__ import annotations
 
+import json
 import re
 
 import numpy as np
@@ -31,7 +32,7 @@ from mesoSPIM.src.mesospim_viewer import (
 from mesoSPIM.src.mesospim_viewer.state import SHADER, Preview, channel_controls, default_colour, dimensions
 
 from .stores import GROUND, Slabs, land, one_store_per_channel, an_acquisition, scale_values, take_chunks, write_store
-from .tools import status
+from .tools import get, status
 
 
 def events(view) -> list[dict]:
@@ -327,6 +328,20 @@ def test_a_store_whose_shape_changed_gets_a_new_address_and_no_other_does(viewer
     published = version(view)
     growing.create(timepoints=2)  # the writer appends a time point: metadata first
     view.add(growing.path, layer="run")
+    longer = view.scene["layers"][0]
+    # A time point more is the same store to the page, which was told it has room: the
+    # address stays, and only the count of time points is new.
+    assert version(view) == published + 1
+    assert longer["source"] == before["source"] and (before["_times"], longer["_times"]) == (1, 2)
+    described = json.loads(get(view.url + "data/1/0/zarr.json")[2])
+    assert described["shape"][0] == 64 and described["shape"][1:] == list(growing.shape[1:]), "room for 64 time points"
+    assert json.loads((growing.path / "0" / "zarr.json").read_text())["shape"][0] == 2, "nothing on disk is changed"
+    # A stack that makes the store deeper is another matter: the page has to read the
+    # store's description afresh, under a new address.
+    published = version(view)
+    growing.planes = 2 * growing.planes
+    growing.create(timepoints=2)
+    view.add(growing.path, layer="run")
     after = view.scene["layers"][0]
     assert version(view) == published + 1
     assert before["_sources"] == ["store-0", "store-1"]
@@ -339,6 +354,7 @@ def test_a_store_whose_shape_changed_gets_a_new_address_and_no_other_does(viewer
     assert after["_sources"][2:] == ["was-1.0"] and after["source"][2] == before["source"][1]
     assert after["_retiring"] == ["was-1.0"] and after["_handover"] == [["store-1", "was-1.0"]]
     assert [store.shape[0] for store in view.stores("run")] == [1, 2]
+    growing.planes = 2 * growing.planes
     growing.create(timepoints=3)
     view.add(growing.path, layer="run")
     again = view.scene["layers"][0]
@@ -363,6 +379,7 @@ def test_refreshing_reads_descriptions_again_and_asks_for_what_was_missing(viewe
     view.refresh()
     assert view.scene == before and version(view) == published
     assert events(view) == [{"type": "landed", "store": "data/0"}, {"type": "landed", "store": "data/1"}]
+    growing.planes = 2 * growing.planes
     growing.create(timepoints=2)
     view.refresh("run")
     assert view.scene["layers"][0]["source"][1]["url"].endswith("/data/1.1/|zarr3:")

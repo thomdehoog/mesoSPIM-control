@@ -21,7 +21,7 @@
  */
 import { makeLayer, deleteLayer } from "neuroglancer/unstable/layer/index.js";
 import { layerDataSourceSpecificationFromJson } from "neuroglancer/unstable/layer/layer_data_source.js";
-import { forgetOverview, reflectOverview } from "./overview.js";
+import { forgetOverview, reflectOverview, reflectTimes } from "./overview.js";
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -40,6 +40,17 @@ export function onLayersChanged(listener) {
 /** What Python says about a layer beyond what the engine holds: `_auto`, `_acquisition`... */
 export function about(name) {
   return held.get(name)?.spec ?? null;
+}
+
+/**
+ * How many time points there really are, over all layers (0 when Python has not said).
+ * The engine's own extent along time is no measure of it: the page is told that a store
+ * has room for more time points than it holds, so that one more is not a new store.
+ */
+export function timePoints() {
+  let most = 0;
+  for (const entry of held.values()) most = Math.max(most, entry.spec?._times ?? 0);
+  return most;
 }
 
 function forEngine(spec) {
@@ -277,7 +288,10 @@ export function applyLayers(viewer, specs, between) {
   });
   // Which source of a layer is an overview of its tiles, and from which zoom on it
   // stands in for them (overview.js).
-  for (const spec of specs) reflectOverview(viewer, spec.name, spec._overview);
+  for (const spec of specs) {
+    reflectOverview(viewer, spec.name, spec._overview);
+    reflectTimes(viewer, spec);
+  }
   // Heard after every scene, not only when a layer came or went: what Python
   // says about a layer (whether its contrast sets itself, say) may have changed.
   for (const listener of listeners) listener(changed);

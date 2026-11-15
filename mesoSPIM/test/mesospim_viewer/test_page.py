@@ -21,7 +21,7 @@ import pytest
 from mesoSPIM.src.mesospim_viewer import Channel, Library, PreviewStack, Stack, read_store
 from mesoSPIM.src.mesospim_viewer.demo import write_tile
 
-from .conftest import CONTRAST, PICTURE, WHERE
+from .conftest import CONTRAST, METADATA, PICTURE, WHERE
 from .stores import GROUND, an_acquisition, land, one_store_per_channel, take_chunks, write_store
 from .tools import until
 
@@ -389,26 +389,37 @@ def test_a_store_shown_before_its_chunks_landed_draws_them_once_they_are_named(p
     assert not errors, errors
 
 
-def test_a_store_that_gains_a_time_point_is_the_only_source_read_again(pages, viewers, tiles, tmp_path):
+def test_a_store_that_gains_a_time_point_has_nothing_read_again(pages, viewers, tiles, tmp_path):
+    """A time lapse makes every tile's store longer, time point after time point. The
+    page was told from the start that the store has room for more, so a time point
+    more costs it nothing: no description is read again and no chunk that is already
+    on the picture. It only looks ahead to the time point that has just become real."""
     store = write_tile(tmp_path / "growing.ome.zarr", origin_um=(0, 0, 0), seed=3, timepoints=1)
     view = viewers()
     view.add(store, layer="growing")
     view.add(tiles[1], layer="growing")
     page, errors = pages.open(view.start())
     pages.drawn(page, layers=2, sources=2)
+    time.sleep(1.0)
     made = pages.layer_objects(page)
-    extent = """() => { const s = window.viewer.navigationState.position.coordinateSpace.value;
-                        const t = s.names.indexOf('t'); return s.bounds.upperBounds[t] - s.bounds.lowerBounds[t]; }"""
-    assert page.evaluate(extent) == 1
+    time_points = "() => window.mesospim.timePoints()"
+    assert page.evaluate(time_points) == 1
+    first = pages.chunks_asked(page)
+    assert first and all(path.split("/")[-1].startswith("0.") for path in first), (
+        "only the one time point there is was asked for, though the store has room for more")
     page.evaluate(ADJUST)
     # The writer appends time points in place; the store is shown again.
     write_tile(store, origin_um=(0, 0, 0), seed=3, timepoints=3)
     since = len(pages.asked(page))
     view.add(store, layer="growing")
-    assert until(lambda: page.evaluate(extent), lambda seen: seen == 3, 20) == 3
+    assert until(lambda: page.evaluate(time_points), lambda seen: seen == 3, 20) == 3
     pages.drawn(page, layers=2, sources=2)
+    time.sleep(1.0)
     asked = pages.asked(page)[since:]
-    assert asked and all(path.startswith("data/0.1/") for path in asked), "the other tile is left alone"
+    assert not [path for path in asked if path.endswith(METADATA)], "no description is read again"
+    assert all(path.startswith("data/0/") for path in asked), "the other tile is left alone"
+    assert not set(asked) & set(first), "nothing that was on the picture is read again"
+    assert all(path.split("/")[-1].split(".")[0] in ("1", "2") for path in asked), "only the new time points are looked at"
     assert pages.layer_objects(page) == made, "the layers are the ones made first"
     assert page.evaluate(ADJUSTED) == {"opacity": 0.3, "colour": "#0000ff"}
     assert not errors, errors
