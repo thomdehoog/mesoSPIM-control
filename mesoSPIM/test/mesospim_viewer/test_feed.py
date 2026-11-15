@@ -659,7 +659,10 @@ def test_a_time_lapse_saved_as_a_folder_per_time_point_lists_each_under_its_own_
     (tmp_path / "Sample.ome_Time003.zarr").mkdir()  # being made: not a zarr group yet
     (tmp_path / "Sample_Time001.tiff").write_text("x")
     listed = Acquisitions(tmp_path).list()
-    assert [found.name for found in listed] == ["Sample_Time002", "Sample_Time001", "Sample"], "newest first"
+    folders = [found for found in listed if found.path.name.endswith(".zarr")]
+    assert [found.name for found in folders] == ["Sample_Time002", "Sample_Time001", "Sample"], "newest first"
+    # The TIFF beside them is a run of its own, saved as a file (see test_filestack.py).
+    assert [found.path.name for found in listed if found not in folders] == ["Sample_Time001.tiff.run"]
     assert plain_name(tmp_path / "Sample.ome_Time012.zarr") == "Sample_Time012"
     assert plain_name(tmp_path / "Sample_Time012.zarr") == "Sample_Time012"
     assert plain_name(tmp_path / "Sample_Time012.ome.zarr") == "Sample_Time012"

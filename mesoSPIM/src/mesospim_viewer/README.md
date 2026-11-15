@@ -295,11 +295,34 @@ writer notes every stack it begins in the store's description
 (`mesospim_last_stack`), so a stack acquired a second time is noticed from
 that one small file, and only the files written since are named to the page.
 
+## Runs saved as TIFF, raw or HDF5
+
+The page reads OME-Zarr only. A stack in a TIFF, raw or BigDataViewer HDF5 file
+is given a description as an OME-Zarr 0.4 store, made in memory, and the pieces
+of the picture are cut out of the file when the page asks for them
+(`filestack.py`). The rest of the viewer does not know the difference: such a
+stack has a path (`run.h5/s03` for the fourth stack of an HDF5 file),
+`read_store` describes it, and the server answers for it.
+
+The smaller copies of the picture are made by taking every n-th voxel, which
+costs no arithmetic. For a TIFF or raw file read in place only the rows that
+are kept are touched. For HDF5 whole blocks are read, so an overview of many
+large tiles is slow; the contrast of such a stack is therefore left to the
+page rather than measured from a sample.
+
+The TIFF or raw files of one run are grouped by what their names share
+(`run_key`); an HDF5 file is a run by itself. A run that the microscope is
+acquiring in one of these formats is not listed from disk while it runs, since
+its files cannot be read yet; when it ends it is opened from them and the
+frames kept in memory are let go (`Library._open_from_files`).
+
 ## Known limits
 
 - **Nothing is stitched.** Tiles are placed by their stage positions; where
   two overlap, the brighter of the two is seen. A stitched store is the way to
   a registered overlap.
+- **Several channels in one TIFF file are not read**; one file per channel is,
+  which is how mesoSPIM saves.
 - **The live preview is a thinned-out copy**: at most 512 voxels across and
   256 planes deep. It is for watching the run; the tile on disk replaces it.
 - **Following from disk alone is as coarse as the writer's slabs** (see "What

@@ -79,6 +79,10 @@ class Stack:
     # the acquisition's folder, and the store the stack lands in.
     folder: Path | None = None
     store: Path | None = None
+    # The file the stack is saved into when the run is saved as TIFF, raw or HDF5.
+    # Such a file cannot be read while it is written, so the run is shown from the
+    # camera's frames, and opened from its files once it is over.
+    file: Path | None = None
     # Where every tile of the run lies, when the microscope knows it from its acquisition
     # table: (name, (x low, x high, y low, y high, z low, z high)) in micrometres. The panel
     # draws its map of the tiles from this, the ones still to come included.

@@ -150,19 +150,19 @@ def open_acquired_dataset(main_window, path: str | None = None):
     """Ask for a dataset on disk and show it in the Data viewer, beside what it shows.
 
     The dataset can be one ``.ome.zarr`` tile, one ``.ome.zarr`` acquisition holding
-    tiles, or a data folder holding acquisitions (each is listed, the newest is shown).
-    If the folder holds none of these, the viewer says so on its picture. Returns the
-    window, or None.
+    tiles, a data folder holding acquisitions (each is listed, the newest is shown), or
+    a run saved as TIFF, raw or HDF5 (any one of its files). If the folder holds none of
+    these, the viewer says so on its picture. Returns the window, or None.
+
+    Without a ``path`` the window asks, first whether it is a folder or a file, because
+    the system's dialog can offer only one kind at a time.
     """
-    if path is None:
-        path = QtWidgets.QFileDialog.getExistingDirectory(
-            main_window, 'Open a dataset (a .ome.zarr folder)', acquisition_folder(main_window) or ''
-        )
-        if not path:
-            return None
     window = open_window(main_window)
     if window is not None:
-        window.open(path)
+        if path is None:
+            window.ask_and_open()
+        else:
+            window.open(path)
     return window
 
 
@@ -202,6 +202,11 @@ def describe_stack(core, acq, acq_list, frame_shape):
     # acquisition's folder as well (without the time index of a time lapse).
     store = getattr(writer, 'current_acquire_file_path', None)
     store = Path(store) if store and str(store).endswith('.ome.zarr') else None
+    # A run saved as TIFF, raw or HDF5 cannot be read while it is written. The viewer is
+    # told the file all the same, so that it can open the run from its files when it is over.
+    saved_as = None
+    if store is None and str(acq['filename']).lower().endswith(('.tif', '.tiff', '.btf', '.raw', '.h5')):
+        saved_as = Path(str(acq['folder'])) / str(acq['filename'])
     # A writer that keeps every time point of a tile in one store says where the run
     # as a whole is saved; with the others each time point is a dataset of its own.
     shared = getattr(writer, 'acquisition_path', None) if store is not None else None
@@ -251,6 +256,7 @@ def describe_stack(core, acq, acq_list, frame_shape):
         tiles=tiles,
         places=tile_places(core, table, frame_shape),
         colour=colour,
+        file=saved_as,
         folder=folder,
         store=store,
     )

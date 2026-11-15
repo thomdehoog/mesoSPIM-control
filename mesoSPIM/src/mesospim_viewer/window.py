@@ -136,9 +136,24 @@ def make_window_class():
         def ask_and_open(self) -> None:
             """Ask for a dataset on disk, as the panel's Open button does."""
             start = str(self.library.root) if self.library.root is not None else ""
-            path = QtWidgets.QFileDialog.getExistingDirectory(
-                self, "Open a dataset (a .ome.zarr folder, or a folder of acquisitions)", start
-            )
+            # A dataset is a folder (OME-Zarr) or a file (TIFF, raw, HDF5), and the
+            # system's dialog can offer one kind or the other, not both. So the
+            # operator says which first.
+            menu = QtWidgets.QMenu(self)
+            folder = menu.addAction("A folder: OME-Zarr, or a folder of acquisitions…")
+            file = menu.addAction("A file: TIFF, raw or HDF5…")
+            chosen = menu.exec_(self.cursor().pos())
+            if chosen is folder:
+                path = QtWidgets.QFileDialog.getExistingDirectory(
+                    self, "Open a dataset (a .ome.zarr folder, or a folder of acquisitions)", start
+                )
+            elif chosen is file:
+                path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                    self, "Open a run saved as TIFF, raw or HDF5 (any one of its files)", start,
+                    "Image stacks (*.tif *.tiff *.btf *.raw *.h5);;All files (*)",
+                )
+            else:
+                path = ""
             if path:
                 self.open(path)
 

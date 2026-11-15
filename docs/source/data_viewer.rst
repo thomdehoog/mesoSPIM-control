@@ -32,9 +32,38 @@ the camera's frames, the same frames the camera window shows. So the first
 plane is on screen as soon as the camera has delivered it, and this works
 whatever format the run is saved in. The picture of a running stack is a
 thinned-out copy held in memory; once the stack is complete on disk, the tile
-on disk takes its place. This needs an OME-Zarr writer: with another format the
-thinned-out copy is all the viewer can show, and the run cannot be opened in
-the viewer afterwards.
+on disk takes its place. With an OME-Zarr writer that happens stack by stack.
+A run saved as TIFF, raw or HDF5 cannot be read while it is written, so it
+stays on screen as the thinned-out copy until the whole run is over, and is
+then shown from its files, at full size.
+
+Runs saved as TIFF, raw or HDF5
+-------------------------------
+
+A run saved with ``Tiff_Writer``, ``Big_Tiff_Writer``, ``RAW_Writer`` or
+``H5_BDV_Writer`` can be opened like any other: with **Open…** (choose *A
+file* and pick any one file of the run), by dropping a file on the window, or
+from the list, where the runs of the data folder appear beside the OME-Zarr
+acquisitions. Nothing is converted and nothing is written to disk.
+
+* The TIFF or raw files of one run are told by their names. The words that
+  say which tile, channel, side or angle a file is (``Tile3``, ``Ch488``,
+  ``Sh0``, ``Rot0``) are left out, and files that agree in the rest are one
+  run. An HDF5 file holds a whole run by itself.
+* Where a stack lies and which channel it is comes from what mesoSPIM writes
+  beside the data: the ``_meta.txt`` file of a TIFF or raw stack, and the
+  ``.xml`` file of an HDF5 file. Keep those files with the data. A TIFF
+  without its ``_meta.txt`` still opens, at the origin and with a voxel
+  counted as one micrometre; a raw file without it cannot be opened, because
+  nothing else says how large a plane is.
+* These files have no smaller copies of the picture, which a view of a whole
+  acquisition needs. The viewer makes them up as it reads, by taking every
+  second voxel, every fourth, and so on. Zoomed in, such a run is as quick as
+  any. Zoomed out on many large tiles it is slower than OME-Zarr, most of all
+  for HDF5, where whole blocks have to be read to take a few voxels out of
+  each. For data you look at often, the OME-Zarr writers remain the better
+  choice.
+* Maximum projections (``MAX_...``) are not listed.
 
 * The **Live** button at the top left is lit while the view follows the
   acquisition, which means it shows the newest plane. If you step through the
@@ -393,10 +422,10 @@ If something is wrong
   64 planes at a time. This is the case when the window was started on its own
   (``python -m mesoSPIM.src.mesospim_viewer.window <folder>``) rather than from
   the View menu.
-* **A finished run stays coarse, and is gone when the window is closed**: it
-  was saved in a format the viewer cannot read from disk (TIFF, HDF5, raw), so
-  the thinned-out copy made from the camera's frames is all there is to show.
-  Only OME-Zarr can be opened again.
+* **A finished run saved as TIFF, raw or HDF5 stays coarse**: the viewer could
+  not read its files when the run ended, and went on showing the thinned-out
+  copy made from the camera's frames. It tries for a minute and a half. Open
+  the run again with **Open…**; if a file cannot be read, the picture says why.
 * **All channels look the same in a dataset from disk**: the dataset holds one
   store per channel, and the stores do not say which channel they hold (they
   have no ``omero`` block). The viewer then cannot tell them apart. This is the

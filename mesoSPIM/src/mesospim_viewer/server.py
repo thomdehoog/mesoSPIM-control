@@ -229,6 +229,24 @@ class Stores:
             return None
         return target
 
+    def in_a_file(self, key: str, relative: str) -> tuple[bool, bytes | None]:
+        """For a store that is a stack in a TIFF, raw or HDF5 file: whether it is one, and
+        the bytes of its file ``relative`` (None where it has none). Such a store is made
+        up as it is read (``filestack.py``); there is no folder to serve it from."""
+        from . import filestack
+
+        with self._lock:
+            root = self._roots.get(key.partition(".")[0])
+        if root is None or not (filestack.is_stack_file(root) or filestack.is_stack_file(root.parent)):
+            return False, None
+        if relative and not plain_path(relative):
+            return True, None
+        try:
+            held = filestack.virtual(root)
+            return True, held.read(relative) if held is not None else None
+        except Exception:  # noqa: BLE001 -- the file has gone, or cannot be read just now
+            return True, None
+
     def file(self, key: str, relative: str) -> Path | None:
         """The file ``relative`` of a store, if the page may have it and it is there.
 
@@ -382,6 +400,13 @@ class Handler(BaseHTTPRequestHandler):
             pieces = route[len("/data/") :].split("/", 1)
             key = pieces[0]
             relative = pieces[1] if len(pieces) > 1 else ""
+            made_up, body = self.server.stores.in_a_file(key, relative)
+            if made_up:
+                if body is None:
+                    self._send_empty(HTTPStatus.NOT_FOUND)
+                else:
+                    self._send_bytes(body, head=head)
+                return
             target = self.server.stores.file(key, relative)
             if target is None:
                 self._send_empty(HTTPStatus.NOT_FOUND)

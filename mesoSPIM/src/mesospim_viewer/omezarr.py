@@ -269,8 +269,17 @@ def _check_axes(root: Path, axes: tuple[Axis, ...]) -> None:
 
 
 def read_store(path: str | Path) -> Store:
-    """Describe the OME-Zarr store at ``path``."""
+    """Describe the OME-Zarr store at ``path``.
+
+    A stack saved as TIFF, raw or BigDataViewer HDF5 is described the same way: the
+    page is shown it as an OME-Zarr store that is made up as it is read (``filestack.py``).
+    """
     root = Path(path).expanduser().resolve()
+    from . import filestack  # here, not above: filestack is built on this module
+
+    in_a_file = filestack.virtual(root)
+    if in_a_file is not None:
+        return in_a_file.store
     attrs: dict | None
     fmt: str
     if (root / "zarr.json").is_file():
@@ -415,6 +424,14 @@ def read_levels(store: Store) -> tuple[Level, ...]:
     A level whose array cannot be read yet -- being created at this moment --
     is left out, and so are the coarser ones after it.
     """
+    from . import filestack
+
+    try:
+        in_a_file = filestack.virtual(store.path)
+    except ValueError:  # the file has gone, or can no longer be read
+        return ()
+    if in_a_file is not None:
+        return in_a_file.levels
     found = []
     for path in store.levels or ("0",):
         folder = store.path / path
@@ -482,6 +499,17 @@ def sample_window(store: Store, channel: int | None = None) -> tuple[float, floa
     None, as does one whose sample is flat or that cannot be read; the caller
     asks again when more has landed.
     """
+    from . import filestack
+
+    try:
+        in_a_file = filestack.virtual(store.path)
+        if in_a_file is not None:
+            # Where a sample would mean reading whole planes, it is left to the page,
+            # which sets the contrast from what is on screen.
+            return None if in_a_file.costly else robust_window(in_a_file.sample(SAMPLE_PLANES))
+    except Exception as error:  # noqa: BLE001 -- a file that has gone or cannot be read
+        logger.debug("no contrast from %s: %s", store.path, error)
+        return None
     try:
         import numpy as np
         import zarr

@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from . import filestack
 from .landing import Landing, Progress, newest_change
 from .live import Held, PreviewStack, Stack
 from .omezarr import Channel, NotAStore, NotSupported, Store, read_levels, read_store
@@ -142,6 +143,8 @@ def plain_name(path: Path) -> str:
     """A folder's name as the panel lists it: 'Sample.ome.zarr' -> 'Sample', and a
     time point of a time lapse, 'Sample.ome_Time003.zarr' -> 'Sample_Time003'."""
     name = path.name
+    if filestack.is_run(path):
+        return filestack.run_name(path)  # a run saved as TIFF, raw or HDF5 files
     if name.endswith(STORE_SUFFIX):
         return name[: -len(STORE_SUFFIX)]
     if name.endswith(".zarr"):
@@ -153,6 +156,8 @@ def plain_name(path: Path) -> str:
 class Acquisition:
     path: Path
     started: float  # when the folder appeared, as a timestamp
+    # For a run saved as TIFF or raw files: those files. (An HDF5 file is its own path.)
+    files: tuple[Path, ...] = ()
 
     @property
     def name(self) -> str:
@@ -166,6 +171,22 @@ class Acquisitions:
         self.root = Path(root).expanduser()
         # What each folder turned out to be, so it is opened once and not every second.
         self._known: dict[Path, bool] = {}
+        # The runs saved as files, and the folder's modification time they were read at.
+        self._runs: tuple[int, list[Acquisition]] = (-1, [])
+
+    def _file_runs(self) -> list[Acquisition]:
+        """The runs saved as TIFF, raw or HDF5 files directly in the folder. Read again
+        only when the folder has changed: a file added or taken away moves its time."""
+        try:
+            changed = self.root.stat().st_mtime_ns
+        except OSError:
+            return []
+        if changed != self._runs[0]:
+            self._runs = (changed, [
+                Acquisition(path=run.path, started=run.started, files=run.members)
+                for run in filestack.runs_in(self.root)
+            ])
+        return self._runs[1]
 
     def list(self) -> list[Acquisition]:
         found = []
@@ -173,6 +194,7 @@ class Acquisitions:
             entries = list(os.scandir(self.root))
         except OSError:
             return found
+        found.extend(self._file_runs())
         for entry in entries:
             path = Path(entry.path)
             # '.ome.zarr', and a time lapse's 'Sample.ome_Time003.zarr'.
@@ -217,6 +239,8 @@ class Tile:
     # Stacks of this store, as (time point, channel), that are shown from their
     # preview: their files are kept back from the page until the stack is whole.
     held: set[tuple[int, int]] = field(default_factory=set)
+    # A stack in a TIFF, raw or HDF5 file: all of it is there, and nothing lands in it.
+    in_a_file: bool = False
     # For a tile taken in as settled: when its newest file is asked for once more, and
     # which one that was (see CONFIRM_SETTLED_S). None once that has been done.
     confirm_at: float | None = None
@@ -292,6 +316,9 @@ class Dataset:
     # still to be read wait in ``_places_to_read`` (None before the first of them).
     listed_places: dict[str, dict] = field(default_factory=dict)
     _places_to_read: list[Path] | None = None
+    # The files a run that is being acquired is saved into, when it is saved as TIFF,
+    # raw or HDF5: shown from the camera's frames meanwhile, opened from them afterwards.
+    files: set[Path] = field(default_factory=set)
     _resolved: dict[str, Path] = field(default_factory=dict)
 
     def tile_paths(self) -> list[Path]:
@@ -299,6 +326,8 @@ class Dataset:
             return []
         if self.single:
             return [self.path]
+        if filestack.is_run(self.path):
+            return filestack.members_of(self.path)
         try:
             entries = sorted(os.scandir(self.path), key=lambda e: e.name)
         except OSError:
@@ -339,6 +368,9 @@ class Library:
         self.watched: Acquisitions | None = None
         self._top: Path | None = None  # the newest acquisition of the watched folder
         self._retiring: list[tuple[float, Held]] = []
+        # Runs saved as files that have ended and wait to be opened from those files,
+        # each with the time by which that is given up.
+        self._to_open_from_files: list[tuple[float, Dataset]] = []
         self._plane_at = -1e9
         self._offered: list[dict] | None = None
         self._closed = False
@@ -448,7 +480,15 @@ class Library:
     def _list_watched(self) -> None:
         if self.watched is None:
             return
-        listed = self.watched.list()
+        # The files of a run the microscope is acquiring are not listed while it runs: a
+        # TIFF or HDF5 file cannot be read while it is written, and the run is on screen
+        # from the camera's frames. It is opened from its files when it is over.
+        being_written = {file for dataset in self.datasets for file in dataset.files}
+        listed = [
+            found for found in self.watched.list()
+            if not (being_written and being_written.intersection(
+                [found.path.resolve(), *(file.resolve() for file in found.files)]))
+        ]
         here = set()
         for found in reversed(listed):  # oldest first, so the newest ends up on top
             path = self._resolved.get(found.path)
@@ -503,6 +543,22 @@ class Library:
             if held is not None:
                 self.show(held.name, True)
                 return [held.name]
+            if filestack.is_stack_file(path) and path.is_file():
+                # A TIFF, raw or HDF5 file: the whole run it belongs to is opened, the
+                # other tiles and channels saved beside it under the same name included.
+                run = filestack.run_at(path)
+                if run is None:
+                    raise NotAStore(f"{path} could not be read")
+                if not filestack.members_of(run.path):
+                    raise NotAStore(
+                        f"{path} holds no stacks the viewer can read",
+                        reason="it holds no image stacks the viewer can read",
+                    )
+                for member in filestack.members_of(run.path)[:1]:
+                    read_store(member)  # says why, if a file of this kind cannot be shown
+                dataset = self._at(run.path) or self._new(run.name, run.path, opened=True, started=run.started)
+                self.show(dataset.name, True)
+                return [dataset.name]
             try:
                 read_store(path)
                 single, why = True, None
@@ -676,6 +732,7 @@ class Library:
         with self._lock:
             if self._closed:
                 return
+            self._open_from_files(now)
             self._hand_over(now)
             self._offer()
             self._point(now)
@@ -724,6 +781,22 @@ class Library:
         if tile is None:
             if not hurried:
                 self._add_tile(dataset, path, now)
+            return
+        if tile.in_a_file:
+            # A file is whole or it is not there. It is only asked, now and then, whether
+            # it has changed (written again, or still growing under a writer that the
+            # viewer is not told about); if so its description is read afresh.
+            growing = dataset.path == self._top or time.time() - tile.store.stamp[0] / 1e9 < RECENT_S
+            if hurried or now - tile.looked_at < (DOZING_S if growing else ASLEEP_S):
+                return
+            tile.looked_at = now
+            try:
+                store = read_store(path)
+            except NotAStore:
+                return
+            if store.stamp != tile.store.stamp:
+                tile.describe(store)
+                self.viewer.add(path, layer=dataset.name, channel=channel_of(store), measure=False)
             return
         only_its_shape = False
         if tile.awake(now):
@@ -821,8 +894,11 @@ class Library:
         landing = Landing(path, phase=random.randrange(1000))
         tile = Tile(path=path, store=store, landing=landing, progress=None, looked_at=now, listed_at=now)
         tile.describe(store)
-        settled = self._settled_since(dataset, tile)
-        if settled:
+        tile.in_a_file = filestack.virtual(path) is not None
+        settled = 0 if tile.in_a_file else self._settled_since(dataset, tile)
+        if tile.in_a_file:
+            files = []
+        elif settled:
             landing.take_as_read(settled)
             tile.progress.take_as_whole()
             tile.settled_newest = settled
@@ -832,7 +908,7 @@ class Library:
             files = landing.look(now, thorough=True)  # what is there already: nothing has read it yet
         if tile.progress is not None:
             tile.progress.add(files)
-        if not settled and (not files or time.time() - landing.newest_s < AWAKE_S):
+        if not settled and not tile.in_a_file and (not files or time.time() - landing.newest_s < AWAKE_S):
             # A tile that has just appeared, or was written moments ago, is one to
             # keep an eye on: its next files land any second.
             tile.woken_at = now
@@ -897,6 +973,7 @@ class Library:
             now = self.clock()
             folder = stack.folder.expanduser().resolve() if stack.folder is not None else None
             dataset = self._at(folder) if folder is not None else None
+            saved_as = stack.file.expanduser().resolve() if stack.file is not None else None
             if dataset is None and folder is None:
                 dataset = next(
                     (d for d in self.datasets if d.path is None and d.name == stack.acquisition), None
@@ -922,6 +999,8 @@ class Library:
                 self._sort()
             dataset.over = False
             dataset.running = stack
+            if saved_as is not None:
+                dataset.files.add(saved_as)
             store = stack.store.expanduser().resolve() if stack.store is not None else None
             earlier = list(dataset.previews)
             preview = PreviewStack(stack)
@@ -1002,10 +1081,56 @@ class Library:
                 if dataset.in_run:
                     dataset.in_run = False
                     dataset.over = True  # what still lands is the writer finishing
+                    if dataset.files:
+                        self._to_open_from_files.append((self.clock() + GIVE_UP_S, dataset))
             if self._closed:
                 return
             self._offer()
             self._point(self.clock())
+
+    def _open_from_files(self, now: float) -> None:
+        """A run saved as TIFF, raw or HDF5 files has ended: show it from those files.
+
+        While it ran it was on screen from the camera's frames, thinned out to fit in
+        memory. Its files are whole now, and hold every plane at full size. As soon as
+        they can be read the run is opened from them, and the frames kept in memory are
+        let go. If they cannot be read within a minute and a half, the run stays as it
+        is, from memory.
+        """
+        for due, dataset in list(self._to_open_from_files):
+            if dataset not in self.datasets or dataset.in_run:
+                self._to_open_from_files.remove((due, dataset))
+                continue
+            runs = {}
+            for file in dataset.files:
+                run = filestack.run_at(file) if file.is_file() else None
+                if run is not None:
+                    runs[run.path] = run
+            ready = bool(runs)
+            try:
+                for run in runs.values():
+                    members = filestack.members_of(run.path)
+                    ready = ready and bool(members)
+                    for member in members:
+                        read_store(member)
+            except ValueError:  # NotAStore or NotSupported: not readable (yet)
+                ready = False
+            if not ready:
+                if now >= due:
+                    self._to_open_from_files.remove((due, dataset))
+                continue
+            self._to_open_from_files.remove((due, dataset))
+            shown, by_hand, hidden = dataset.shown, dataset.by_hand, dataset.hidden
+            dataset.files = set()
+            self.remove(dataset.name)
+            for run in sorted(runs.values(), key=lambda one: one.started):
+                opened = self._at(run.path) or self._new(run.name, run.path, started=run.started)
+                opened.over = True
+                opened.by_hand, opened.hidden = by_hand, hidden
+                if shown:
+                    opened.shown = True
+                    self._look(opened, now)
+            self._sort()
 
     def _acquiring(self) -> Held | None:
         for dataset in self.datasets:
@@ -1286,6 +1411,9 @@ _TILE_NUMBER = re.compile(r"Tile(\d+)")
 def position_name(path: Path) -> str:
     """A tile's position as the panel names it: "Tile 1" for a store called ``..._Tile0_...``,
     as the microscope names the tile it acquires; otherwise the store's own name."""
+    in_a_file = filestack.position_name(path)
+    if in_a_file is not None:
+        return in_a_file
     found = _TILE_NUMBER.search(path.name)
     return f"Tile {int(found.group(1)) + 1}" if found else plain_name(path)
 
