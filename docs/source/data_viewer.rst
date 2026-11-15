@@ -315,7 +315,9 @@ the computer has and takes a modest share:
 * **half of the memory of the graphics card it draws on**, and never more than
   4000 MB. A computer can have two graphics cards, a small one built into the
   processor and a large one beside it. The viewer asks its own window which
-  of them draws the picture, and only that card counts.
+  of them draws the picture, and only that card counts. The card's share is
+  also never more than half of the share of the computer's memory below,
+  because what is on the card is counted there as well.
 * **an eighth of the computer's memory**, and never more than 8000 MB. The
   camera, the file writer and the rest of mesoSPIM keep the rest.
 

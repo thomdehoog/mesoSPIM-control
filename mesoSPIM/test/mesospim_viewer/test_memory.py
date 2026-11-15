@@ -135,3 +135,21 @@ def test_a_viewer_asked_to_choose_takes_the_computers_memory_and_leaves_the_card
     assert Viewer(system_memory_mb="auto")._ui.get("memory") is None, "nothing found out: the engine's own limit"
     with pytest.raises(ValueError, match="positive"):
         Viewer(gpu_memory_mb="plenty")
+
+
+@pytest.mark.parametrize(
+    "system, expected",
+    [
+        (8000, {"gpu": 4_000_000_000}),   # room for all of the card's share
+        (5000, {"gpu": 2_500_000_000}),   # the card's share is held to half of the memory's
+        (None, {}),                       # the engine's 2000 MB of memory: its 1000 MB on the card stay
+    ],
+)
+def test_the_cards_share_is_never_more_than_half_of_the_memorys(monkeypatch, system, expected):
+    """The engine counts image data on the graphics card against the limit for the
+    computer's memory as well, so a larger share of the card could never be filled."""
+    from mesoSPIM.src.mesospim_viewer import viewer as module
+
+    monkeypatch.setattr(module, "card_mb", lambda renderer: ("A large card", 4000))
+    view = Viewer(gpu_memory_mb="auto", system_memory_mb=system)
+    assert view._card("ANGLE (A large card Direct3D11)") == expected

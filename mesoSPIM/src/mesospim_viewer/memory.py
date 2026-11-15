@@ -18,6 +18,8 @@ left at the engine's own limit.
   the processor and a large one beside it), so the page says which card it really
   draws on, and only that card's memory counts. If the page draws without a
   graphics card, or on one this module does not know, the engine's limit stays.
+  The viewer also keeps the card's share to half of the limit for the computer's
+  memory, because the engine counts what is on the card against that limit too.
 
 The microscope's configuration can set either limit itself (``data_viewer``); what
 it says is taken as it is and nothing here is asked.

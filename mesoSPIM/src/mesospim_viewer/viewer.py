@@ -28,7 +28,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from .memory import ENGINE_GPU_MB, card_mb, system_mb
+from .memory import ENGINE_GPU_MB, ENGINE_SYSTEM_MB, card_mb, system_mb
 from .omezarr import Channel, Store, read_store, sample_window
 from .server import ViewServer
 from .state import LAYOUTS, Layer, OverviewSource, Placement, Preview, engine_state, state_json, store_times
@@ -96,6 +96,9 @@ class Viewer:
         if ui not in UI:
             raise ValueError(f"ui must be one of {UI}")
         memory: dict = {}
+        # The limit for the computer's memory, whoever set it: the graphics card's own
+        # limit is held against it when the viewer chooses that one (see _card).
+        self._system_mb: float = ENGINE_SYSTEM_MB
         for name, megabytes in (("gpu", gpu_memory_mb), ("system", system_memory_mb)):
             if megabytes is None:
                 continue
@@ -106,6 +109,7 @@ class Viewer:
                 else:
                     found = system_mb()
                     if found is not None:
+                        self._system_mb = found
                         memory["system"] = found * 1_000_000
                         logger.info("The Data viewer keeps up to %d MB of image data in the computer's memory.", found)
                 continue
@@ -114,6 +118,8 @@ class Viewer:
                     f"{name}_memory_mb must be a positive number of megabytes or 'auto', not {megabytes!r}"
                 )
             memory[name] = int(megabytes * 1_000_000)
+            if name == "system":
+                self._system_mb = megabytes
         if layout not in LAYOUTS:
             raise ValueError(f"layout must be one of {LAYOUTS}")
         self._host = host
@@ -146,6 +152,16 @@ class Viewer:
             )
             return {}
         name, megabytes = found
+        # The engine counts what is on the graphics card against the limit for the
+        # computer's memory as well. A card's share larger than half of that limit could
+        # never be filled, and would leave nothing for what was drawn a moment ago.
+        megabytes = min(megabytes, int(self._system_mb // 2))
+        if megabytes <= ENGINE_GPU_MB:
+            logger.info(
+                "The Data viewer keeps its own limit of %d MB on the graphics card (%s): "
+                "the computer's memory leaves no room for more.", ENGINE_GPU_MB, name,
+            )
+            return {}
         logger.info("The Data viewer keeps up to %d MB of image data on the graphics card (%s).", megabytes, name)
         return {"gpu": megabytes * 1_000_000}
 
