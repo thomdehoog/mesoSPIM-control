@@ -341,7 +341,37 @@ window. Everything should pass. One test, ``test_realistic.py ... [feed]``,
 measures timing and can fail while the PC is busy with something else; run it
 again on its own before reading anything into it.
 
-Then by hand, in demo mode with the Data viewer open:
+Then the rehearsal. It opens the Data viewer window itself, on the PC's own
+screen and graphics card, and goes through what an operator would: a saved
+acquisition, data from the microscope's writer with and without shards, a run
+followed live, a time lapse, 2D and 3D, the map, a large acquisition with its
+overview, and runs saved as TIFF and HDF5. It needs no microscope and does not
+start mesoSPIM. A window is on screen while it works; leave it alone for the
+few minutes it takes.
+
+.. code-block:: bat
+
+   python -m mesoSPIM.test.mesospim_viewer.rehearsal
+
+Every step is reported as PASS or FAIL with a sentence about what was seen,
+and the whole report is also written to ``data_viewer_rehearsal.txt`` in the
+folder you started it from. Send that file along if something fails. Three
+parts of the report are worth reading even when everything passes:
+
+* **How it moves on this PC.** The time between two frames while the picture
+  is panned, zoomed and turned. About 17 ms is as smooth as a 60 Hz screen can
+  show; above 50 ms it feels slow.
+* **The large acquisition.** How long a hundred tiles take to appear, and how
+  much the engine does for one frame zoomed out and zoomed in. Zoomed out the
+  number should be small (about ten): the overview picture stands in for the
+  tiles. ``--tiles 300`` tries a larger one.
+* **Memory.** What the graphics card and the computer have, and, if there is
+  room, a ``data_viewer`` line for the configuration file.
+
+Then by hand, in demo mode with the Data viewer open. The rehearsal has already
+covered checks 1, 9, 10, 11 and 12 as far as a script can; do those by hand
+only to see for yourself how it feels. The others happen in mesoSPIM's own
+windows, or need a real Stop, and a script outside mesoSPIM cannot do them:
 
 1. **Data saved in shards shows up.** Choose ``MP_OME_Zarr_Writer`` with
    ``'ome_version': '0.5'`` and its default ``'shards'``, run two tiles, and
@@ -418,6 +448,20 @@ Then by hand, in demo mode with the Data viewer open:
     time lapse of one time point of two tiles, wait more than ten minutes, and
     run it again under the same name. In the viewer the tiles should be
     replaced by the new data as it is written, without closing the window.
+16. **A run saved as TIFF, and one as HDF5.** Run two tiles in two channels
+    with ``Tiff_Writer``. While it runs the picture comes from the camera's
+    frames, and the data folder's list shows the run once. A moment after the
+    run has ended, zoom in: the picture should now be sharp, because it is read
+    from the files. Close the Data viewer, open it again, choose **Open…**,
+    *A file*, and pick any one of the run's TIFF files: all four stacks should
+    appear, as two tiles with two channels. Repeat with ``H5_BDV_Writer``.
+17. **Do neighbouring tiles line up?** With real data from the microscope, look
+    at the strip two neighbouring tiles share. A structure in it should be in
+    the same place in both. If the tiles look mirrored against each other, or
+    the mosaic is laid out the wrong way round, write down which writer saved
+    the run: OME-Zarr and TIFF runs are placed by the stage position as it is,
+    HDF5 runs as BigStitcher would place them, and only real data shows whether
+    both are right.
 
 If something is wrong
 ---------------------
