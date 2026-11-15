@@ -133,10 +133,9 @@ It began beside the [ZMART viewer](https://github.com/thomdehoog/ZMART-viewer),
 which grew to follow a running
 acquisition of tens of thousands of positions: a replaced interface, paced
 source hand-over, server-side composition of many stores into one, baked
-pyramids, publication records and live refresh patches to the engine. None of
-that is needed for a view that shows at most a few dozen stores, so
-this package starts again from native neuroglancer and takes three things
-across:
+pyramids, publication records and live refresh patches to the engine. This
+package starts again from native neuroglancer, to stay small, and takes three
+things across:
 
 - **A layer is one acquisition, its positions are its sources.** The engine
   places each source by a transform and composites them; nothing is stitched.
@@ -148,6 +147,13 @@ across:
 Left out, on purpose: the composed `.zmartview.zarr` picture, baking,
 publication and revision bookkeeping, the React interface, and every server
 route that is not needed here.
+
+One of its lessons came back later. The ZMART viewer's notes say that the
+engine's cost is per source, not per byte, and that is why it gives the engine
+one picture for a whole run. A mesoSPIM acquisition of a hundred tiles meets
+the same wall. The answer here is smaller than a composed picture on disk: one
+overview made in memory, which stands in for the tiles only while the view is
+zoomed out (see "Many tiles").
 
 What the build does to the pinned engine is in `source/scripts/neuroglancer.mjs`,
 applied while the page is built, never to the installed engine, so building
