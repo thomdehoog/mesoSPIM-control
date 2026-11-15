@@ -233,6 +233,12 @@ class Layer:
     visible: bool = True
     measured: dict[str, tuple[float, float]] = field(default_factory=dict)
     previews: list[Preview] = field(default_factory=list)
+    # Stores whose shape has changed (a time point appended) are read again, under a
+    # new address. The reading the page has on screen is kept until the new one's
+    # picture is up, so that the tile does not go black in between. Each entry is the
+    # earlier reading under a name of its own, when it was set aside (on the monotonic
+    # clock), and the name of the source that takes over from it.
+    outgoing: list[tuple[Placement, float, str]] = field(default_factory=list)
     # Whether the page keeps setting the contrast from what is on screen, until
     # the operator sets it themselves: for an acquisition that is being written,
     # whose brightness nobody knows yet.
@@ -321,6 +327,14 @@ class Layer:
                         # A preview has a channel axis of its own (live.py); a layer
                         # whose stores have none reads the preview at its index.
                         pinned = preview.index
+            handover = []
+            for earlier, _since, current in self.outgoing:
+                if current not in ids:
+                    continue  # of another channel's stores, or its store has been taken off
+                sources.append(source_json(earlier))
+                ids.append(earlier.id)
+                retiring.append(earlier.id)
+                handover.append([current, earlier.id])
             layer = {
                 "type": "image",
                 "name": channel_layer_name(self.name, channel),
@@ -339,6 +353,9 @@ class Layer:
                 "_channel": channel.label,
                 "_sources": ids,
                 "_retiring": retiring,
+                # Pairs of a source and the earlier reading of the same store it takes
+                # over from (see ``outgoing``).
+                "_handover": handover,
             }
             if pinned is not None:
                 # Which channel of the store this layer reads: the engine keeps the c

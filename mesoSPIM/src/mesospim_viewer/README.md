@@ -106,6 +106,10 @@ So nothing is rebuilt:
 - **A layer is built once and then changed in place** (`source/src/layers.js`).
   A tile that lands is one source added to it. A tile whose shape changed -- a
   time point appended -- is that one source read again under a new address.
+  The reading that is on screen stays beside the new one until the new one's
+  picture is up, and is let go then. Emptied at once, as it used to be, the
+  tile went black for about half a second, once per tile and time point of a
+  time lapse.
   A contrast window measured later is that control moved, unless the operator
   has moved it since.
 - **A store that is being written is not read again as a whole.** Python

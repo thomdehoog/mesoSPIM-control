@@ -95,9 +95,13 @@ def follow(view) -> dict:
 
 
 def sources(view, acquisition: str) -> dict[str, str]:
-    """The sources of an acquisition's first channel: lasting name -> address below the server."""
+    """The sources of an acquisition's first channel: lasting name -> address below the server.
+
+    Left out are the earlier readings of a store that has grown (``was-...``), which stay
+    only until the page has the new reading's picture up."""
     layer = next(spec for spec in view.scene["layers"] if spec["_acquisition"] == acquisition)
     return {
         name: source["url"].split("|")[0].replace(view.url, "")
         for name, source in zip(layer["_sources"], layer["source"])
+        if not name.startswith("was-")
     }

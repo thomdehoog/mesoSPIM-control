@@ -106,6 +106,21 @@ function reconcileSources(layer, entry, spec) {
   for (const id of entry.retired) {
     if (!wanted.includes(id)) entry.retired.delete(id);
   }
+  // A store that has grown (a time point appended) is read again under a new address.
+  // The source that is on screen is not given that address, which would empty it at
+  // once and leave the tile black until it had loaded again. It goes on under another
+  // name, as the earlier reading, and a new source is added for the new address below.
+  // The earlier one is retiring from the start: it goes when the new picture is up.
+  const earlierReadings = new Set();
+  for (const [id, earlier] of spec._handover ?? []) {
+    earlierReadings.add(earlier);
+    const here = entry.ids.indexOf(id);
+    if (here === -1 || entry.ids.includes(earlier) || entry.retired.has(earlier)) continue;
+    const was = before[beforeIds.indexOf(id)];
+    const kept = sources[wanted.indexOf(earlier)];
+    const now = sources[wanted.indexOf(id)];
+    if (was && kept && now && same(was, kept) && !same(was, now)) entry.ids[here] = earlier;
+  }
   for (const id of spec._retiring ?? []) {
     if (entry.ids.includes(id) && !entry.retiring.has(id)) entry.retiring.set(id, performance.now());
   }
@@ -113,13 +128,16 @@ function reconcileSources(layer, entry, spec) {
     if (entry.retired.has(id)) return; // let go already, ahead of Python
     const here = entry.ids.indexOf(id);
     if (here === -1) {
+      // An earlier reading is only ever a source that was on screen already. A page
+      // opened in the middle of a hand-over has none, and does not load one.
+      if (earlierReadings.has(id)) return;
       // New: one more source, and nothing else is touched.
       layer.addDataSource(layerDataSourceSpecificationFromJson(sources[at]));
       entry.ids.push(id);
       return;
     }
     const was = before[beforeIds.indexOf(id)];
-    if (!same(was, sources[at])) {
+    if (was !== undefined && !same(was, sources[at])) {
       // Another address or another place: this source alone is read again.
       layer.dataSources[here].spec = layerDataSourceSpecificationFromJson(sources[at]);
     }

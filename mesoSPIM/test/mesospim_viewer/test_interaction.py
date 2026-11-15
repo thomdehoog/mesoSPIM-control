@@ -451,3 +451,42 @@ def test_hiding_and_showing_a_channel_and_pointing_at_tiles_does_not_flicker(ses
     black = [frame for frame in frames if frame["lit"] == 0]
     assert not black, f"{len(black)} of {len(frames)} frames were black"
     assert not session.errors, session.errors
+
+
+def test_a_tile_that_gains_a_time_point_stays_on_the_picture(pages, viewers, tmp_path):
+    """In a time lapse every tile's store grows by a time point, again and again. The page
+    has to read such a store afresh, and it used to empty the tile's source to do so:
+    the tile went black for about half a second, once per tile and time point. The
+    reading that is on screen now stays until the new one's picture is up."""
+    store = write_tile(tmp_path / "growing.ome.zarr", origin_um=(0, 0, 0), seed=3, timepoints=1)
+    view = viewers(ui="simple")
+    view.add(store, layer="lapse")
+    view.fit()
+    page, errors = pages.open(view.start(), width=1000, height=640)
+    pages.drawn(page, layers=2)
+    page.evaluate(RECORD)
+    redraw = """() => { for (const panel of window.viewer.display.panels) if (panel.sliceView) panel.sliceView.renderingStale = true;
+      window.viewer.display.scheduleRedraw(); }"""
+
+    def a_few_frames():
+        for _ in range(4):
+            page.evaluate(redraw)
+            time.sleep(0.15)
+
+    full = max(frame["lit"] for frame in _recorded(page, a_few_frames, settle_s=0.3))
+    assert full > 200, "there is specimen on the picture to begin with"
+
+    def grow():
+        write_tile(store, origin_um=(0, 0, 0), seed=3, timepoints=3)   # the writer appends in place
+        view.add(store, layer="lapse")
+
+    frames = _recorded(page, grow, settle_s=4.0)
+    assert frames, "the picture was drawn again while the store was read afresh"
+    least = min(frame["lit"] for frame in frames)
+    assert least >= 0.9 * full, f"the tile dropped out of the picture: {least} of {full} lit samples"
+    extent = """() => { const s = window.viewer.navigationState.position.coordinateSpace.value;
+                        const t = s.names.indexOf('t'); return s.bounds.upperBounds[t] - s.bounds.lowerBounds[t]; }"""
+    assert until(lambda: page.evaluate(extent), lambda seen: seen == 3, 20) == 3, "the new time points are there"
+    counts = "() => window.viewer.layerManager.managedLayers.map(m => m.layer.dataSources.length)"
+    assert until(lambda: page.evaluate(counts), lambda seen: seen == [1, 1], 20) == [1, 1], "the earlier reading was let go"
+    assert not errors, errors

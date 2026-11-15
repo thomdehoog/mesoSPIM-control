@@ -329,14 +329,25 @@ def test_a_store_whose_shape_changed_gets_a_new_address_and_no_other_does(viewer
     view.add(growing.path, layer="run")
     after = view.scene["layers"][0]
     assert version(view) == published + 1
-    assert after["_sources"] == before["_sources"] == ["store-0", "store-1"], "the names stay"
+    assert before["_sources"] == ["store-0", "store-1"]
+    assert after["_sources"][:2] == ["store-0", "store-1"], "the names stay"
     assert after["source"][0] == before["source"][0], "the other tile is not read again"
     assert before["source"][1]["url"].endswith("/data/1/|zarr3:")
     assert after["source"][1]["url"].endswith("/data/1.1/|zarr3:")
+    # The reading the page has on screen is kept beside the new one, under a name of its
+    # own and marked as on its way out, so that the tile is never without a picture.
+    assert after["_sources"][2:] == ["was-1.0"] and after["source"][2] == before["source"][1]
+    assert after["_retiring"] == ["was-1.0"] and after["_handover"] == [["store-1", "was-1.0"]]
     assert [store.shape[0] for store in view.stores("run")] == [1, 2]
     growing.create(timepoints=3)
     view.add(growing.path, layer="run")
-    assert view.scene["layers"][0]["source"][1]["url"].endswith("/data/1.2/|zarr3:")
+    again = view.scene["layers"][0]
+    assert again["source"][1]["url"].endswith("/data/1.2/|zarr3:")
+    assert again["_handover"] == [["store-1", "was-1.0"], ["store-1", "was-1.1"]]
+    # Taking the store off takes its earlier readings off with it.
+    assert view.remove_store("run", growing.path) is True
+    assert view.scene["layers"][0]["_sources"] == ["store-0"]
+    view.add(growing.path, layer="run")
     # Every address names the same store on the server.
     for address in ("data/1/", "data/1.1/", "data/1.2/"):
         assert status(view.url + address + "zarr.json") == 200, address

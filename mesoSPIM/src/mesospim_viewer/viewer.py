@@ -21,6 +21,7 @@ does from a look at the disk), and the page reads exactly those.
 from __future__ import annotations
 
 import threading
+import time
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -48,6 +49,10 @@ PAGE_DIR = Path(__file__).resolve().parent / "build"
 # with our panel on the right and the sliders on the picture ("simple"), or as
 # nothing but the picture for a host that draws its own controls ("bare").
 UI = ("full", "simple", "bare")
+# The earlier reading of a store that has grown is listed for the page this long. The
+# page lets it go by itself, as soon as the new reading's picture is up (twelve seconds
+# at the latest); after this time it is no longer named at all.
+HAND_OVER_S = 30.0
 
 
 def _si_factor(unit: str) -> float:
@@ -207,7 +212,16 @@ class Viewer:
                 # what it read under the old one. Only this source is read again;
                 # it keeps its place among the others. Chunks that land in a
                 # store of the same shape need none of this: see landed().
-                self._revisions[store.path] = self._revisions.get(store.path, 0) + 1
+                #
+                # The reading the page has on screen stays until the new one's picture
+                # is up. Without that the tile went black for about half a second each
+                # time its store grew: once per tile and time point of a time lapse.
+                earlier = held.placements[at]
+                was = self._revisions.get(store.path, 0)
+                now = time.monotonic()
+                held.outgoing = [entry for entry in held.outgoing if now - entry[1] < HAND_OVER_S]
+                held.outgoing.append((replace(earlier, id=f"was-{key}.{was}"), now, earlier.id))
+                self._revisions[store.path] = was + 1
             placement = Placement(
                 store=store,
                 url=self._store_url(key, store, self._revisions.get(store.path, 0)),
@@ -299,6 +313,7 @@ class Viewer:
             if len(kept) == len(held.placements):
                 return False
             held.placements = kept
+            held.outgoing = [entry for entry in held.outgoing if entry[0].store.path != wanted]
             if not kept and not held.previews:
                 del self._layers[layer]
             self._publish()
