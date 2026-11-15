@@ -351,9 +351,11 @@ data_viewer
 ~~~~~~~~~~~
 
 Optional. How much image data the :doc:`Data viewer <data_viewer>` may keep at
-hand, in megabytes. Leave the section out and the viewer keeps its own limits
-(1000 MB on the graphics card, 2000 MB in the computer's memory), which suit
-any computer.
+hand, in megabytes. Leave the section out, or one of its entries, and the
+viewer chooses from what the computer has: half of the graphics card it draws
+on (at most 4000 MB) and an eighth of the computer's memory (at most 8000 MB).
+When it cannot tell what the computer has, it keeps 1000 MB and 2000 MB, which
+are safe on any computer.
 
 .. code-block:: python
 
@@ -362,10 +364,11 @@ any computer.
        'system_memory_MB': 8000,   # image data kept in the computer's memory
    }
 
-Raise them on a computer with a large graphics card, so that a large
-acquisition is drawn in finer detail. Keep ``gpu_memory_MB`` well below the
-memory the graphics card has, and leave room in the computer's memory for the
-camera and the file writer.
+Set them yourself when the viewer's choice does not suit the computer: higher
+on one with a very large graphics card, so that a large acquisition is drawn
+in finer detail, or lower when another program needs the card. Keep
+``gpu_memory_MB`` well below the memory the graphics card has, and leave room
+in the computer's memory for the camera and the file writer.
 
 stages / zoom / ETL
 ~~~~~~~~~~~~~~~~~~~~

@@ -104,12 +104,20 @@ the first.
 So nothing is rebuilt:
 
 - **A layer is built once and then changed in place** (`source/src/layers.js`).
-  A tile that lands is one source added to it. A tile whose shape changed -- a
-  time point appended -- is that one source read again under a new address.
-  The reading that is on screen stays beside the new one until the new one's
-  picture is up, and is let go then. Emptied at once, as it used to be, the
-  tile went black for about half a second, once per tile and time point of a
-  time lapse.
+  A tile that lands is one source added to it.
+- **A time point more is not a new store to the page.** In a time lapse every
+  tile's store grows by a time point, again and again. The server tells the
+  page from the start that a store has room for more time points than it holds
+  (64, or more when a run needs it; `Stores.roomy` in `server.py`), and the
+  scene says how many are real (`_times`). A time point appended then leaves
+  the store's address and everything the page has read of it as they are. The
+  time slider ends at the last real time point, the view starts on the first,
+  and the engine's reading ahead along time stops at the last real one, so the
+  room costs no request (`reflectTimes` in `overview.js`, and the sixth edit in
+  `scripts/neuroglancer.mjs`).
+- **A tile whose depth changed is read again without going black.** That one
+  source is read under a new address. The reading that is on screen stays
+  beside the new one until the new one's picture is up, and is let go then.
   A contrast window measured later is that control moved, unless the operator
   has moved it since.
 - **A store that is being written is not read again as a whole.** Python
@@ -270,9 +278,10 @@ chunk is what one step through the planes costs: a chunk 64 planes deep is
 read whole to show one of them, and the next 63 are then free.
 
 A store may grow while it is shown. Files that land in it are picked up as
-described above. A time point appended to it changes its shape, and the page
-then reads that one store's description again, without touching the other
-stores or the operator's adjustments.
+described above. A time point appended to it is no news to the page, which
+was told the store has room for it. A stack that makes the store deeper
+changes its shape, and the page then reads that one store's description
+again, without touching the other stores or the operator's adjustments.
 
 Placement reads the store's own `scale` and `translation` (per-dataset and
 multiscale-level transformations composed the way the format says). The
@@ -389,6 +398,8 @@ Python:
   events in a short numbered log; where the newest plane is travels beside
   both, so a new plane costs a few bytes.
 - `viewer.py` is the API.
+- `memory.py` suggests how much image data the page may keep at hand, from
+  the computer's memory and from the graphics card the page says it draws on.
 - `landing.py` answers "which files of this store are new?" cheaply, once a
   second, and turns the answer into how many planes of each stack are complete.
 - `live.py` is the stack being acquired, held in memory and read by the page

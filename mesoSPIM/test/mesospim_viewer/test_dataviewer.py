@@ -436,26 +436,30 @@ def test_the_configuration_may_set_how_much_memory_the_viewer_uses():
 
     cfg = SimpleNamespace(data_viewer={'gpu_memory_MB': 4000, 'system_memory_MB': 8000})
     assert viewer_settings(cfg) == {'gpu_memory_mb': 4000.0, 'system_memory_mb': 8000.0}
-    assert viewer_settings(SimpleNamespace(data_viewer={'gpu_memory_MB': 2500})) == {'gpu_memory_mb': 2500.0}
+    assert viewer_settings(SimpleNamespace(data_viewer={'gpu_memory_MB': 2500})) == {
+        'gpu_memory_mb': 2500.0, 'system_memory_mb': 'auto'}, "what is left out is the viewer's to choose"
 
 
-def test_a_configuration_that_says_nothing_leaves_the_viewer_as_it_is():
+def test_a_configuration_that_says_nothing_leaves_the_choice_to_the_viewer():
+    """Most configurations say nothing about the Data viewer. The viewer then looks at
+    what the computer has and takes a modest share of it."""
     from mesoSPIM.src.mesoSPIM_DataViewer import viewer_settings
 
-    assert viewer_settings(SimpleNamespace()) == {}
-    assert viewer_settings(SimpleNamespace(data_viewer={})) == {}
-    assert viewer_settings(SimpleNamespace(data_viewer=None)) == {}
-    assert viewer_settings(None) == {}
+    chosen = {'gpu_memory_mb': 'auto', 'system_memory_mb': 'auto'}
+    assert viewer_settings(SimpleNamespace()) == chosen
+    assert viewer_settings(SimpleNamespace(data_viewer={})) == chosen
+    assert viewer_settings(SimpleNamespace(data_viewer=None)) == chosen
+    assert viewer_settings(None) == chosen
 
 
-def test_a_memory_limit_that_is_no_number_is_left_out_and_said_in_the_log(caplog):
+def test_a_memory_limit_that_is_no_number_is_passed_over_and_said_in_the_log(caplog):
     """A slip in the configuration file must not keep the Data viewer from opening."""
     import logging
     from mesoSPIM.src.mesoSPIM_DataViewer import viewer_settings
 
     cfg = SimpleNamespace(data_viewer={'gpu_memory_MB': 'lots', 'system_memory_MB': -5})
     with caplog.at_level(logging.WARNING):
-        assert viewer_settings(cfg) == {}
+        assert viewer_settings(cfg) == {'gpu_memory_mb': 'auto', 'system_memory_mb': 'auto'}
     assert "gpu_memory_MB" in caplog.text and "system_memory_MB" in caplog.text
 
 

@@ -20,6 +20,7 @@ does from a look at the disk), and the page reads exactly those.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import webbrowser
@@ -27,6 +28,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
+from .memory import ENGINE_GPU_MB, card_mb, system_mb
 from .omezarr import Channel, Store, read_store, sample_window
 from .server import ViewServer
 from .state import LAYOUTS, Layer, OverviewSource, Placement, Preview, engine_state, state_json, store_times
@@ -53,6 +55,10 @@ UI = ("full", "simple", "bare")
 # page lets it go by itself, as soon as the new reading's picture is up (twelve seconds
 # at the latest); after this time it is no longer named at all.
 HAND_OVER_S = 30.0
+# In place of a number of megabytes: let the viewer choose from what the computer has.
+AUTO = "auto"
+
+logger = logging.getLogger(__name__)
 # The page is told that a store with a time axis has room for at least this many time
 # points, and for twice as many as it holds (see Stores.make_room).
 ROOM_FOR_TIME_POINTS = 64
@@ -75,22 +81,38 @@ class Viewer:
         transparent: bool = False,
         ui: str = "full",
         layout: str = "xy",
-        gpu_memory_mb: float | None = None,
-        system_memory_mb: float | None = None,
+        gpu_memory_mb: float | str | None = None,
+        system_memory_mb: float | str | None = None,
     ) -> None:
         """``gpu_memory_mb`` and ``system_memory_mb`` say how much image data the page may
         keep at hand, in megabytes: on the graphics card (what is being drawn) and in the
         computer's memory (what was drawn a moment ago and may be wanted again). Left out,
         the page keeps its own limits of 1000 and 2000 MB. More lets a large acquisition
-        be shown in finer detail, above all as a volume, on a computer that has the room."""
+        be shown in finer detail, above all as a volume, on a computer that has the room.
+
+        Either may also be ``"auto"``: the viewer then looks at what this computer has and
+        takes a modest share of it (see ``memory.py``), or keeps the page's own limit when
+        it cannot tell."""
         if ui not in UI:
             raise ValueError(f"ui must be one of {UI}")
-        memory = {}
+        memory: dict = {}
         for name, megabytes in (("gpu", gpu_memory_mb), ("system", system_memory_mb)):
             if megabytes is None:
                 continue
-            if not megabytes > 0:
-                raise ValueError(f"{name}_memory_mb must be a positive number of megabytes, not {megabytes!r}")
+            if megabytes == AUTO:
+                if name == "gpu":
+                    # Which card the page draws on is for the page to say (see _card).
+                    memory["gpu"] = AUTO
+                else:
+                    found = system_mb()
+                    if found is not None:
+                        memory["system"] = found * 1_000_000
+                        logger.info("The Data viewer keeps up to %d MB of image data in the computer's memory.", found)
+                continue
+            if isinstance(megabytes, str) or not megabytes > 0:
+                raise ValueError(
+                    f"{name}_memory_mb must be a positive number of megabytes or 'auto', not {megabytes!r}"
+                )
             memory[name] = int(megabytes * 1_000_000)
         if layout not in LAYOUTS:
             raise ValueError(f"layout must be one of {LAYOUTS}")
@@ -113,6 +135,20 @@ class Viewer:
         self._server: ViewServer | None = None
         self._thread: threading.Thread | None = None
 
+    def _card(self, renderer: str) -> dict:
+        """The page says which graphics card it draws on, and is told how much of that
+        card's memory it may fill: ``{"gpu": bytes}``, or nothing to keep its own limit."""
+        found = card_mb(renderer)
+        if found is None:
+            logger.info(
+                "The Data viewer keeps its own limit of %d MB on the graphics card: the page draws on %r, "
+                "and how much memory that has is not known here.", ENGINE_GPU_MB, renderer,
+            )
+            return {}
+        name, megabytes = found
+        logger.info("The Data viewer keeps up to %d MB of image data on the graphics card (%s).", megabytes, name)
+        return {"gpu": megabytes * 1_000_000}
+
     # -- lifetime --------------------------------------------------------------
 
     def start(self) -> str:
@@ -124,6 +160,7 @@ class Viewer:
                 page = self._page_dir if (self._page_dir / "index.html").is_file() else None
                 self._server = ViewServer(self._host, self._port, page)
                 self._server.scene.ui = dict(self._ui)
+                self._server.card_asked = self._card
                 self._thread = threading.Thread(
                     target=self._server.serve_forever, name="mesospim-view", daemon=True
                 )

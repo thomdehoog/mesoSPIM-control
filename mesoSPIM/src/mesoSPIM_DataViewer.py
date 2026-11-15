@@ -88,13 +88,17 @@ def viewer_settings(cfg) -> dict:
     The configuration may hold a ``data_viewer`` section. Two entries are read from it,
     both optional and both in megabytes: ``gpu_memory_MB``, how much image data the
     viewer may keep on the graphics card, and ``system_memory_MB``, how much it may keep
-    in the computer's memory. An entry that is not a positive number is left out with a
-    warning in the log, and the viewer then keeps its own limit for it.
+    in the computer's memory.
+
+    An entry that is left out is chosen by the viewer from what this computer has: half
+    of the graphics card it draws on and an eighth of the computer's memory, and never
+    more than 4000 and 8000 MB. An entry that is not a positive number is passed over
+    with a warning in the log, and the viewer chooses for it as well.
     """
     section = getattr(cfg, 'data_viewer', None)
     if not isinstance(section, dict):
-        return {}
-    settings = {}
+        section = {}
+    settings = {'gpu_memory_mb': 'auto', 'system_memory_mb': 'auto'}
     for key, setting in (('gpu_memory_MB', 'gpu_memory_mb'), ('system_memory_MB', 'system_memory_mb')):
         if key not in section or section[key] is None:
             continue
@@ -106,7 +110,7 @@ def viewer_settings(cfg) -> dict:
             settings[setting] = megabytes
         else:
             logger.warning(f"data_viewer['{key}'] in the configuration is {section[key]!r}, which is not a "
-                           f"positive number of megabytes. The Data viewer keeps its own limit.")
+                           f"positive number of megabytes. The Data viewer chooses the limit itself.")
     return settings
 
 

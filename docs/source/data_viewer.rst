@@ -80,6 +80,13 @@ acquisitions. Nothing is converted and nothing is written to disk.
   for HDF5, where whole blocks have to be read to take a few voxels out of
   each. For data you look at often, the OME-Zarr writers remain the better
   choice.
+* An HDF5 file can hold smaller copies of its own, if the writer is told to
+  make them: ``H5_BDV_Writer = {'subsamp': ((1, 1, 1), (1, 4, 4), (4, 16, 16)), ...}``
+  in the configuration file (the three numbers are the steps in z, y and x).
+  The viewer reads from those copies, so the view from far away is quick, and
+  a run of twelve tiles or more gets its overview picture like an OME-Zarr run
+  does. Imaris opens only files without such copies, so leave ``subsamp`` as it
+  is if you need the file there.
 * Maximum projections (``MAX_...``) are not listed.
 
 * The **Live** button at the top left is lit while the view follows the
@@ -295,16 +302,31 @@ while it runs and after:
 Giving the viewer more memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The viewer keeps up to 1 GB of image data on the graphics card and up to 2 GB
-in the computer's memory. Those limits suit any computer. When it reaches
-them it lets go of the parts of the image it drew longest ago, and has to load
-them again when you come back to them.
+The viewer keeps the parts of the image it is drawing on the graphics card,
+and the parts it drew a moment ago in the computer's memory. When it runs out
+of room it lets go of what it drew longest ago, and has to load that again
+when you come back to it. With more room, a large acquisition (above all as a
+volume) is drawn in finer detail and comes back faster when you return to a
+place.
 
-On a computer with a large graphics card you can let it keep more. A large
-acquisition, above all as a volume, is then drawn in finer detail and comes
-back faster when you return to a place. Add this to the configuration file,
-with numbers that fit the computer (both are in megabytes, and each may be
-left out):
+You do not have to set anything. When the Data viewer opens it looks at what
+the computer has and takes a modest share:
+
+* **half of the memory of the graphics card it draws on**, and never more than
+  4000 MB. A computer can have two graphics cards, a small one built into the
+  processor and a large one beside it. The viewer asks its own window which
+  of them draws the picture, and only that card counts.
+* **an eighth of the computer's memory**, and never more than 8000 MB. The
+  camera, the file writer and the rest of mesoSPIM keep the rest.
+
+If the viewer cannot find out what the computer has, or the share would be
+smaller than 1000 MB on the graphics card or 2000 MB in memory, it keeps those
+two limits, which are safe on any computer. mesoSPIM's log says what it chose,
+in lines that begin with ``The Data viewer keeps``.
+
+To choose yourself, add this to the configuration file, with numbers that fit
+the computer (both are in megabytes; one that is left out is still chosen by
+the viewer):
 
 .. code-block:: python
 
@@ -313,9 +335,9 @@ left out):
        'system_memory_MB': 8000,   # in the computer's memory; the camera and the writer need room too
    }
 
-The new limits apply the next time the Data viewer is opened. If a number is
-not a positive number, mesoSPIM's log says so and the viewer keeps its own
-limit for it.
+The new limits apply the next time the Data viewer is opened. If an entry is
+not a positive number, mesoSPIM's log says so and the viewer chooses for it.
+To go back to the small limits that are safe anywhere, write 1000 and 2000.
 
 Checks that need the microscope PC
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -400,7 +422,9 @@ windows, or need a real Stop, and a script outside mesoSPIM cannot do them:
    ``FileNotFoundError`` or ``PermissionError`` from the writer.
 7. **A time lapse with the viewer open.** Three time points of two tiles with
    ``MP_OME_Zarr_TCZYX_Writer``. The T slider should grow to three, and the
-   log should again be free of ``PermissionError``.
+   log should again be free of ``PermissionError``. The tiles of the first
+   time point must stay on the picture, without a flicker, while the second
+   and third are acquired.
 8. **Closing and resizing.** Make the window larger and smaller while a saved
    run is shown: the picture should stay fitted. Close the window during a
    run: mesoSPIM must stay responsive and the run must go on. Open the viewer

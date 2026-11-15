@@ -556,6 +556,12 @@ def memory_advice(about: dict) -> list[str]:
         pass
     limits = about.get("limits") or [0, 0]
     lines.append(f"The viewer keeps up to {limits[0] / 1e6:.0f} MB on the graphics card and {limits[1] / 1e6:.0f} MB in memory now.")
+    chosen = limits[0] > 1_000_000_000 or limits[1] > 2_000_000_000
+    lines.append(
+        "It chose that from what this PC has (half of the graphics card it draws on, an eighth of the memory, with a ceiling)."
+        if chosen else
+        "Those are the small limits that are safe anywhere: the viewer found no more room, or could not tell what this PC has."
+    )
     if card_mb is None:
         lines.append("How much memory the graphics card has could not be read here; look it up in the Task Manager (Performance, GPU).")
         return lines
@@ -565,6 +571,8 @@ def memory_advice(about: dict) -> list[str]:
         return lines
     gpu = int(min(card_mb * 0.5, 12000) // 500 * 500)
     system = int(min((memory_mb or 16000) * 0.2, 24000) // 1000 * 1000) if memory_mb else 4000
+    if limits[0] / 1e6 >= gpu and limits[1] / 1e6 >= max(system, 4000):
+        return lines
     lines.append("If large acquisitions look coarse for long, or the volume view stays blocky, this in the configuration file would let the viewer keep more:")
     lines.append(f"    data_viewer = {{'gpu_memory_MB': {gpu}, 'system_memory_MB': {max(system, 4000)}}}")
     lines.append("(Half of the graphics card and a fifth of the computer's memory: the camera and the writer need the rest.)")

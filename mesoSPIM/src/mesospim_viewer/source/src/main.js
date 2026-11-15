@@ -119,17 +119,45 @@ function buildViewer(ui) {
   return viewer;
 }
 
+/** What the page's graphics say they are drawn by: the name of the graphics card, or of
+ * the program standing in for one. Empty when the browser does not tell. */
+function graphicsCard(viewer) {
+  try {
+    const gl = viewer.display.gl;
+    const names = gl.getExtension("WEBGL_debug_renderer_info");
+    return names ? String(gl.getParameter(names.UNMASKED_RENDERER_WEBGL) ?? "") : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Two settings of the engine that decide how quickly the picture follows the operator.
  * Both were measured on tiles laid out as the microscope's writer saves them. */
 function tune(viewer, native, ui = {}) {
   // How much image data is kept at hand: on the graphics card, and in the computer's
-  // memory. The engine's own limits (1 GB and 2 GB) suit any computer. On one with a
-  // large graphics card the microscope's configuration may raise them, so that a large
-  // acquisition is drawn in finer detail before the engine has to let chunks go.
+  // memory. The engine's own limits (1 GB and 2 GB) suit any computer. On one with more
+  // room the viewer raises them, by itself or as the microscope's configuration says,
+  // so that a large acquisition is drawn in finer detail before the engine has to let
+  // chunks go, and less is read again when the operator comes back to a place.
   try {
     const { gpuMemory, systemMemory } = viewer.chunkQueueManager.capacities;
     if (ui.memory?.gpu > 0) gpuMemory.sizeLimit.value = ui.memory.gpu;
     if (ui.memory?.system > 0) systemMemory.sizeLimit.value = ui.memory.system;
+    if (ui.memory?.gpu === "auto") {
+      // Nobody set a limit for the graphics card, so the viewer chooses one. A computer
+      // can have two cards, and only the page knows which one it draws on: it says so,
+      // and is told how much of that card's memory it may fill. Until the answer is
+      // there, and if none comes, the engine's own limit stands.
+      const drawnOn = graphicsCard(viewer);
+      if (drawnOn) {
+        post("/api/card", { renderer: drawnOn })
+          .then((response) => (response?.ok ? response.json() : undefined))
+          .then((answer) => {
+            if (answer?.gpu > gpuMemory.sizeLimit.value) gpuMemory.sizeLimit.value = answer.gpu;
+          })
+          .catch(() => undefined);
+      }
+    }
   } catch (error) {
     console.warn("the memory limits could not be set", error);
   }

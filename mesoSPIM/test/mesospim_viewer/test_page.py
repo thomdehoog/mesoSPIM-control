@@ -267,6 +267,43 @@ def test_the_memory_the_viewer_may_use_reaches_the_engine_and_stays(pages, viewe
         viewers(gpu_memory_mb=0)
 
 
+def test_a_viewer_left_to_choose_asks_the_page_which_graphics_card_it_draws_on(pages, viewers, tiles, monkeypatch):
+    """A computer may have two graphics cards, and only the page knows which one draws
+    it. So the page names its card, and the viewer answers with that card's share."""
+    from mesoSPIM.src.mesospim_viewer import viewer as module
+
+    limits = """() => { const c = window.viewer.chunkQueueManager.capacities;
+      return [c.gpuMemory.sizeLimit.value, c.systemMemory.sizeLimit.value]; }"""
+    named = []
+
+    def a_large_card(renderer):
+        named.append(renderer)
+        return ("The card of this test", 3500)
+
+    monkeypatch.setattr(module, "card_mb", a_large_card)
+    view = viewers(gpu_memory_mb="auto")
+    view.add(tiles[0], layer="overview")
+    page, errors = pages.open(view.start())
+    pages.drawn(page, layers=2)
+    assert until(lambda: page.evaluate(limits), lambda seen: seen[0] != 1_000_000_000, 10) == [3_500_000_000, 2_000_000_000]
+    assert len(named) == 1 and isinstance(named[0], str) and named[0], "the page said what draws it"
+    view.add(tiles[1], layer="overview")
+    pages.drawn(page, layers=2, sources=2)
+    assert page.evaluate(limits)[0] == 3_500_000_000, "and the answer stays"
+    assert not errors, errors
+
+    # A card nobody knows (here: no graphics card at all) leaves the engine's own limit.
+    monkeypatch.setattr(module, "card_mb", lambda renderer: named.append(renderer))
+    unknown = viewers(gpu_memory_mb="auto")
+    unknown.add(tiles[0], layer="overview")
+    other, errors = pages.open(unknown.start())
+    pages.drawn(other, layers=2)
+    until(lambda: len(named), lambda seen: seen == 2, 10)
+    time.sleep(0.5)
+    assert len(named) == 2 and other.evaluate(limits) == [1_000_000_000, 2_000_000_000]
+    assert not errors, errors
+
+
 def test_adding_a_tile_keeps_the_operators_adjustments(pages, viewers, tiles):
     view = viewers()
     view.add(tiles[0], layer="overview")

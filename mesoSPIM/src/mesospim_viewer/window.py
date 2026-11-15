@@ -64,7 +64,7 @@ def make_window_class():
 
         def __init__(self, folder: str | Path | None = None, parent=None, *, viewer: Viewer | None = None) -> None:
             super().__init__(parent)
-            self._viewer = viewer or Viewer(ui="simple")
+            self._viewer = viewer or Viewer(ui="simple", gpu_memory_mb="auto", system_memory_mb="auto")
             self.library = Library(self._viewer)
             self.setWindowTitle("Data viewer")
             self.setAcceptDrops(True)

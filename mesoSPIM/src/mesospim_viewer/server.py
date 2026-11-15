@@ -433,6 +433,12 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/api/collect":
             self.server.collect_reported(payload)
             self._send_json({"ok": True})
+        elif route == "/api/card":
+            # The page names the graphics card it draws on, and is told how much of
+            # that card's memory it may fill.
+            renderer = payload.get("renderer") if isinstance(payload, dict) else None
+            asked = self.server.card_asked
+            self._send_json(asked(renderer) if asked is not None and isinstance(renderer, str) else {})
         else:
             self._send_empty(HTTPStatus.NOT_FOUND)
 
@@ -653,6 +659,9 @@ class ViewServer(ThreadingHTTPServer):
         self.show_listeners: list[Callable[[str, bool, bool], None]] = []
         self.open_listeners: list[Callable[[], None]] = []
         self.collect_listeners: list[Callable[[bool], None]] = []
+        # Asked by the page with the name of the graphics card it draws on; answers
+        # how much of that card's memory the page may fill (see memory.py).
+        self.card_asked: Callable[[str], dict] | None = None
         # Stacks shown from memory while they are acquired, by the name in their address.
         self.live: dict[str, object] = {}
         # Small pictures of whole acquisitions, made in memory, by the name in their address.
