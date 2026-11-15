@@ -321,11 +321,18 @@ def test_an_acquisition_finished_long_ago_is_shown_without_listing_its_tiles_fol
         assert len(mine) <= 8 < folders_of_a_tile, f"{len(mine)} listings for a tile of {folders_of_a_tile} folders"
         held = library.datasets[0].tiles[tile.path.resolve()]
         assert held.whole() and not held.awake(library.clock())
+    # A quarter of a minute later each tile is asked once more for its newest file, in
+    # case the computer that wrote it has a clock that runs behind. Then it is left alone.
+    del listed[:]
+    library.clock.tick(20)
+    library.poll()
+    again = [path for path in listed if any(str(tile.path.resolve()) in path for tile in tiles)]
+    assert 0 < len(again) <= 8 * len(tiles)
     del listed[:]
     for _ in range(12):                                  # an hour of looks
         library.clock.tick(300)
         library.poll()
-    assert [path for path in listed if ".ome.zarr" in path and "last_week" + os.sep + "Mag" in path] == []
+    assert [path for path in listed if any(str(tile.path.resolve()) in path for tile in tiles)] == []
     assert landed(view) == []
     assert offered(view)["last_week"]["positions"][0].get("um"), "its positions are known from the descriptions alone"
 
@@ -360,6 +367,35 @@ def test_a_settled_tile_that_is_written_again_is_noticed_from_its_description(li
     library.poll()
     assert landed(view)[-1] == ("data/0", second)
     assert held.whole()
+
+
+def test_a_tile_that_looks_old_but_is_being_written_is_found_out(library, tmp_path):
+    """Whether a tile is old is read from its files' times, and those are kept by the
+    computer that wrote them. If that computer's clock runs behind, a tile being written
+    over this minute looks hours old. So a tile taken for a finished one is asked once
+    more, a quarter of a minute later, whether its newest file is still the same."""
+    acquisition = an_acquisition(tmp_path, "run")
+    tile = Slabs(acquisition / TILE.format(0), planes=16, slab=8, channels=("488",))
+    tile.write_stack()
+    age(acquisition, 7200)
+    library.watch(tmp_path)
+    view = library.viewer
+    held = library.datasets[0].tiles[tile.path.resolve()]
+    assert held.whole() and not held.awake(library.clock())
+    # The stack is written again, by a clock two hours behind: the new files look old too.
+    files = tile.write(0)
+    behind = time.time() - 7100
+    for file in files:
+        os.utime(tile.path / file, (behind, behind))
+        for folder in list((tile.path / file).relative_to(tile.path).parents)[:-1]:
+            os.utime(tile.path / folder, (behind, behind))
+    library.clock.tick(5)
+    library.poll()
+    assert landed(view) == [], "not yet: it is asked a quarter of a minute after it was taken in"
+    library.clock.tick(15)
+    library.poll()
+    assert landed(view) == [("data/0", files)]
+    assert held.awake(library.clock())
 
 
 def test_a_tile_written_minutes_ago_is_still_looked_at_properly(library, tmp_path):

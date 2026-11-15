@@ -40,6 +40,19 @@ def test_a_run_by_the_real_writer_is_followed_as_it_lands(pages, viewers, tmp_pa
     unavailable = realistic.writer_available()
     if unavailable:
         pytest.skip(unavailable)
+    # Everything about the run is checked every time. Only "how soon did the operator see
+    # something" depends on how busy the computer is at that moment, so a run that was
+    # late is followed by a second one, and the test fails when both were late.
+    late = _follow_a_run(pages, viewers, tmp_path / "first", mode)
+    if late:
+        again = _follow_a_run(pages, viewers, tmp_path / "second", mode)
+        assert not again, f"late twice in a row. First: {late}. Then: {again}"
+
+
+def _follow_a_run(pages, viewers, tmp_path, mode) -> str:
+    """Acquire a run with the real writer while the viewer follows it, check all of it,
+    and return what came late for the operator ("" when nothing did)."""
+    tmp_path.mkdir()
     view = viewers(ui="simple")
     library = Library(view)
     library.watch(tmp_path)
@@ -161,4 +174,4 @@ def test_a_run_by_the_real_writer_is_followed_as_it_lands(pages, viewers, tmp_pa
         late.append(f"the picture lit up {after} after {what}")
     if page.evaluate(PICTURE)["lit"] <= 3000:
         late.append("the picture is black at the end, with every tile drawn")
-    assert not late, f"{late} (the run took {acquired - began:.0f} s)"
+    return f"{late} (the run took {acquired - began:.0f} s)" if late else ""

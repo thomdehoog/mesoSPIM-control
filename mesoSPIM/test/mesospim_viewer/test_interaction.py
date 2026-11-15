@@ -326,7 +326,9 @@ def test_moving_and_zooming_the_flat_picture_draws_no_black_frame(session):
     page = session.page
     box = session.picture()
     middle = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    before = page.evaluate(PICTURE)["lit"]
+    # The picture is measured once all of it is there: on a busy computer the last tiles
+    # may still be loading when the page first counts as drawn.
+    before = until(lambda: page.evaluate(PICTURE)["lit"], lambda lit: lit > 1500, 30)
     assert before > 1500
 
     def act() -> None:

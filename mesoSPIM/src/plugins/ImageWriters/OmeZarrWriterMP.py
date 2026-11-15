@@ -337,7 +337,11 @@ class OMEZarrWriterMP(ImageWriter):
 
         xy_levels = compute_xy_only_levels(px_size_zyx)
         if generate_multiscales:
-            levels = plan_levels(Y, X, Z_EST, xy_levels, min_dim=64)
+            # Smaller copies are made until the next one would be narrower than 16 pixels:
+            # about 40 x 24 for a full camera frame. The smallest copy is what a viewer
+            # loads to show many tiles at once, and the one this used to stop at (near
+            # 158 x 93) is far more than a tile's few dozen screen pixels need.
+            levels = plan_levels(Y, X, Z_EST, xy_levels, min_dim=16)
         else:
             levels = 1
 

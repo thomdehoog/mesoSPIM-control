@@ -67,6 +67,12 @@ ASLEEP_S = 300.0
 # drive busy for minutes. A settled tile is still checked for being written again: the
 # microscope's writer rewrites the store's description with every stack it begins.
 SETTLED_S = 600.0
+# "Long" is read from the files' own times, and those are kept by the computer that wrote
+# them. If its clock runs behind this one's, a tile being written this minute can look
+# old. So a tile taken in as settled is asked once more, this long afterwards by this
+# computer's own clock, whether its newest file is still the same one. If it is not, the
+# tile is being written after all, and is listed and watched.
+CONFIRM_SETTLED_S = 15.0
 # A tile whose stack is being acquired right now, and shown from the camera's frames,
 # is looked at on disk only this often. Its files are kept from the page until the
 # stack is whole, so looking every second would load the acquisition's drive with
@@ -211,6 +217,10 @@ class Tile:
     # Stacks of this store, as (time point, channel), that are shown from their
     # preview: their files are kept back from the page until the stack is whole.
     held: set[tuple[int, int]] = field(default_factory=set)
+    # For a tile taken in as settled: when its newest file is asked for once more, and
+    # which one that was (see CONFIRM_SETTLED_S). None once that has been done.
+    confirm_at: float | None = None
+    settled_newest: int = 0
 
     def held_back(self, file: str) -> bool:
         held, progress = self.held, self.progress
@@ -735,6 +745,15 @@ class Library:
         else:
             if hurried:
                 return
+            if tile.confirm_at is not None and now >= tile.confirm_at and tile.progress is not None:
+                tile.confirm_at = None
+                if newest_change(path / tile.progress.level.path) != tile.settled_newest:
+                    # A file has landed since the tile was taken for a finished one: it
+                    # is being written (by a computer whose clock is behind). Looked at
+                    # at once, and closely from here on.
+                    tile.woken_at = now
+                    tile.looked_at = -1e9
+                    return self._look_at(dataset, path, now)
             # May it still be growing? The newest acquisition of the watched
             # folder may, and so may one the microscope is running, or one
             # whose files are young; one opened from last year hardly.
@@ -806,6 +825,8 @@ class Library:
         if settled:
             landing.take_as_read(settled)
             tile.progress.take_as_whole()
+            tile.settled_newest = settled
+            tile.confirm_at = now + CONFIRM_SETTLED_S
             files = []
         else:
             files = landing.look(now, thorough=True)  # what is there already: nothing has read it yet
