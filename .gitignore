@@ -17,6 +17,7 @@ prototypes/orcas/*.tif
 prototypes/python-essentials/temp\.tif
 mesoSPIM/config/etl_parameters/*
 !mesoSPIM/config/etl_parameters/ETL-parameters-benchtop.csv
+!mesoSPIM/config/etl_parameters/channel-parameters.csv
 mesoSPIM/config/*.py
 mesoSPIM/config/processor_chain.json
 mesoSPIM/config/ai_assistant_calibration.json
@@ -43,3 +44,12 @@ docs/build_log.txt
 PROJECT_CONTEXT.md
 .claude/skills
 CLAUDE.md
+# The Data viewer page's build tools (mesoSPIM/src/mesospim_viewer/source)
+node_modules/
+# The Data viewer's built page is committed, so that mesoSPIM runs without Node;
+# this keeps the rule above that ignores build folders from hiding it.
+!mesoSPIM/src/mesospim_viewer/build/
+
+# Reports the Data viewer checks write into the folder they are started from.
+data_viewer_rehearsal.txt
+windows_check_report.md

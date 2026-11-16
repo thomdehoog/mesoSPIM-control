@@ -47,7 +47,7 @@ plugins = {
         "../src/plugins",         # Ignored if it does not exits (use '/')
         "C:/a/different/plugin/location",  # Ignored if it does not exits (use '/')
     ],
-    'first_image_writer': 'OME_Zarr_Writer', # 'H5_BDV_Writer', 'OME_Zarr_Writer', 'MP_OME_Zarr_Writer', 'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
+    'first_image_writer': 'MP_OME_Zarr_Writer', # 'H5_BDV_Writer', 'MP_OME_Zarr_Writer', 'MP_OME_Zarr_TCZYX_Writer', 'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
 }
 
 '''
@@ -261,6 +261,7 @@ stage_parameters = {'stage_type' : 'DemoStage', # one of 'DemoStage', 'PI_1contr
                     'f_objective_exchange': 2000, # DANGER ZONE: position for the objective exchange, either manually or by the revolver. Set up carefully to avoid collisions! If missing, the objective revolver will rotate in the current f-position.
                     'theta_max' : 999,
                     'theta_min' : -999,
+                    'limit_guard_um': 10, # soft limits (<axis>_min/_max, physical coordinates) apply to every stage type: a button step that would cross a limit stops this far inside it; acquisition and script moves outside the limits are refused. Default 10.
                     }
 
 ''''
@@ -449,27 +450,7 @@ shards are defined by default. Be careful, shard shape must be defined carefully
 degradation. We suggest that shards are shallow in Z and as large as you camera sensor in XY. 
 For best performance set the base and target chunks to the same z-depth as your shards.
 
-async_finalize: default: True. Enables acquisition of the next tile to proceed immediately while the multiscale 
-is finalized in the background. On systems with slow IO, data can accumulate in RAM and cause a crash.
-Slow IO can be improved by using bigger chunks. If bigger chunks do not help, use async_finalize: False 
-to make mesoSPSIM pause after each tile acquisition until the multiscale is finished generating. 
 '''
-OME_Zarr_Writer = {
-    'ome_version': '0.4', # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
-    'generate_multiscales': True, #True, False. False: only the primary data is saved. True: multiscale data is generated
-    'compression': 'zstd', # None, 'zstd', 'lz4'
-    'compression_level': 5, # 1-9
-    'shards': (64,6000,6000), # None or Tuple specifying max shard size. (axes: z,y,x), ignored if ome_version "0.4"
-    'base_chunks': (256,256,256), # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
-    'target_chunks': (256,256,256), # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
-    'async_finalize': True, # True, False
-    
-    # BigStitcher Specific Options
-    'write_big_stitcher_xml': True, # True, False
-    'flip_xyz': (True, True, False), # match BigStitcher coordinates to mesoSPIM axes.
-    'transpose_xy': False, # in case X and Y axes need to be swapped for the correct BigStitcher tile positions
-    }
-
 MP_OME_Zarr_Writer = {
     'ome_version': '0.4',  # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
     'generate_multiscales': True, # True, False. False: only the primary data is saved. True: multiscale data is generated
@@ -480,7 +461,6 @@ MP_OME_Zarr_Writer = {
     # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
     'target_chunks': (256, 256, 256),
     # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
-    'async_finalize': True,  # True, False
 
     # BigStitcher Specific Options
     'write_big_stitcher_xml': True,  # True, False
@@ -494,6 +474,22 @@ MP_OME_Zarr_Writer = {
     # None acquires data direct to acquisition folder.
     'write_cache': None # None, 'e:/path/to/fast/ssd/write/cache'
 }
+
+MP_OME_Zarr_TCZYX_Writer = {
+    # Like MP_OME_Zarr_Writer, but one (t, c, z, y, x) store per tile: the channels of a tile are
+    # its c axis and the time points of a time lapse are appended along t. No chunk or shard ever
+    # spans a channel or a time point, so a later stack only adds files.
+    'ome_version': '0.5',  # 0.4 (zarr v2), 0.5 (zarr v3, sharding supported)
+    'generate_multiscales': True, # True, False. False: only the primary data is saved. True: multiscale data is generated
+    'compression': 'zstd',  # None, 'zstd', 'lz4'
+    'compression_level': 5,  # 1-9
+    'shards': None,  # None: one file per chunk. Or a (z,y,x) tuple whose z EQUALS base_chunks z, so each shard is one write. Ignored if ome_version "0.4"
+    'base_chunks': (64, 256, 256),  # Tuple specifying starting chunk size (multiscale level 0). Bigger chunks, less files (axes: z,y,x)
+    'target_chunks': (64, 64, 64),  # Tuple specifying ending chunk size (multiscale highest level). Bigger chunks, less files (axes: z,y,x)
+
+    # Multiprocess options
+    'ring_buffer_size': 16,  # The number of frames buffered into shared memory for the MP writer. 16 for simulation mode (eg laptop), 512 for a real microscope
+    }
 
 '''
 Rescale the galvo amplitude when zoom is changed
@@ -514,7 +510,12 @@ startup = {
 'samplerate' : 100000,
 'sweeptime' : 0.2,
 'position' : {'x_pos':0,'y_pos':1000,'z_pos':2000,'f_pos':5000,'theta_pos':180},
-'ETL_cfg_file' : 'config/etl_parameters/ETL-parameters.csv',
+'ETL_cfg_file' : 'config/etl_parameters/channel-parameters.csv',
+# Channel settings file (ETL_cfg_file, formerly "ETL config file") can also store absolute F (focus) positions per
+# laser and zoom. True: after a laser/zoom/file change, a move to the stored F is offered in a confirmation dialog
+# (F never moves without the user's OK, never during acquisitions; missing F, or F > 500 um away, is flagged and not moved to).
+# False (default, safe): stored F positions are ignored. Can be toggled in the GUI ('Load F positions' checkbox).
+'load_f_from_channel_file' : False,
 'zoom' : '2x',
 'pixelsize' : 1.0,
 'laser' : '488 nm',

@@ -12,6 +12,39 @@ from dataclasses import dataclass
 from typing import Union, Tuple, Optional
 from enum import Enum
 from xml.etree import ElementTree as ET
+import contextlib
+import uuid
+
+# zarr's LocalStore writes each file as '<name>.<32-hex uuid>.partial' and then
+# renames it. The 41-char suffix pushes long paths over Windows MAX_PATH (260).
+# Replace it with '<name>.<8-hex>.tmp' (13 chars). Patched at import, so the
+# writer worker processes get it too. Skipped if zarr internals change.
+# ZARR_TEMP_SUFFIX_LEN is what the path-length pre-flight check reserves for it.
+ZARR_TEMP_SUFFIX_LEN = len('.' + 'f' * 32 + '.partial')
+try:
+    import zarr.storage._local as _zarr_local
+
+    @contextlib.contextmanager
+    def _short_atomic_write(path, mode, exclusive=False):
+        tmp_path = path.with_suffix(f".{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            with tmp_path.open(mode) as f:
+                yield f
+            if exclusive:
+                _zarr_local._safe_move(tmp_path, path)
+            else:
+                tmp_path.replace(path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+    if hasattr(_zarr_local, '_atomic_write') and hasattr(_zarr_local, '_safe_move'):
+        _zarr_local._atomic_write = _short_atomic_write
+        ZARR_TEMP_SUFFIX_LEN = len('.' + 'f' * 8 + '.tmp')
+    else:
+        print('omezarr_writer: zarr internals changed, keeping default temp file names')
+except ImportError as e:
+    print(f'omezarr_writer: could not patch zarr temp file names: {e}')
 
 ### Multiscale writer ###
 
@@ -228,6 +261,53 @@ def pick_shards_for_level(
     return tuple(out)
 
 # ---------- Zarr v3 init (multiscales 0.5) ----------
+# Default false colours for a channel's omero entry, by excitation wavelength (nm).
+# The same as the MP_OME_Zarr_TCZYX_Writer uses.
+CHANNEL_COLORS = {'405': '5A73FF', '488': '00FF66', '561': 'FFBF1A', '640': 'FF33FF', '647': 'FF33FF', '785': 'FFFFFF'}
+# For a channel whose name holds no wavelength at all: one colour after the other.
+_COLOURS_IN_TURN = ('00FF66', 'FF33FF', 'FFBF1A', '5A73FF', 'FFFFFF', '33DDFF')
+# The contrast a channel's omero entry starts with: the whole range of the 16-bit data.
+# The OME-Zarr rules ask every channel for these four numbers, and programs that check a
+# file refuse one without them. Black at 0 and white at 65535 says "nobody has chosen a
+# contrast yet"; the Data viewer reads it that way and sets the contrast itself.
+FULL_WINDOW = {"min": 0, "max": 65535, "start": 0, "end": 65535}
+
+
+def channel_colour(label, index: int = 0) -> str:
+    """A display colour for a channel, as "RRGGBB", from the wavelength in its name.
+
+    The laser lines mesoSPIM usually has keep the colours of CHANNEL_COLORS. Any other
+    line (a 473, a 532, a 594) gets the colour of light a little redder than the laser,
+    which is roughly what its fluorescence looks like, so that two lines never share one
+    colour by accident. Past the red end, where the eye sees nothing, it is white. A name
+    without a number gets a colour by its place among the channels (``index``).
+    """
+    import re
+    found = re.search(r'\d{3,4}', str(label))
+    if found is None:
+        return _COLOURS_IN_TURN[index % len(_COLOURS_IN_TURN)]
+    if found.group() in CHANNEL_COLORS:
+        return CHANNEL_COLORS[found.group()]
+    nm = int(found.group()) + 25          # fluorescence is redder than the light that excites it
+    if nm >= 700:
+        return 'FFFFFF'
+    nm = max(nm, 400)
+    if nm < 440:
+        r, g, b = (440 - nm) / 60, 0.0, 1.0
+    elif nm < 490:
+        r, g, b = 0.0, (nm - 440) / 50, 1.0
+    elif nm < 510:
+        r, g, b = 0.0, 1.0, (510 - nm) / 20
+    elif nm < 580:
+        r, g, b = (nm - 510) / 70, 1.0, 0.0
+    elif nm < 645:
+        r, g, b = 1.0, (645 - nm) / 65, 0.0
+    else:
+        r, g, b = 1.0, 0.0, 0.0
+    # Lightened a little: pure blue and pure red are hard to see on a dark background.
+    return ''.join(f'{round(255 * (0.25 + 0.75 * part)):02X}' for part in (r, g, b))
+
+
 def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                   chunk_scheme: ChunkScheme = ChunkScheme(),
                   compressor=None,
@@ -235,7 +315,9 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                   translation: Tuple[int, int, int] = (0,0,0), # in units
                   xy_levels: int = 0,
                   shard_shape: Tuple[int,int,int] | None = None,
-                  ome_version: str = "0.5"):
+                  ome_version: str = "0.5",
+                  channel_label: str | None = None,
+                  channel_color: str | None = None):
 
     # Map OME-NGFF version to Zarr store version
     zarr_version = 2 if ome_version == "0.4" else 3
@@ -318,8 +400,16 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
         {"name": "y", "type": "space", "unit": unit},
         {"name": "x", "type": "space", "unit": unit},
     ]
+    # This store holds one channel of the acquisition, so the omero block names that one
+    # channel. Viewers read it to tell the stores of different channels apart.
+    omero = None
+    if channel_label:
+        channel = {"label": channel_label, "active": True,
+                   "color": channel_color or channel_colour(channel_label),
+                   "window": dict(FULL_WINDOW)}
+        omero = {"channels": [channel]}
     if ome_version == "0.5":
-        root.attrs["ome"] = {
+        ome = {
             "version": "0.5",
             "multiscales": [{
                 "axes": axes,
@@ -328,6 +418,9 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
                 "type": "image",
             }],
         }
+        if omero:
+            ome["omero"] = omero
+        root.attrs["ome"] = ome
     else:
         # OME-Zarr 0.4 stores multiscales at top level
         root.attrs["multiscales"] = [{
@@ -336,6 +429,8 @@ def init_ome_zarr(spec: PyramidSpec, path=STORE_PATH,
             "datasets": datasets,
             "name": "image",
         }]
+        if omero:
+            root.attrs["omero"] = omero
     return root, arrs
 
 
@@ -365,10 +460,14 @@ class FastShardWriter:
     Only used when the array is sharded with codecs [bytes(little), blosc] and index codecs
     [bytes(little), crc32c] at the end -- what init_ome_zarr creates when compression is set --
     and only for slabs that cover whole shards in z. Everything else goes through zarr.
+
+    An array may have leading axes before (z, y, x), such as the time point and channel of a
+    tczyx store. Each shard is then one step deep along them, and `lead` says which step a
+    writer writes to, so every shard lands at its own time point and channel.
     """
 
     @classmethod
-    def for_array(cls, arr):
+    def for_array(cls, arr, lead=()):
         try:
             from zarr.codecs import BytesCodec, Crc32cCodec
             from zarr.codecs.sharding import ShardingCodecIndexLocation
@@ -386,16 +485,22 @@ class FastShardWriter:
                 return None
             if sc.index_location != ShardingCodecIndexLocation.end or np.dtype(arr.dtype) != np.dtype('<u2'):
                 return None
-            return cls(arr, sc)
+            n = len(lead)
+            if arr.ndim != 3 + n:
+                return None
+            if any(s != 1 for s in tuple(arr.shards)[:n]) or any(c != 1 for c in tuple(sc.chunk_shape)[:n]):
+                return None
+            return cls(arr, sc, lead)
         except Exception:
             return None
 
-    def __init__(self, arr, sharding_codec):
+    def __init__(self, arr, sharding_codec, lead=()):
         from crc32c import crc32c
         self._crc32c = crc32c
         self.arr = arr
-        self.shard = tuple(arr.shards)
-        self.chunk = tuple(sharding_codec.chunk_shape)
+        self.lead = tuple(lead)
+        self.shard = tuple(arr.shards)[len(self.lead):]
+        self.chunk = tuple(sharding_codec.chunk_shape)[len(self.lead):]
         self.cps = tuple(s // c for s, c in zip(self.shard, self.chunk))  # chunks per shard
         self.blosc = sharding_codec.codecs[1]._blosc_codec
         self.fill = arr.metadata.fill_value
@@ -412,7 +517,7 @@ class FastShardWriter:
         return self.blosc.encode(np.ascontiguousarray(view).view(np.uint8).reshape(-1))
 
     def write(self, z0: int, buf3d: np.ndarray):
-        _, Y, X = self.arr.shape
+        Y, X = self.arr.shape[-2:]
         shz, shy, shx = self.shard
         chz, chy, chx = self.chunk
         iz = z0 // shz
@@ -442,7 +547,7 @@ class FastShardWriter:
                 offset += len(data)
             index_bytes = index.tobytes()
             crc = np.uint32(self._crc32c(index_bytes)).astype('<u4').tobytes()
-            path = self.dir / self.arr.metadata.encode_chunk_key((iz, sy, sx))
+            path = self.dir / self.arr.metadata.encode_chunk_key(self.lead + (iz, sy, sx))
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_name(path.name + '.partial')
             with open(tmp, 'wb') as f:
@@ -474,7 +579,9 @@ class Live3DPyramidWriter:
                  async_close: bool = True,
                  shard_shape: Tuple[int, int, int] | None = None,
                  translation: Tuple[int,int,int] = (0,0,0),
-                 ome_version: str = "0.5"):
+                 ome_version: str = "0.5",
+                 channel_label: str | None = None,
+                 channel_color: str | None = None):
 
         self.spec = spec
         self.chunk_scheme = chunk_scheme
@@ -490,6 +597,7 @@ class Live3DPyramidWriter:
             voxel_size=voxel_size, xy_levels=self.xy_levels,
             shard_shape=shard_shape, translation=translation,
             ome_version=ome_version,
+            channel_label=channel_label, channel_color=channel_color,
         )
 
         self.levels = spec.levels
@@ -1035,6 +1143,7 @@ def omezarr_writer_worker(
     work_q: mp.Queue,
     free_q: mp.Queue,
     write_cache: Path | None,
+    attached=None,
 ):
     """
     Child process:
@@ -1064,8 +1173,11 @@ def omezarr_writer_worker(
         random_char = str(uuid.uuid4()).split('-')[-1]
         return f'{timestamp}_{acq_path.name}.{random_char}'
 
-    # Attach to shared memory
+    # Attach to shared memory. On Windows the block exists only while a handle is open, so the
+    # parent keeps its handle until `attached` is set (OMEZarrWriterMP.finalize waits for it).
     shm = shared_memory.SharedMemory(name=shm_name)
+    if attached is not None:
+        attached.set()
     Y, X = frame_shape
     ring = np.ndarray((ring_size, Y, X), dtype=np.uint16, buffer=shm.buf)
 

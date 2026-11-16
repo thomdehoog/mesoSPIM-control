@@ -15,7 +15,7 @@ from PyQt5 import QtCore
 from .utils.acquisitions import AcquisitionList, Acquisition
 from .utils.utility_functions import write_line, gb_size_of_array_shape, replace_with_underscores, log_cpu_core, timed
 from .plugins.ImageWriterApi import WriteRequest, WriteImage, FinalizeImage
-from .plugins.utils import get_image_writer_from_name, get_image_writer_class_from_name
+from .plugins.utils import get_image_writer_from_name, get_image_writer_class_from_name, resolve_image_writer_name
 
 class mesoSPIM_ImageWriter(QtCore.QObject):
     """Image and metadata writer that runs in its own high-priority QThread.
@@ -145,7 +145,7 @@ class mesoSPIM_ImageWriter(QtCore.QObject):
             self.frame_queue.clear()
 
         if acq == acq_list[0]:
-            self.writer_name = acq['image_writer_plugin']
+            self.writer_name = resolve_image_writer_name(acq['image_writer_plugin'])
             self.writer = get_image_writer_class_from_name(self.writer_name)() # Get and init () the writer class
 
         self.active_processor_metadata = self._get_enabled_processor_metadata()
@@ -242,7 +242,9 @@ class mesoSPIM_ImageWriter(QtCore.QObject):
         # Status update
         t0 = time.perf_counter()
         if self.cur_image_counter % 5 == 0:
-            self.parent.sig_status_message.emit('Writing to disk...')
+            # A writer that can no longer save this stack says so (its `failure`); the
+            # status line then shows that sentence instead of the usual one.
+            self.parent.sig_status_message.emit(getattr(self.writer, 'failure', None) or 'Writing to disk...')
         status_ms = (time.perf_counter() - t0) * 1000
 
         # Metadata / WriteImage construction
@@ -366,7 +368,15 @@ class mesoSPIM_ImageWriter(QtCore.QObject):
             logger.error(f'{e}')
 
         # Place holder prior to image processing plugins
-        if acq['processing'] == 'MAX':
+        if acq['processing'] == 'MAX' and self.mip_image is None:  # no frames written (e.g. Stop before launch)
+            logger.warning(f'No max projection saved for {self.path}: no frames were written')
+            try:
+                self.tiff_mip_writer.close()
+                if os.path.exists(self.MIP_path):
+                    os.remove(self.MIP_path)  # empty file, no image in it
+            except Exception as e:
+                logger.error(f'{e}')
+        elif acq['processing'] == 'MAX':
             try:
                 px_size_um = self.cfg.pixelsize[acq['zoom']]
                 self.tiff_mip_writer.write(self.mip_image.T[::-1], # Transform image before saving

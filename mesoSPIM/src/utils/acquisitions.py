@@ -7,9 +7,75 @@ Helper classes for mesoSPIM acquisitions
 from pathlib import Path
 import indexed
 import os.path
+import re
 import logging
 logger = logging.getLogger(__name__)
 from ..plugins.utils import get_image_writer_name_for_file_extension, get_image_writer_from_name
+
+# The time index a time lapse writes into the file names of the acquisition table. It goes
+# in front of the last ending, so 'Sample.ome.zarr' becomes 'Sample.ome_Time003.zarr'. Only
+# a mark at the very end of the name counts, with nothing but endings ('.ome', '.zarr')
+# after it. A sample called 'Mouse_Time2h' keeps its name, because there the digits are
+# followed by more of the name. The OME-Zarr TCZYX writer and the Data viewer read a file
+# name by the same rule.
+_TIME_INDEX = re.compile(r'_Time\d+(?=(?:\.[A-Za-z][A-Za-z0-9]*)*$)')
+
+
+def without_time_index(filename):
+    '''A file name as it was before a time lapse marked it.
+
+    'Sample.ome_Time003.zarr' gives 'Sample.ome.zarr'. A name without a time index comes
+    back unchanged.
+    '''
+    return _TIME_INDEX.sub('', filename)
+
+
+def with_time_index(filename, time_index):
+    '''A file name marked with a time point of a time lapse.
+
+    'Sample.ome.zarr' and 3 give 'Sample.ome_Time003.zarr'. A mark the name already
+    carries is replaced, so the same table can be run for one time point after another.
+    '''
+    base, ending = os.path.splitext(without_time_index(filename))
+    return f'{base}_Time{time_index:03d}{ending}'
+
+
+class TimeLapseNames:
+    '''Puts the file names of the acquisition table back once a time lapse is over.
+
+    During a time lapse every file name carries the time point being acquired
+    ('Sample_Time003.tif'). The names used to stay like that afterwards. An ordinary
+    acquisition run next was then written as if it were that time point: its files were
+    called '_Time003', and the OME-Zarr TCZYX writer put it at time point 3 of the store.
+
+    The names may only change while nothing is being acquired, because the stack that is
+    being stopped still closes its files under the name it has. So when a time lapse is
+    cancelled in the middle of a time point, the names are put back when that acquisition
+    has ended, not at once.
+
+    `restore` is called, with no arguments, when the names are to be put back.
+    '''
+
+    def __init__(self, restore):
+        self._restore = restore
+        self._acquiring = False   # a time point is being acquired right now
+        self._owed = False        # the time lapse is over, the names are not back yet
+
+    def time_point_started(self):
+        self._acquiring = True
+        self._owed = False
+
+    def acquisition_finished(self):
+        self._acquiring = False
+        if self._owed:
+            self._owed = False
+            self._restore()
+
+    def time_lapse_ended(self):
+        if self._acquiring:
+            self._owed = True
+        else:
+            self._restore()
 
 
 class Acquisition(indexed.IndexedOrderedDict):
@@ -360,6 +426,40 @@ class AcquisitionList(list):
                 nonexisting_folders.append(folder)
         
         return nonexisting_folders
+
+    # Windows MAX_PATH: 260 chars for a whole path, incl. the terminating NUL. Exceeding it makes a
+    # writer fail with a misleading FileNotFoundError mid-acquisition. (The 255-char limit for one
+    # file/folder name can't bind first: such a name already makes the whole path > 259.)
+    MAX_PATH_LEN = 259
+    # Writers without longest_write_paths() put metadata and MAX projection files next to the
+    # data file: '<file>_meta.txt', 'MAX_<file>.tif', '<file>_s123-t0_meta.txt' (H5).
+    GENERIC_WRITER_RESERVE = 20
+
+    def check_for_too_long_paths(self, cfg=None):
+        ''' Returns a description of every acquisition whose files would exceed the Windows path
+        limits (Windows only). Writers that define longest_write_paths() report the real longest
+        path they create, e.g. OME-Zarr adds a tile group, chunk folders, zarr's temporary-file
+        suffix and the optional write_cache location. `cfg` supplies per-writer config values.
+        '''
+        if os.name != 'nt':
+            return []
+        from ..plugins.utils import get_image_writer_class_from_name, resolve_image_writer_name
+        from .utility_functions import replace_with_underscores
+        too_long = []
+        for acq in self:
+            # same uri as mesoSPIM_ImageWriter.prepare_acquisition() builds
+            uri = os.path.realpath(acq['folder'] + '/' + replace_with_underscores(acq['filename']))
+            writer_name = resolve_image_writer_name(acq['image_writer_plugin'])
+            writer = get_image_writer_class_from_name(writer_name)
+            if hasattr(writer, 'longest_write_paths'):
+                writer_config = getattr(cfg, writer_name, None) if cfg is not None else None
+                paths = writer.longest_write_paths(uri, acq, self, writer_config)
+            else:
+                paths = [(uri, len(uri) + self.GENERIC_WRITER_RESERVE)]
+            for path, length in paths:
+                if length > self.MAX_PATH_LEN:
+                    too_long.append(f'{path}\n  -> longest file path {length} chars, limit {self.MAX_PATH_LEN}')
+        return too_long
 
     def get_duplicates_in_list(self, in_list):
         duplicates = []

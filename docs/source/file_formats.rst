@@ -38,12 +38,12 @@ At a glance
      - Yes
      - zstd / lz4
      - Writes in a background process; recommended default
-   * - ``OME_Zarr_Writer``
-     - ``.ome.zarr`` / ``.zarr``
-     - One store (per-tile subgroups)
+   * - ``MP_OME_Zarr_TCZYX_Writer``
+     - ``.ome.zarr``
+     - One ``(t, c, z, y, x)`` store per tile
      - Yes
      - zstd / lz4
-     - Single-core; same format as above
+     - Channels along ``c``, time points appended along ``t``; no BigStitcher XML
    * - ``H5_BDV_Writer``
      - ``.h5``
      - One file (all tiles)
@@ -85,31 +85,48 @@ restrict which writers are available:
 
    plugins = {
        'path_list': ["../src/plugins"],
-       'first_image_writer': 'OME_Zarr_Writer',
+       'first_image_writer': 'MP_OME_Zarr_Writer',
    }
 
 See :doc:`configuration` for the full ``plugins`` config reference.
 
-OME-Zarr (``OME_Zarr_Writer`` / ``MP_OME_Zarr_Writer``)
-----------------------------------------------------------
+OME-Zarr (``MP_OME_Zarr_Writer``)
+---------------------------------
 
-Both write the same `OME-Zarr <https://ngff.openmicroscopy.org/>`_ format —
-one ``.ome.zarr`` store per acquisition, with each tile in its own subgroup
-— and accept identical configuration. The only difference is *how* the
-writing happens:
+``MP_OME_Zarr_Writer`` writes `OME-Zarr <https://ngff.openmicroscopy.org/>`_ —
+one ``.ome.zarr`` store per acquisition, with each tile in its own subgroup.
+It offloads writing to a separate background process via a shared-memory
+ring buffer, so a slow disk can't stall acquisition. This is the
+**recommended writer for new acquisitions** on systems with fast (NVMe/SSD)
+storage.
 
-* **``OME_Zarr_Writer``** writes on the main acquisition thread (single-core).
-* **``MP_OME_Zarr_Writer``** offloads writing to a separate background
-  process via a shared-memory ring buffer, so a slow disk can't stall
-  acquisition. This is the **recommended writer for new acquisitions** on
-  systems with fast (NVMe/SSD) storage.
-
-Both save multi-resolution pyramids natively, with compression, and can
+It saves multi-resolution pyramids natively, with compression, and can
 optionally emit an XML file for drag-and-drop stitching in BigStitcher.
+
+Each tile subgroup holds one channel as a ``(z, y, x)`` image. So that other
+software can tell the channels apart without reading the file names, each
+subgroup also carries an ``omero`` block with that one channel: its laser line
+as the label (for example ``"488"``) and a matching false colour. The
+:doc:`Data viewer <data_viewer>` reads it to show each channel as its own row.
+Data written before this was added has no ``omero`` block.
+
+.. note::
+
+   The single-core ``OME_Zarr_Writer`` was removed in 1.27.0. Acquisition
+   lists that name it are written with ``MP_OME_Zarr_Writer``, and a config
+   file that still has an ``OME_Zarr_Writer`` dictionary, names it as
+   ``first_image_writer``, or sets ``async_finalize`` (its option) gets a
+   warning at startup. Move those settings to ``MP_OME_Zarr_Writer``.
+
+.. tip::
+
+   Data already saved as TIFF can be converted to the same OME-Zarr layout
+   afterwards with the :doc:`TIFF to OME-Zarr converter <tiff_to_omezarr>`
+   (**Utils → Convert TIFF stacks to OME-Zarr**).
 
 .. code-block:: python
 
-   OME_Zarr_Writer = {
+   MP_OME_Zarr_Writer = {
        'ome_version': '0.5',          # '0.4' (zarr v2) or '0.5' (zarr v3, sharding supported)
        'generate_multiscales': True,  # False: only save the original resolution
        'compression': 'zstd',         # None, 'zstd', 'lz4'
@@ -117,25 +134,23 @@ optionally emit an XML file for drag-and-drop stitching in BigStitcher.
        'shards': (64, 6000, 6000),    # max shard size (z,y,x); ignored if ome_version == '0.4'
        'base_chunks': (64, 256, 256),   # starting chunk size (level 0), (z,y,x)
        'target_chunks': (64, 64, 64),   # chunk size at the highest pyramid level, (z,y,x)
-       'async_finalize': True,        # let the next tile start before this one's pyramid finishes
 
        # BigStitcher-specific
-       'write_big_stitcher_xml': True,       # only takes effect for ome_version == '0.4'
+       'write_big_stitcher_xml': True,       # ome_version '0.4' and '0.5'
        'flip_xyz': (True, True, False),      # match BigStitcher coordinates to mesoSPIM axes
        'transpose_xy': False,                # swap X/Y if tile positions come out wrong
-   }
 
-   MP_OME_Zarr_Writer = {
-       # ... same keys as above, plus:
+       # background process
        'ring_buffer_size': 512,  # frames buffered in shared memory; lower (e.g. 16) for demo/simulation mode
        'write_cache': None,      # optional fast local scratch path, moved to the final folder once a tile finishes
    }
 
 .. note::
 
-   The BigStitcher XML export only works with ``ome_version: '0.4'`` (zarr
-   v2). Choosing ``'0.5'`` gets you sharding (fewer files on disk) but no
-   BigStitcher XML.
+   The BigStitcher XML is written for both ``ome_version: '0.4'`` (zarr v2)
+   and ``'0.5'`` (zarr v3, sharding). It records the zarr version, so
+   BigStitcher opens the container with the matching reader (verified with
+   sharded 0.5 data in BigStitcher 3.0.8).
 
 .. important::
 
@@ -143,6 +158,97 @@ optionally emit an XML file for drag-and-drop stitching in BigStitcher.
    small chunks can noticeably slow down writing on some hardware. The
    defaults above are a reasonable starting point — benchmark on your own
    hardware before changing them for a real acquisition.
+
+MP_OME_Zarr_TCZYX_Writer
+-------------------------
+
+The multi-process writer with a different layout on disk: **one
+``(t, c, z, y, x)`` store per tile** inside the acquisition's ``.ome.zarr``
+group, at ``Mag{mag}_Tile{tile}_Sh{shutter}_Rot{rot}.ome.zarr``. Every channel
+of a tile is one index along ``c``, and every time point of a timelapse is
+appended along ``t`` of the same store -- the ``_Time###`` suffix mesoSPIM puts
+on file names between time points is read for ``t`` and stripped from the path.
+Channel names and colours go into the ``omero`` block, the stage position into
+the coordinate transformations. A viewer opens each tile as one multichannel,
+multi-time-point image.
+
+Every channel has a colour and a contrast in the ``omero`` block, because the
+OME-Zarr rules ask for both and programs that check a file refuse one without
+them. The usual laser lines have fixed colours; any other line gets one from
+its wavelength. The contrast is written as the whole range of the data (0 to
+65535), which only says that nobody has chosen one yet. The Data viewer reads
+it that way and sets the contrast itself.
+
+Besides the full-resolution data, a store holds smaller copies of it, each
+half the size of the one before (``'generate_multiscales': True``). They go
+down to a copy about 40 by 24 pixels across for a full camera frame. That
+smallest copy is what a viewer loads to show a whole acquisition of many tiles
+at once. A store that is already there keeps the number of copies it was made
+with.
+
+A channel is a laser line together with its filter, in the order they first
+appear in the acquisition table. It is named after the laser (``488``). When
+one laser is used with more than one filter, the filter is added to the name
+(``488 515LP``), so the two are kept apart.
+
+Tiles and channels are counted over all rows of the acquisition table that are
+saved under the same file name. A single row run on its own with *Run selected
+acquisition* therefore lands in the same store, at the same channel, as it
+would in a run of the whole list.
+
+No chunk or shard spans a channel or a time point: every one covers exactly one
+``(t, c)``, so a later stack only ever adds files and nothing on disk is
+rewritten. A shard is always exactly one z-chunk deep -- the live pipeline
+writes one z-chunk over the full sensor per assignment, so such a shard is one
+write; a deeper shard would be read back and rewritten for every chunk landing
+in it, and the writer refuses it. Shards are off by default (one file per
+chunk); ``mesoSPIM/test/benchmark_omezarr_shards.py`` measures the difference on
+your hardware.
+
+.. code-block:: python
+
+   MP_OME_Zarr_TCZYX_Writer = {
+       'ome_version': '0.5',            # '0.4' (zarr v2) or '0.5' (zarr v3, sharding supported)
+       'generate_multiscales': True,
+       'compression': 'zstd',
+       'compression_level': 5,
+       'shards': None,                  # None, or (z, y, x) with z == base_chunks z
+       'base_chunks': (64, 256, 256),
+       'target_chunks': (64, 64, 64),
+       'ring_buffer_size': 512,
+   }
+
+Not supported by this writer: the BigStitcher XML and ``write_cache``.
+
+.. note::
+
+   **A tile's store grows; it is never cut.** Acquiring into a store that is
+   already there adds to it:
+
+   * A stack with more planes than the store has makes the store deeper. This
+     is what happens when a run is stopped and then started again under the
+     same name, or when the channels of a tile have different z ranges. The
+     shorter stacks then read as empty planes after their own last plane.
+   * A stack finds its channel by the channel's name. A channel the store
+     does not have yet is added after the ones it has. So changing the
+     acquisition table between two runs (a laser added, a row taken out)
+     cannot put a stack on another channel's data.
+   * A time point of a timelapse is appended along ``t``.
+
+   Nothing already on disk is rewritten for any of this: every chunk holds one
+   time point of one channel, so growing only changes the store's description.
+
+   Every stack that is begun in a store that is already there is noted in the
+   store's attributes, under ``mesospim_last_stack``, with its time point, its
+   channel and the time it began. The note is how a program that watches the
+   folder, such as the Data viewer, learns from one small file that the store
+   is being written again.
+
+   A stack that ends early is marked in the store itself. Everything after its
+   last real plane is empty (zero), and the store's attributes list it under
+   ``mesospim_incomplete_stacks`` with its time point, its channel and the
+   number of planes it holds. Acquiring that stack again in full removes the
+   entry.
 
 H5_BDV_Writer
 ----------------
@@ -214,7 +320,7 @@ Writer capabilities
      - Yes
      - No
      - uint16
-   * - ``OME_Zarr_Writer``
+   * - ``MP_OME_Zarr_TCZYX_Writer``
      - Yes
      - Yes
      - Yes

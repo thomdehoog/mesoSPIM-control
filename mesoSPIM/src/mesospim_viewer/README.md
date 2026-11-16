@@ -1,0 +1,524 @@
+# mesoSPIM viewer
+
+A small neuroglancer viewer for the mesoSPIM control software: Python decides
+which OME-Zarr stores are shown and where, a native neuroglancer page draws
+them, and the camera comes back to Python. The package is standard-library
+Python; the page is neuroglancer with a few hundred lines of glue.
+
+```python
+from mesoSPIM.src.mesospim_viewer import Viewer
+
+view = Viewer()                                     # serves on a free local port
+view.add("run/Tile0.ome.zarr", layer="overview")    # placed by its own metadata
+view.add("run/Tile1.ome.zarr", layer="overview", offset={"x": 1800.0})
+view.fit()
+widget = view.qt_widget()                           # a QWebEngineView, or:
+view.open_in_browser()
+```
+
+And the **Data viewer window**, one window for data that is being acquired and
+for data that was:
+
+```
+python -m mesoSPIM.src.mesospim_viewer.window /path/to/data              # a folder the microscope writes into: watched
+python -m mesoSPIM.src.mesospim_viewer.window /path/to/Sample.ome.zarr   # a dataset from disk
+python -m mesoSPIM.src.mesospim_viewer.demo --live --window              # a rehearsal of a run, without the microscope
+```
+
+In mesoSPIM-control it is `View > Open Data Viewer`, and `View > Open Dataset
+in Data Viewer...` puts a dataset from disk into the same window.
+
+## What the window does
+
+**A list of acquisitions** at the top of the panel. The folder the microscope
+writes into is watched: its acquisitions are listed, newest first, and the
+newest is shown. Datasets opened from disk -- the folder button in the list, a
+folder dropped onto the window, or the command line -- are listed beside them.
+The eye of an entry shows or hides it, so several can be looked at together,
+each tile where its own metadata puts it; a click on a name shows that one
+alone. An acquisition that starts is shown in place of the one that was on
+screen for being the newest; one the operator ticked themselves stays.
+
+**A running acquisition is on screen plane by plane.** mesoSPIM-control hands
+the window the frame its camera window shows, and the stack that is being
+acquired is drawn from those frames, held in memory (`live.py`): the first
+plane is on screen as the camera delivers it, whatever the run is saved as.
+When the stack is complete on disk the tile there takes its place. (What is on
+disk *during* a stack is not a picture yet: the writers save 64 planes at a
+time, and the small copies of the image that a view of the whole specimen is
+drawn from only after several such slabs or when the stack closes. Without the
+camera's frames -- the window started on its own, watching a folder another
+program writes -- a tile fills in slab by slab, and zoomed far out about when
+it is finished. `demo --live --from-disk` shows the difference.)
+
+**Live.** While the microscope acquires, the view sits on the newest plane,
+and the *Live* button at the top left says so. Stepping through depth or time
+by hand leaves the view where the operator put it and turns the button into
+*Back to live*.
+
+**Fit.** Until the operator pans or zooms, the view frames everything shown,
+again after every tile that lands. After that it is theirs, and a *Fit* button
+appears beside the 2D/3D switch. The two are independent: zooming into the
+tile being acquired does not stop the planes from coming.
+
+**Contrast that sets itself.** A channel whose contrast nobody has set -- not
+the store, not the operator -- is on *Auto*: its window follows the histogram
+of what is on screen, from the camera's background to just under the brightest
+structure (`contrast.js`). That is every channel of a running acquisition,
+whose brightness nobody knows yet. Moving a channel's contrast by hand ends
+Auto for it; the Auto button in its row brings it back.
+
+**Never a silent black picture.** With nothing to draw, the picture says what
+it is waiting for: no acquisition yet, nothing ticked, the first planes of a
+run. A thin bar along the top shows while chunks are still loading, a line at
+the bottom right gives the position and the value of each channel under the
+pointer, and a folder that cannot be opened is named with the reason, such as
+"notes isn't an OME-Zarr folder the viewer can open." or "newer.ome.zarr can't
+be shown: it is OME-NGFF 0.6, which the viewer does not read yet."
+
+**The mouse** is an image viewer's: drag moves the picture, the wheel zooms,
+Shift and the wheel (or `,` and `.`) step through the planes, `[` and `]`
+through the time points. In 3D, drag turns the specimen. The `?` at the top
+right says so on screen. The flat view cannot be tilted by accident.
+
+Three dresses, chosen with `Viewer(ui=...)`: `"simple"` (the Data viewer
+window's) is the interface described here over a bare engine; `"full"` is
+neuroglancer's own interface, panels and all; `"bare"` is nothing but the
+picture, for a host that draws its own controls. In every dress what Python
+adds is only what neuroglancer cannot know: which stores belong together,
+where each one sits, and how its channels should first look.
+
+## Why a tile landing never blanks the picture
+
+Stock practice with neuroglancer is to describe the scene as a state and
+restore it, and a layer whose description changed is built anew. A rebuilt
+layer forgets every chunk it had drawn. For a running acquisition that is
+ruinous: each tile that lands, each slab that is read again, blanks the
+picture and fetches all of it once more, and the panel's controls are torn
+down and put back. Measured on a run of four tiles and two channels written
+by the microscope's own writer: 70 rebuilds in five minutes, 437 MB fetched
+for a picture of a few megabytes, and a black screen for the first half of
+every stack, because the view sat on the middle plane while planes land from
+the first.
+
+So nothing is rebuilt:
+
+- **A layer is built once and then changed in place** (`source/src/layers.js`).
+  A tile that lands is one source added to it.
+- **A time point more is not a new store to the page.** In a time lapse every
+  tile's store grows by a time point, again and again. The server tells the
+  page from the start that a store has room for more time points than it holds
+  (64, or more when a run needs it; `Stores.roomy` in `server.py`), and the
+  scene says how many are real (`_times`). A time point appended then leaves
+  the store's address and everything the page has read of it as they are. The
+  time slider ends at the last real time point, the view starts on the first,
+  and the engine's reading ahead along time stops at the last real one, so the
+  room costs no request (`reflectTimes` in `overview.js`, and the sixth edit in
+  `scripts/neuroglancer.mjs`).
+- **A tile whose depth changed is read again without going black.** That one
+  source is read under a new address. The reading that is on screen stays
+  beside the new one until the new one's picture is up, and is let go then.
+  A contrast window measured later is that control moved, unless the operator
+  has moved it since.
+- **A store that is being written is not read again as a whole.** Python
+  looks at its folder once a second and names the files that have landed
+  (`landing.py`); the page reads exactly the chunks that come from those files
+  and leaves every chunk already drawn on the graphics card
+  (`source/src/engine/worker_landed.js`). Nothing that is still missing is
+  asked for twice.
+- **A step to a new plane waits for the plane.** The engine drops the plane it
+  was on the moment it is moved, so a view that follows an acquisition would
+  blink black with every plane. The chunk of the next plane is loaded first,
+  as if it were on screen, and the view steps once it can be drawn.
+- **A finished stack is handed over, not swapped.** The tile on disk is kept
+  from the page while its stack is shown from memory, so the two are never
+  drawn on top of each other; once the stack is whole on disk its files are
+  named as landed, and the preview goes only when the tile's own picture is up.
+
+## What it keeps from the ZMART viewer, and what it leaves out
+
+It began beside the [ZMART viewer](https://github.com/thomdehoog/ZMART-viewer),
+which grew to follow a running
+acquisition of tens of thousands of positions: a replaced interface, paced
+source hand-over, server-side composition of many stores into one, baked
+pyramids, publication records and live refresh patches to the engine. This
+package starts again from native neuroglancer, to stay small, and takes three
+things across:
+
+- **A layer is one acquisition, its positions are its sources.** The engine
+  places each source by a transform and composites them; nothing is stitched.
+- **A channel is an engine layer.** One layer per channel is neuroglancer's own
+  multichannel arrangement; see below why.
+- **The transparent 2D ground**, as the engine's opt-in `transparentBackground`
+  option of google/neuroglancer#1128, applied to the pinned engine.
+
+Left out, on purpose: the composed `.zmartview.zarr` picture, baking,
+publication and revision bookkeeping, the React interface, and every server
+route that is not needed here.
+
+One of its lessons came back later. The ZMART viewer's notes say that the
+engine's cost is per source, not per byte, and that is why it gives the engine
+one picture for a whole run. A mesoSPIM acquisition of a hundred tiles meets
+the same wall. The answer here is smaller than a composed picture on disk: one
+overview made in memory, which stands in for the tiles only while the view is
+zoomed out (see "Many tiles").
+
+What the build does to the pinned engine is in `source/scripts/neuroglancer.mjs`,
+applied while the page is built, never to the installed engine, so building
+twice makes the same page: the transparent ground, how channels and tiles are
+mixed (next section), a source read again keeping its chunks on screen until
+each is replaced (google/neuroglancer#1126), drawing that does not grow with
+the number of tiles (below), and the two background workers compiled for the
+old browser of the Data viewer window, the chunk worker with `worker_landed.js`
+added to it.
+
+### Many tiles
+
+The engine draws every tile of an acquisition as a layer of its own, and as it
+comes it does a fixed amount of work for each on every frame. With a hundred
+tiles that work, and not the picture, decided how smoothly the view moved. The
+build changes four things, and a fifth, the overview, is described after them:
+
+- **In the flat view** a tile with nothing on screen is passed over before
+  anything is set up for it. Zoomed in on one tile of a hundred, in two
+  channels, a frame took 407 buffer switches, 208 clears and 202 histogram
+  passes; it now takes 11, 10 and 4, whatever the number of tiles. The picture
+  is the same, pixel for pixel.
+- **In the volume view** the tiles of one channel are projected into the same
+  buffer, which is copied to the picture once. Before, the whole picture was
+  copied twice and cleared after every single tile: with 36 tiles in two
+  channels, 150 whole-picture passes a frame, now 10. The engine's depth test
+  already kept the brightest value along a line of sight across the chunks of
+  one tile; it now does across the tiles of a channel. So where two tiles
+  overlap, the join shows the brighter of the two, as in the flat view, and no
+  longer their sum, which showed as a lattice of brighter seams.
+
+- **A blended volume at rest.** Blend draws a tile straight into the picture,
+  so on the move there is nothing to share. Once the camera rests, the engine
+  draws every tile a second time, to learn what lies under the pointer, and it
+  copied that across the whole picture and cleared it after each tile. The
+  tiles of a channel now share the one copy: 8 whole-picture copies a frame
+  where there were 78, with 36 tiles in two channels. The picture is the same
+  pixel for pixel, and what the pointer rests on is still found.
+- **Opening many tiles.** Every tile that finishes loading adds its bounding
+  box to the coordinate space all layers share, and the engine then worked out
+  afresh how every tile already there sits in that space. How a tile sits
+  there depends only on the axes' names and scales and on the tile's own
+  transform, which a new bounding box does not change, so the result is now
+  kept. Opening 196 tiles of two channels spends 1.5 s of processor time on
+  this where it spent 4.5 s.
+
+Besides the build, the page asks the engine for **histograms only while the
+picture stands still** (`contrast.js`). A histogram is a pass over the picture
+for every tile in view, and nobody reads it during a drag. With a hundred
+tiles of two channels in view, a frame of a drag no longer carries 202
+histogram passes.
+
+With every tile in view, each still has to be drawn, however little each one
+costs. The last step is therefore **one overview picture** that stands in for
+the tiles while the view is zoomed out (`overview.py`, `source/src/overview.js`
+and the build's last five edits to the engine). Python puts it together in
+memory from each tile's own smaller copies, about a screenful across, and adds
+it to each channel's layer as one more source. Every source carries a rule:
+the overview is left out while the screen asks for finer than it has, and a
+tile is left out while the screen asks for nothing finer than the overview.
+"Left out" means neither drawn nor loaded, and the choice is made in code the
+engine's page and its background worker share. With 36 tiles in two channels
+zoomed out, a frame of the flat view takes 11 buffer switches where it took
+151, and one of the volume view 8 chunk draws where it took 3456. Zoomed in,
+the picture and its cost are those of the tiles alone.
+
+An acquisition gets its overview once it has twelve tiles or more and all of
+them are finished; one that is being acquired has none. A tile's rule is
+switched on only when the overview's own picture is on screen, so the picture
+is never empty while it loads. The counts are checked by `test_many_tiles.py`,
+the picture itself by `test_overview.py`.
+
+## How channels and tiles are mixed
+
+Each channel is drawn in its colour scaled by its brightness, and what is laid
+over the picture replaces, for each of red, green and blue, only what is
+darker than itself. So a structure lit in two channels shows in both colours
+at once, rather than the upper channel hiding the lower; two tiles of one
+acquisition that overlap look like either tile alone along the join, rather
+than twice as bright; and the mix never clips to white. Stock neuroglancer
+offers laying a layer over the ones beneath, or adding them; this third way is
+one edit to the pinned engine.
+
+## The data contract
+
+A store is accepted when it is OME-NGFF **0.4 on zarr v2** or **0.5 on zarr
+v3**, with the axes **`t, c, z, y, x`**, or some of them in that order, always
+with `z, y, x`: so `(z, y, x)`, `(c, z, y, x)` and `(t, z, y, x)` open as well.
+An axis that is left out counts as one step long, and `c`, when present, must
+be of type `channel`. OME-NGFF 0.6 is not read yet: it describes axes and
+transformations differently, and the neuroglancer release the page is built on
+(2.41) does not read it either. Such a store is refused with a sentence saying so.
+
+Some writers save one store per tile *and* channel, each without a `c` axis.
+Such a store says which channel it holds in its own `omero` block, with one
+entry, and stores with the same label are shown as one channel. The channel is
+taken only from inside the store, never from its file name. A store without an
+`omero` block cannot be told apart from the others, so all of them are then
+shown as one channel.
+
+**Which layout is quick to show.** What costs time is the number of stores,
+not which axes they have: every store is set up on its own when it is shown.
+One store per position with all its channels and time points inside it
+(`t, c, z, y, x`, as `MP_OME_Zarr_TCZYX_Writer` writes) stays quick with
+hundreds of positions. A dataset split into one store per channel, or per
+time point, opens too, but becomes slow as the number of stores grows.
+
+How the arrays are chunked and sharded is the writer's choice. **One chunk
+(and one shard) per time point and channel** is the layout the viewer reads
+best: the engine fetches whole chunks for the plane it shows, and a chunk
+spanning other time points or channels is bytes downloaded for nothing. Shards
+are read through byte-range requests, which the server answers. The depth of a
+chunk is what one step through the planes costs: a chunk 64 planes deep is
+read whole to show one of them, and the next 63 are then free.
+
+A store may grow while it is shown. Files that land in it are picked up as
+described above. A time point appended to it is no news to the page, which
+was told the store has room for it. A stack that makes the store deeper
+changes its shape, and the page then reads that one store's description
+again, without touching the other stores or the operator's adjustments.
+
+Placement reads the store's own `scale` and `translation` (per-dataset and
+multiscale-level transformations composed the way the format says). The
+`omero` block, when present, names and colours the channels and sets their
+starting window; `add()` can override all three. A channel left without a
+window -- the acquisition software's writers leave it out -- would otherwise
+start on the whole 0..65535 range, where a camera's few thousand counts look
+black. For a dataset that is not being written, such a channel's window is
+measured once from its data: from the background (the 1st percentile) to just
+under the brightest voxels of the coarsest copy that holds data
+(`sample_window()`, with the `zarr` package mesoSPIM-control already installs).
+For one that is being written, the page sets it from what is on screen.
+
+`read_store()` raises `NotAStore` with a plain reason for anything else.
+
+## Why one engine layer per channel
+
+The engine reads every channel of a voxel from a single chunk, so a *channel
+dimension* -- the arrangement that lets one shader read all channels -- works
+only when every chunk spans the whole `c` axis (measured: split it across
+chunks and the source draws nothing, with "Channel dimension ... has extent N
+but corresponding chunk dimension has extent 1"). Chunks per channel are the
+right layout for writing and reading, so `c` stays a per-layer dimension and
+each channel is a layer that pins it (`localPosition`). The panel lists them
+as `488`, `561` under their acquisition; the Python API still speaks of one layer.
+
+## Old acquisitions on a network drive
+
+When a tile is first met, the viewer has to learn which of its files are on
+disk. For a tile that is being written this means listing its folders. For one
+that was finished long ago the listing found nothing new, and on a network
+drive it took minutes for a large acquisition.
+
+A tile is taken in as it is, without a listing, when three cheap signs agree:
+its description is more than ten minutes old; so is its newest file, found by
+following the folders that were changed last (`landing.newest_change`); and
+every stack it has room for ends in its last file. Two hundred tiles then cost
+about 1,200 folder listings where they cost 26,800. An old tile that is not
+complete, a stopped run for instance, is listed and watched as before.
+
+Such a tile is checked by its description from then on. The microscope's
+writer notes every stack it begins in the store's description
+(`mesospim_last_stack`), so a stack acquired a second time is noticed from
+that one small file, and only the files written since are named to the page.
+
+## Runs saved as TIFF, raw or HDF5
+
+The page reads OME-Zarr only. A stack in a TIFF, raw or BigDataViewer HDF5 file
+is given a description as an OME-Zarr 0.4 store, made in memory, and the pieces
+of the picture are cut out of the file when the page asks for them
+(`filestack.py`). The rest of the viewer does not know the difference: such a
+stack has a path (`run.h5/s03` for the fourth stack of an HDF5 file),
+`read_store` describes it, and the server answers for it.
+
+The smaller copies of the picture are made by taking every n-th voxel, which
+costs no arithmetic. For a TIFF or raw file read in place only the rows that
+are kept are touched. For HDF5 whole blocks are read, so an overview of many
+large tiles is slow; the contrast of such a stack is therefore left to the
+page rather than measured from a sample.
+
+The TIFF or raw files of one run are grouped by what their names share
+(`run_key`); an HDF5 file is a run by itself. A run that the microscope is
+acquiring in one of these formats is not listed from disk while it runs, since
+its files cannot be read yet; when it ends it is opened from them and the
+frames kept in memory are let go (`Library._open_from_files`).
+
+## Known limits
+
+- **Nothing is stitched.** Tiles are placed by their stage positions; where
+  two overlap, the brighter of the two is seen. A stitched store is the way to
+  a registered overlap.
+- **Several channels in one TIFF file are not read**; one file per channel is,
+  which is how mesoSPIM saves.
+- **The live preview is a thinned-out copy**: at most 512 voxels across and
+  256 planes deep. It is for watching the run; the tile on disk replaces it.
+- **Following from disk alone is as coarse as the writer's slabs** (see "What
+  the window does").
+- **The engine needs WebGL 2** and a canvas with a size: the page fills its
+  window, so give the widget one.
+
+## How it works
+
+```
+Python                                    the page (source/)
+------                                    ------------------
+Viewer.add / remove / set_layout  --->    GET /api/state?since=N&events=M&follow=K   (waits)
+  describes each channel as a               brings the layers into line in place
+  neuroglancer layer (state.py)             (layers.js)
+Viewer.landed / preview_landed    --->      events: files that landed; exactly their
+                                            chunks are read again (engine/)
+Viewer.look_at_newest             --->      where the newest plane is (camera.js)
+Viewer.look_at / fit              --->      camera, applied once the sources settled
+Viewer.offer                      --->      the panel's list of acquisitions
+Viewer.say                        --->      a message on the picture
+Viewer.position, on_view          <---    POST /api/view   (camera, debounced)
+Viewer.on_pick                    <---    POST /api/pick   (a double-click)
+Viewer.on_show, on_remove         <---    POST /api/show, /api/remove (the list)
+Viewer.on_open                    <---    POST /api/open   (the list's folder button)
+                                          GET  /data/<key>/...   (store bytes)
+                                          GET  /live/<name>/...  (a stack held in memory)
+```
+
+Python:
+
+- `omezarr.py` reads the metadata above.
+- `state.py` turns placed stores into what the page shows: one engine layer per
+  channel over the same sources, written the way neuroglancer writes a layer,
+  plus a lasting name for every source so the page can change a layer in place.
+  The shader's text is the same for every channel; window and colour travel as
+  the values of its controls.
+- `server.py` is a `ThreadingHTTPServer`: the built page, store bytes with
+  byte ranges and ETags (sharded zarr v3 needs ranges), stacks held in memory,
+  and the scene. The scene is state with a version; files that landed are
+  events in a short numbered log; where the newest plane is travels beside
+  both, so a new plane costs a few bytes.
+- `viewer.py` is the API.
+- `memory.py` suggests how much image data the page may keep at hand, from
+  the computer's memory and from the graphics card the page says it draws on.
+- `landing.py` answers "which files of this store are new?" cheaply, once a
+  second, and turns the answer into how many planes of each stack are complete.
+- `live.py` is the stack being acquired, held in memory and read by the page
+  as a small zarr store.
+- `watch.py` is the window without the window: `Library` holds the list of
+  acquisitions and keeps a viewer in line with it and with the disk. Tested
+  without Qt.
+- `window.py` gives the `Library` a window, a timer, a file dialog and drops.
+  Everything that touches the disk, and everything the microscope feeds in,
+  runs off the GUI thread.
+- `mesoSPIM_DataViewer.py`, one folder up, is all mesoSPIM-control holds of
+  it: the two menu entries, and four signals turned into calls on the window.
+
+The page:
+
+- `main.js` builds a stock viewer and keeps up with Python.
+- `layers.js` changes layers in place; `engine/landed.js` and
+  `engine/worker_landed.js` read again only what landed, and load a plane
+  before the view steps to it.
+- `camera.js` is framing and following; `contrast.js` is Auto.
+- `panel.js` is the simple interface. The window-with-histogram and colour
+  controls are the engine's own widgets, mounted in its rows; the panel is
+  registered as one of the engine's side panels, because the engine draws a
+  histogram only for a panel that lies within its own canvas.
+- `tilemap.js` is the map of an acquisition's tiles in the panel, the boxes
+  drawn around a tile on the picture, and what the operator points at and
+  clicks in the picture. `camera.js` converts between the picture's pixels and
+  micrometres for it.
+
+Positions and picks are spoken in **micrometres** (seconds for `t`) by axis
+name, whatever unit a store was written in.
+
+## Embedding in mesoSPIM-control
+
+mesoSPIM-control is PyQt5, its main window owns the core thread and opens its
+child windows. The Data viewer is one more:
+
+```python
+# the Data viewer window, as mesoSPIM_DataViewer.open_window opens it
+from mesoSPIM.src.mesospim_viewer.window import make_window_class
+window = make_window_class()(acq_list[0]["folder"])    # the folder is watched
+window.show()
+window.open("/data/earlier/Sample.ome.zarr")           # a dataset from disk, beside it
+
+# what mesoSPIM_DataViewer.Feed tells it while a stack is acquired
+window.begin_stack(stack)          # a mesospim_viewer.Stack: where, how big, which channel
+window.add_plane(index, frame)     # returns at once: the frame is thinned out and queued
+window.end_stack()
+window.end_run()
+
+# or the plain widget inside a window of your own
+self.view = Viewer(transparent=False)
+layout.addWidget(self.view.qt_widget(self))
+self.view.add(store_path, layer=acq["filename"], window=(100, 4000))
+self.view.on_pick(lambda point: self.core.sig_move_absolute.emit(point))
+```
+
+Nothing in the acquisition waits for the viewer. The frame is the one the
+camera window already shows (`frame_queue_display`), taken on the signal that
+window listens to; the viewer copies every few pixels of it and returns.
+
+`transparent=True` clears the ground outside the acquired pixels, so a host
+widget under the view shows through (`QWebEngineView` is given a clear page
+background). The engine's in-picture axis lines are switched off in that mode:
+they blend against destination alpha and would wipe the transparency.
+
+The engine needs WebGL 2. Qt WebEngine has it; on a machine that blocks the
+GPU, set `QTWEBENGINE_CHROMIUM_FLAGS="--ignore-gpu-blocklist"` before Qt starts.
+
+## Installing on the microscope PC
+
+The viewer comes with mesoSPIM-control, its page already built, so no Node
+is needed there. The web view for PyQt5 that it draws in, PyQtWebEngine, is not
+part of PyQt5 itself, but it is installed together with mesoSPIM-control. An
+environment set up before the viewer existed may not have it yet; then, in the
+mesoSPIM environment, install it and restart mesoSPIM:
+
+```
+pip install PyQtWebEngine==5.15.7
+```
+
+Then, in mesoSPIM-control, `View > Open Data Viewer`. Before the first real
+run, two quick checks from a Python prompt in that environment:
+
+```python
+from mesoSPIM.src import mesospim_viewer; import PyQt5.QtWebEngineWidgets      # both import
+mesospim_viewer.Viewer().page_built                   # True: the page came along
+```
+
+and `python -m mesoSPIM.src.mesospim_viewer.demo --live --window` rehearses a
+run in the Data viewer window without the microscope: it writes with the
+microscope's own writer at a camera's pace and feeds the window the frames. If
+that window says nothing and stays black, WebGL is the first suspect: set
+`QTWEBENGINE_CHROMIUM_FLAGS=--ignore-gpu-blocklist` before starting, and try
+`--disable-gpu-driver-bug-workarounds` after that. The same rehearsal in a
+browser (`python -m mesoSPIM.src.mesospim_viewer.demo --live`) tells the two
+apart: if the browser draws and Qt does not, it is Qt's GPU path.
+
+## Building and testing
+
+```
+cd mesoSPIM/src/mesospim_viewer/source && npm ci && npm run build   # the page lands in ../build/
+python -m mesoSPIM.src.mesospim_viewer.demo                              # four tiles in a browser
+python -m pytest mesoSPIM/test/mesospim_viewer
+```
+
+Only changing the page needs Node: edit `source/`, build, and commit the
+rebuilt `build/` with it. The Python side is developed and tested without Node,
+and the microscope PC runs the committed page.
+
+The tests come in three kinds. Most are Python alone. The page tests drive a
+headless Chromium and assert what is drawn and, as important, what is *not*
+done: no layer rebuilt when a tile lands, no chunk asked for twice, no empty
+picture between two planes. And one test runs the microscope's own writer --
+zarr v3, zstd, slabs of 64 planes, the pyramid built as it goes -- with the
+viewer following, once from disk alone and once fed the frames: the viewer is
+tested on what the microscope writes while it is writing, not on tiles written
+in one go. The page tests skip, saying so, when the page is not built or no
+browser is found (`MESOSPIM_VIEWER_CHROMIUM` names one). The Qt window itself
+is only driven with `MESOSPIM_VIEWER_QT_TESTS=1` on a machine with OpenGL:
+QtWebEngine aborts the process, rather than raising, where it cannot create a
+context.

@@ -112,8 +112,8 @@ in the file-naming wizard.
             "../src/plugins",                # relative paths work
             "C:/a/different/plugin/location",
         ],
-       'first_image_writer': 'OME_Zarr_Writer',
-        # other options: 'H5_BDV_Writer', 'MP_OME_Zarr_Writer',
+       'first_image_writer': 'MP_OME_Zarr_Writer',
+        # other options: 'MP_OME_Zarr_TCZYX_Writer', 'H5_BDV_Writer',
         #                'Tiff_Writer', 'Big_Tiff_Writer', 'RAW_Writer'
     }
 
@@ -129,7 +129,7 @@ named after the writer itself, for example:
 
 .. code-block:: python
 
-   OME_Zarr_Writer = {
+   MP_OME_Zarr_Writer = {
        'ome_version': '0.5',
        'generate_multiscales': True,
        'compression': 'zstd',
@@ -347,6 +347,29 @@ For backward compatibility, the legacy top-level ``objective_parameters``
 dictionary is still supported. If ``microscope_parameters['objective']`` is not
 present, mesoSPIM writes ``objective_parameters`` into an ``OBJECTIVE`` block.
 
+data_viewer
+~~~~~~~~~~~
+
+Optional. How much image data the :doc:`Data viewer <data_viewer>` may keep at
+hand, in megabytes. Leave the section out, or one of its entries, and the
+viewer chooses from what the computer has: half of the graphics card it draws
+on (at most 4000 MB) and an eighth of the computer's memory (at most 8000 MB).
+When it cannot tell what the computer has, it keeps 1000 MB and 2000 MB, which
+are safe on any computer.
+
+.. code-block:: python
+
+   data_viewer = {
+       'gpu_memory_MB': 4000,      # image data kept on the graphics card
+       'system_memory_MB': 8000,   # image data kept in the computer's memory
+   }
+
+Set them yourself when the viewer's choice does not suit the computer: higher
+on one with a very large graphics card, so that a large acquisition is drawn
+in finer detail, or lower when another program needs the card. Keep
+``gpu_memory_MB`` well below the memory the graphics card has, and leave room
+in the computer's memory for the camera and the file writer.
+
 stages / zoom / ETL
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -354,6 +377,49 @@ For stage, zoom motor, and ETL (electrically tunable lens) configuration
 refer to the extensive comments and examples directly in ``demo_config.py``
 and the
 `mesoSPIM hardware wiki <https://github.com/mesoSPIM/mesoSPIM-hardware-documentation/wiki/mesoSPIM_configuration_file>`_.
+
+The channel settings file (``startup['ETL_cfg_file']``, formerly the ETL config
+file) can also store absolute F positions per laser and zoom (see
+:doc:`user_guide`, *Channel settings*).  Whether they are used is set by:
+
+.. code-block:: python
+
+   startup = {
+       ...
+       'ETL_cfg_file' : 'config/etl_parameters/channel-parameters.csv',
+       'load_f_from_channel_file' : False,  # True: offer stored F positions for confirmation
+       ...
+   }
+
+``False`` (also when the key is missing) ignores stored F positions.  ``True``
+offers a move to the stored F after a laser, zoom or file change, in a
+confirmation dialog; F never moves without the user's OK.  The setting can be
+changed at runtime with the **Load F positions** checkbox on the ETL tab.
+
+**Soft stage limits.** ``stage_parameters['<axis>_min']`` / ``['<axis>_max']``
+(``x``, ``y``, ``z``, ``f``, ``theta``; physical stage coordinates, not affected
+by ZERO) are enforced in software for every stage type:
+
+.. code-block:: python
+
+   stage_parameters = {
+       ...
+       'x_max' : 25000,
+       'x_min' : -25000,
+       ...
+       'limit_guard_um': 10,  # optional, default 10: gap kept to a limit by a shortened button move
+   }
+
+* Move buttons: a step that would cross a limit is shortened to stop
+  ``limit_guard_um`` inside it (θ: at the limit); the status bar says so.  Fast
+  repeated clicks are checked against where the axis is heading, not the last
+  polled position.
+* Moves to an absolute position, acquisition steps and scripts are never
+  shortened: a move outside the limits is refused, and a running acquisition
+  stops with an error.
+* An acquisition list with any X, Y, Z start/end, F start/end or rotation
+  outside the limits does not start; the warning lists row, value and limit.
+* Every refusal is logged as a WARNING.
 
 Mandatory dictionaries (v1.20+)
 -------------------------------
@@ -365,10 +431,13 @@ if the corresponding feature is not used:
 
    plugins = {}
    H5_BDV_Writer = {}
-   OME_Zarr_Writer = {}
    MP_OME_Zarr_Writer = {}
 
 Check the ``demo_config.py`` for the latest required keys.
+
+``MP_OME_Zarr_TCZYX_Writer`` is optional. Without it the writer uses its
+built-in settings; add the dictionary only to change them (see
+:doc:`file_formats`).
 
 The zoom tables are checked at startup and mesoSPIM-control refuses to start if
 they cannot work, because ``pixelsize[zoom]`` is read while an acquisition is
