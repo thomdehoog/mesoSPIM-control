@@ -21,7 +21,7 @@ import zarr
 
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import (
     PyramidSpec, ChunkScheme, plan_levels, compute_xy_only_levels, FlushPad, BloscCodec, BloscShuffle,
-    CHANNEL_COLORS, channel_colour,
+    CHANNEL_COLORS, channel_colour, ZARR_TEMP_SUFFIX_LEN,
 )
 from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer_tczyx import (
     TCZYX, omezarr_writer_worker_tczyx,
@@ -172,6 +172,55 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         }
 
     @staticmethod
+    def tile_group_name(acq, tile: int) -> str:
+        '''The name of a tile's store inside the acquisition folder. It says the zoom, which
+        tile, which light sheet and the rotation. The channel is not in the name: all
+        channels of a tile are in the one store.'''
+        mag = acq['zoom'].removesuffix('x')  # '2x' -> '2'; '20x_custom(t25)' stays whole
+        shutter_id = 0 if acq['shutterconfig'] == 'Left' else 1
+        return f"Mag{mag}_Tile{tile}_Sh{shutter_id}_Rot{acq['rot']}.ome.zarr"
+
+    @staticmethod
+    def side_file_name(uri: str, group_name: str, channel_label: str) -> str:
+        '''The shared beginning of the names of the two small files written beside the data
+        for every stack (the metadata text and the maximum projection): the acquisition's
+        name, the tile and the channel. The two '.ome.zarr' endings are left out, as the
+        MP_OME_Zarr_Writer does, because they add length and say nothing.'''
+        # A channel name may hold a filter's name, with spaces or a slash: not in a file name.
+        channel = re.sub(r'[^A-Za-z0-9.-]+', '_', channel_label)
+        return f"{Path(uri).name.removesuffix('.ome.zarr')}_{group_name.removesuffix('.ome.zarr')}_Ch{channel}"
+
+    # The longest name zarr writes inside a tile's store: '/<copy>/c/<t>/<c>/<z>/<y>/<x>'.
+    # The digits allowed for are generous: 100 copies, 100000 time points, 100 channels,
+    # 100000 chunks in depth and 1000 across.
+    _LONGEST_ZARR_KEY = len('/99/c/99999/99/99999/999/999')
+
+    @classmethod
+    def longest_write_paths(cls, uri: str, acq, acq_list, writer_config=None) -> list[tuple[str, int]]:
+        '''Where this writer puts files for one row of the acquisition table, and how long
+        the longest file path there gets: [(folder, length of the longest path)].
+
+        mesoSPIM asks this before an acquisition starts. Windows refuses paths longer than
+        260 characters, and a writer that meets one fails in the middle of a run with an
+        error that does not say why. ``uri`` is the acquisition's path as the writer gets
+        it. This writer differs from the MP_OME_Zarr_Writer it is built on: a tile's store
+        has no channel in its name, its chunk files lie two folders deeper (time point and
+        channel), and it has no write cache.
+        '''
+        acquisition_path, _time_index = cls.split_time_index(uri)
+        # Which tile this row is only decides how many digits the number takes; the
+        # number of rows is never fewer.
+        group = cls.tile_group_name(acq, max(len(acq_list) - 1, 0))
+        store = os.path.join(acquisition_path, group)
+        # The two small files beside the data, named after the laser and its filter at most.
+        beside = Path(uri).with_name(
+            'MAX_' + cls.side_file_name(uri, group, f"{acq['laser']} {acq['filter']}") + '_meta.txt')
+        return [
+            (store, len(store) + cls._LONGEST_ZARR_KEY + ZARR_TEMP_SUFFIX_LEN),
+            (str(beside.parent), len(str(beside))),
+        ]
+
+    @staticmethod
     def split_time_index(uri: str) -> tuple[str, int]:
         '''The acquisition path without its '_Time###' mark, and the time index (0 without one).
 
@@ -280,14 +329,10 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
 
         # Logic for naming files and metadata
         # Define descriptive group name for this tile: the channel is an index inside the store
-        mag = acq['zoom'][:-1]  # remove x at end
-        rot = acq['rot']
-        shutter_id = acq['shutterconfig']
-        shutter_id = 0 if shutter_id == 'Left' else 1
         # The stack's place in its acquisition: which tile, and which channel of that tile.
         rows = self.rows_of_this_acquisition(acq, acq_list)
         tile = rows.get_tile_index(acq)
-        group_name = f'Mag{mag}_Tile{tile}_Sh{shutter_id}_Rot{rot}.ome.zarr'
+        group_name = self.tile_group_name(acq, tile)
         self.omezarr_group_name = group_name
 
         # Where this stack lands: the store of its tile, at (t, c)
@@ -480,11 +525,10 @@ class OMEZarrWriterMPTCZYX(OMEZarrWriterMP):
         One metadata file per stack: the store name says which tile, the suffix which channel,
         and the time index stays in req.uri.
         """
-        # A channel name may hold a filter's name, with spaces or a slash: not in a file name.
-        channel = re.sub(r'[^A-Za-z0-9.-]+', '_', self.channel_label_of_this_stack)
-        self.metadata_file = self.req.uri + f'_{self.omezarr_group_name}_Ch{channel}_meta.txt'
+        uri = Path(self.req.uri)
+        name = self.side_file_name(self.req.uri, self.omezarr_group_name, self.channel_label_of_this_stack)
+        self.metadata_file = str(uri.with_name(name + '_meta.txt'))
         self.metadata_file_describes_this_path = Path(self.current_acquire_file_path).as_posix()
 
         # Placeholder prior to adding data processing plugins
-        path = Path(self.req.uri + f'_{self.omezarr_group_name}_Ch{channel}')
-        self.MIP_path = path.with_name('MAX_' + path.name + '.tif').as_posix()
+        self.MIP_path = uri.with_name('MAX_' + name + '.tif').as_posix()

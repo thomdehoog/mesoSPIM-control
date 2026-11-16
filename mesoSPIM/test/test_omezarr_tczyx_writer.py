@@ -701,3 +701,63 @@ def test_a_sharded_tczyx_store_is_written_through_the_fast_shard_writer(tmp_path
     assert level0.shape == (1, 2, planes, y, x)
     for c in (0, 1):
         assert np.array_equal(level0[0, c], stacks[c]), f"channel {c} is read back as written"
+
+
+# -- paths too long for Windows ---------------------------------------------------------------
+
+
+def test_the_writer_says_how_long_its_longest_path_gets(tmp_path):
+    """Before a run mesoSPIM asks each writer how long its file paths get, because Windows
+    refuses paths of more than 260 characters. This writer answers for its own layout: a
+    tile's store without a channel in its name, and chunk files that lie below a folder for
+    the time point and one for the channel."""
+    from mesoSPIM.src.plugins.support_files.ImageWriters.OmeZarrWriterMP.omezarr_writer import ZARR_TEMP_SUFFIX_LEN
+
+    acqs = acquisition_list(tmp_path, 1)
+    uri = str(tmp_path / acqs[0]['filename'])
+    (store, longest), (beside, longest_beside) = OMEZarrWriterMPTCZYX.longest_write_paths(uri, acqs[0], acqs, None)
+    assert Path(store).parent == tmp_path / 'Sample.ome.zarr', "the time point's mark is not part of the folder"
+    assert Path(store).name.startswith('Mag1_Tile') and Path(store).name.endswith('_Sh0_Rot0.ome.zarr')
+    assert longest == len(store) + len('/99/c/99999/99/99999/999/999') + ZARR_TEMP_SUFFIX_LEN
+    assert Path(beside) == tmp_path and len(str(tmp_path)) < longest_beside < longest
+    # A settings dictionary from the configuration changes nothing and must not be needed.
+    assert OMEZarrWriterMPTCZYX.longest_write_paths(uri, acqs[0], acqs, {'shards': None})[0] == (store, longest)
+
+
+def test_what_a_run_writes_is_never_longer_than_the_writer_said(tmp_path):
+    acqs = acquisition_list(tmp_path, 0)
+    writer = OMEZarrWriterMPTCZYX()
+    said = {}
+    for index, acq in enumerate(acqs):
+        uri = str(tmp_path / acq['filename'])
+        for folder, longest in OMEZarrWriterMPTCZYX.longest_write_paths(uri, acq, acqs, None):
+            said[folder] = max(longest, said.get(folder, 0))
+        _run(writer, acq, acqs, index)
+    written = [path for path in tmp_path.rglob('*') if path.is_file()]
+    assert written
+    for path in written:
+        limits = [longest for folder, longest in said.items() if str(path).startswith(folder)]
+        assert limits and len(str(path)) <= max(limits), f"{path} is longer than the writer said"
+
+
+def test_the_check_for_too_long_paths_takes_this_writer(tmp_path, monkeypatch):
+    """The check runs on Windows only. Acted out here by telling the module that holds it
+    that this is Windows: a short folder passes, and one that brings a chunk file over
+    the limit is named."""
+    import os
+    import types
+    from mesoSPIM.src.utils import acquisitions as module
+
+    from mesoSPIM.src.plugins import utils as plugins
+
+    monkeypatch.setattr(module, 'os', types.SimpleNamespace(name='nt', path=os.path))
+    # In mesoSPIM the writers are found among the plugins it loaded at start. Here none
+    # are loaded, so the check is handed this writer directly.
+    monkeypatch.setattr(plugins, 'get_image_writer_class_from_name', lambda name: OMEZarrWriterMPTCZYX)
+    assert acquisition_list(tmp_path, 0).check_for_too_long_paths(None) == []
+    deep = tmp_path / ('d' * (200 - len(str(tmp_path)) - 1))   # a folder 200 characters long
+    assert len(str(deep)) == 200, "the folder alone is still allowed"
+    too_long = acquisition_list(deep, 0).check_for_too_long_paths(None)
+    # Two lines for each of the four rows: the store of its tile, and the small files beside it.
+    assert len(too_long) == 8 and all('limit 259' in line for line in too_long)
+    assert sum('Sample.ome.zarr' in line for line in too_long) == 4
