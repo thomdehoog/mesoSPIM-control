@@ -49,3 +49,7 @@ node_modules/
 # The Data viewer's built page is committed, so that mesoSPIM runs without Node;
 # this keeps the rule above that ignores build folders from hiding it.
 !mesoSPIM/src/mesospim_viewer/build/
+
+# Reports the Data viewer checks write into the folder they are started from.
+data_viewer_rehearsal.txt
+windows_check_report.md

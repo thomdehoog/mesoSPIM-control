@@ -350,6 +350,11 @@ does when Windows, not Linux, looks after the files. Demo mode
 (``python mesoSPIM/mesoSPIM_Control.py -D``) is enough for all of them; no
 laser has to be on.
 
+``mesoSPIM/test/mesospim_viewer/WINDOWS_CHECK.md`` is a one-page starting point
+for this: what to bring, which checks matter most, and a prompt for an AI
+coding assistant on the PC that runs the tests and guides you through the
+checks by hand.
+
 First the automatic tests, from the folder that holds ``mesoSPIM``, in the
 environment mesoSPIM runs in. They take a few minutes.
 
@@ -488,6 +493,12 @@ windows, or need a real Stop, and a script outside mesoSPIM cannot do them:
     the run: OME-Zarr and TIFF runs are placed by the stage position as it is,
     HDF5 runs as BigStitcher would place them, and only real data shows whether
     both are right.
+18. **A folder with a very long name.** mesoSPIM checks before a run whether a
+    file path would be too long for Windows (260 characters), and only does so
+    on Windows. With ``MP_OME_Zarr_TCZYX_Writer``, an ordinary run of two tiles
+    must start and be saved as before. Then choose a folder whose path is about
+    220 characters long and start the run again: mesoSPIM must refuse it before
+    anything is acquired, with a message that names the folder.
 
 If something is wrong
 ---------------------
