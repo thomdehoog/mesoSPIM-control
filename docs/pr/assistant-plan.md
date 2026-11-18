@@ -78,6 +78,8 @@ ai_assistant = {
     'personal_skills':    '~/mesoSPIM/skills',    # ~ is the home folder of whoever is logged in
     'documentation':      'docs/source',
     'save_conversations': False,
+    'vision':             True,                   # may the assistant send camera images?
+    'address':            '',                     # only for a model reached at your own address
 }
 ```
 
@@ -92,6 +94,12 @@ ai_assistant = {
 - **The documentation folder** is where the `search` call (section 6) looks. If the folder is
   missing, `search` says plainly that the documentation is not available on this computer.
 - **Saving conversations** is off unless this line turns it on.
+- **Vision** decides whether the assistant may send camera images to the provider. For
+  unpublished samples this is a question of policy and not of taste, so it belongs to the
+  facility. The documentation will say clearly that this line is how a facility forbids it.
+- **The address** is for sites that reach a model through a service of their own, for example
+  one hosted by their university, instead of through a commercial provider. It stays empty for
+  everyone else. This matters for labs that are not allowed to send images outside.
 
 ## 3. What "personal" means
 
@@ -204,6 +212,10 @@ Unticking one gives the same result for one person without affecting anyone else
 - Removing a skill, or editing its file by hand, takes effect in the next chat. An open chat keeps
   what it started with.
 - The assistant can never write a system skill.
+- **Skills that have gone out of date are marked.** A skill names the calls it uses in its
+  `tools` line. If a call is renamed or removed in a later version of mesoSPIM, the skill would
+  break without warning. The setup window therefore checks each skill against the calls that
+  exist, and marks the ones that no longer fit, with the name of the missing call.
 
 ### The skill calls
 
@@ -234,6 +246,14 @@ Unticking one gives the same result for one person without affecting anyone else
 - **Tool calls appear as short grey lines** between the messages as they happen, as in #8, so the
   operator can watch what the assistant is doing to the microscope.
 - **The Create skill button** is here, because a skill is written from the conversation.
+- **A Stop button** is here too. #8 relies on mesoSPIM's own Stop for safety. Now that the chat
+  is a window of its own, the operator needs Stop within reach while the assistant is moving the
+  stage or running an acquisition. It stops what the microscope is doing and ends the assistant's
+  current turn.
+- **There is one chat at a time.** Pressing Start Chat Window while a chat is open brings that
+  chat to the front and does not start a second one.
+- **Closing the chat window asks first when conversations are not saved**, because the
+  conversation would be lost. This is the same rule as for Clear context.
 
 ## 6. New calls for the assistant
 
@@ -289,6 +309,9 @@ assistant asks for it. That is a deliberate change of direction.
   (see section 3).
 - A saved conversation can be found again later with `search`. This is the reason to offer saving
   at all.
+- **A saved conversation can be removed again.** The window offers a list of the operator's saved
+  conversations, each with a Remove button. A removed conversation also disappears from `search`.
+  Without this, "saved" would quietly mean "kept for ever".
 
 ## 8. Log files
 
@@ -306,13 +329,15 @@ has to be complete.
 - **Each line says** when the call was made, who made it, which call it was with which values, and
   how it ended: ok, refused with the reason, or failed. When the AI Assistant made the call, the
   line includes the model name.
+- **Each line names the person**, as the Windows user who was logged in. This is the first thing
+  anyone asks when they read a log after a problem.
 - **The lines go into the existing log file**, so that one timeline shows each request next to
   what the microscope did.
 
 ```
-14:02:11  Remote Control  AI Assistant (claude-haiku-5-5)  set_laser {"laser": "488 nm", "intensity": 10}  ok  0.21 s
-14:02:15  Remote Control  TCP 192.168.1.20                 move_absolute {"x": 1200}                       refused: outside the x limits
-14:03:40  Remote Control  MCP                              run_acquisition_list {}                         ok  184.5 s
+14:02:11  Remote Control  anna  AI Assistant (claude-haiku-5-5)  set_laser {"laser": "488 nm", "intensity": 10}  ok  0.21 s
+14:02:15  Remote Control  anna  TCP 192.168.1.20                 move_absolute {"x": 1200}                       refused: outside the x limits
+14:03:40  Remote Control  anna  MCP                              run_acquisition_list {}                         ok  184.5 s
 ```
 
 What is deliberately left out:
@@ -347,6 +372,27 @@ The notice next to the key reads something like:
 
 > Use your own API key. Your messages, and the camera images the assistant looks at, are sent to
 > the provider you choose, and the use is billed to the owner of the key.
+
+## 10. Checking that the assistant still chooses well
+
+The tests in #8 measure how well the model picks the right call and the right skill. This plan
+adds four calls for it to choose from: `get_status`, `search`, `save_skill` and `edit_skill`.
+The test cases are extended to cover them. Picking the right skill was the weakest result in #8
+(61 of 75), so the cases for skills get the most attention, and every skill in a future starter
+set has its description tested in the same way.
+
+## Left out on purpose
+
+- **A spending limit.** The context ceiling already stops a conversation from growing without
+  end. A separate budget goes beyond finishing the assistant.
+
+## For later
+
+- **How this reaches the public repository.** Pull request #122 there shows the current window,
+  and this plan changes that window. We will decide later whether to update #122 or to propose
+  this as a follow-up once #122 is merged.
+- **The test on a real microscope from #8.** The sweep with an operator present has not been run
+  yet.
 
 ## Still to settle
 
