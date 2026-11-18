@@ -1,6 +1,7 @@
 # AI Assistant
 
-An optional chat tab that drives the microscope in natural language. A [Pydantic AI](https://ai.pydantic.dev)
+An optional chat that drives the microscope in plain language: you type what you want, and the
+assistant carries it out with the same commands the Remote Control offers. A [Pydantic AI](https://ai.pydantic.dev)
 agent turns the Remote Control commands into tools and dispatches them through the **same**
 `Acceptor` as the TCP and MCP transports, so every action obeys the existing accept-validation,
 movement limits and one-mutation gate. The tab is idle until the operator sends a message, and the
@@ -12,7 +13,7 @@ This builds on [Remote Control](../remote_control/index.md); read that first.
 :alt: AI Assistant tab in the Main window
 :width: 60%
 
-The AI Assistant tab: language and vision model, preferences, coordinate system, and Connect.
+The AI Assistant tab: provider, model and API key, the two lists of skills, and Start Chat Window.
 ```
 
 ```{toctree}
@@ -20,6 +21,7 @@ The AI Assistant tab: language and vision model, preferences, coordinate system,
 
 architecture
 skills
+configuration
 ```
 
 ## Requirements
@@ -29,74 +31,89 @@ skills
   newer client library pydantic-ai 2.14 cannot drive. It is imported lazily, so the application
   starts and every other feature works without it; the tab reports the missing module when the
   operator sends a first message.
-- An API key for the chosen provider, or any server that speaks the OpenAI API (Ollama, vLLM, LM Studio).
+- Your own API key for the chosen provider, or a model that your facility hosts itself (any
+  server that speaks the OpenAI API, such as Ollama, vLLM or LM Studio).
   The assistant is built and evaluated for the cloud models Gemini 3.5 Flash-Lite and Claude
-  Haiku 5.5; a model served locally works through the OpenAI-style preset.
+  Haiku 5.5.
+- The extra also installs `keyring`, the small library that hands a key to the password store of
+  the operating system when you tick **Remember this key on this computer**. Without it the
+  assistant works and asks for the key each time mesoSPIM starts.
 
 ## Setting it up
 
-The tab is the setup, shaped like the Remote Control tab: one **Setup AI assistant** box with
-**Language model**, **Vision model** and **Preferences**, a **Status** line, and **Connect** and
-**Disconnect**. Connect applies the boxes, takes the microscope session and opens the assistant
-window, where the chat is; the status line then names the model that answers. Disconnect, or
-closing that window, cancels a running turn, closes it and hands the session back, so the Remote
-Control tab can start a transport without restarting mesoSPIM. While connected the boxes are
-read-only: Disconnect to change them. When a Connect cannot go ahead (a missing key, say) the
-status line says what is needed. Images stay out of the chat: a frame goes to the vision model
-only.
+The tab asks for three things: the **provider**, the **model** and your **API key**. Everything
+else is set once by the facility in the microscope's config file (see
+[Configuration](configuration.md)).
 
-**Language model.** Choose a provider (Gemini, OpenAI, Anthropic, or **OpenAI-style**
-for any server that speaks the OpenAI API, such as an Ollama or vLLM already running somewhere, or
-a hosted gateway), keep or edit the prefilled model name, and type the API key into the masked
-field. OpenAI-style also asks for the server's base URL, and there the key is optional: Ollama
-wants none, a gateway or a hosted API wants its token. On a PC whose network inspects HTTPS (an
-antivirus or a company proxy re-signing traffic), a cloud server of this kind fails with
-"Connection error" although Gemini works: the Python client trusts only its own certificate
-bundle. Point it at one that includes the Windows roots (`SSL_CERT_FILE=<bundle.pem>` in the
-environment mesoSPIM starts from). The key is kept in memory for this mesoSPIM
-session only and is never written to the repository, the microscope config, or a log. An empty
-field falls back to the provider's environment variable (`GEMINI_API_KEY`, `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`), so a key exported before starting mesoSPIM keeps working. Any model the
-provider serves under that key works by name: under Gemini, for example, `gemini-3.6-flash` or the
-open-weight `gemma-4-31b-it`.
+1. **Choose the provider** (Gemini, OpenAI, Anthropic, or **OpenAI-style** for a model your
+   facility hosts itself). The usual model for that provider is filled in; you can type another
+   name. Any model the provider serves under your key works by name.
+2. **Type your API key.** It shows as dots. An API key is what the provider uses to know who is
+   asking and whom to bill, so use your own.
+3. **Tick the skills you want** in the two lists below (see [Skills](skills.md)).
+4. **Press Start Chat Window.** mesoSPIM first asks the provider whether it accepts the key. That
+   request costs nothing. The light beside the key turns green and the chat opens, or the status
+   line says what is wrong: the key was not accepted, or the provider could not be reached.
 
-Every model is sampled at temperature 0 where it accepts one, and a malformed tool call is
-handed back to it twice before the turn fails. The `ai_assistant_*` attributes describe the
-microscope, so in a configuration split into a hardware file and a user file they belong in the
-hardware file (`config/hardware/…_hw.py`); the user file can override any of them below its
-`include()` line.
+While a chat is open the setup is locked, and Start Chat Window brings the open chat to the
+front: there is one chat at a time. Closing the chat window ends the chat and hands the microscope
+back, so that the Remote Control tab can start a server without restarting mesoSPIM.
 
-**Vision model.** The model that reads camera frames when the assistant looks. *Same as language
-model* (the default) lets the language model read frames itself; the cloud models can. Choosing
-Cloud AI here gives a text-only language model eyes of its own: the same fields as above, and the
-frame goes to this model in a separate call with the question, so the conversation itself never
-carries images.
+**Where your key goes.** The key is held in memory while mesoSPIM runs. It is never written to
+the config file, to a log or into a saved conversation, and the model itself never sees it. When
+you tick **Remember this key on this computer**, the key is handed to the password store of your
+Windows account (the same place Windows keeps saved network passwords), where it is encrypted, so
+you do not have to type it again. Only tick the box if you are the only person who uses that
+Windows account: anyone else on it would be spending on your key. **Forget key** removes it
+again. An empty key field also falls back to the provider's environment variable
+(`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), for those who prefer to set it there.
 
-**Preferences** apply at once. **Bin image** bins the frame handed to the vision model 1, 2, 4
-or 8 times (2 by default: a 2048-pixel camera frame arrives as 1024): coarser is cheaper and
-faster, and enough for "is it centred" or "is it saturated"; the numbers always come from the
-full frame. **Focus metric** chooses the focus measure: Laplacian, or the Auto-Focus DCT-Shannon.
-The model is offered every Remote Control command, the same ones TCP and MCP serve. That includes
-what the windows show and offer: the live view's levels, lookup tables and regions of interest,
-pictures of the windows, the optimizer, the processor chain and the analyses of image files. A
-change to a window is waited for until the window shows it, and the tool returns what it then shows.
+**What leaves the microscope computer.** Your messages, and the camera images the assistant
+looks at, are sent to the provider you chose, and the use is billed to the owner of the key. A
+facility whose samples may not leave the building can forbid sending images with one line in the
+config file; the assistant then works from the numbers that describe an image.
 
-Building a cloud endpoint does not contact the provider, so a wrong key shows up as an error on
-the first message. To change the models, disconnect and connect again; the next Connect starts a fresh conversation.
-The presets live in `mesoSPIM/src/ai_assistant/config.py` as defaults only.
+**A network that inspects HTTPS.** On a PC whose network re-signs encrypted traffic (an antivirus
+or a company proxy), a cloud provider may fail with "could not be reached" although the key is
+right: the Python client trusts only its own list of certificates. Point it at one that includes
+the Windows roots (`SSL_CERT_FILE=<bundle.pem>` in the environment mesoSPIM starts from).
 
 ## Using it
 
-Press **Connect** in the tab and type in the window that opens. Enter submits; Shift+Enter starts
-a new line, as in an editor. **Stop microscope** sits right of the input; under them **Cancel
-prompt**, **Clear context** and **Show tool calls**, which lists the commands each answer ran above
-it, streamed live, so the operator sees exactly which named calls were issued. **Cancel prompt**
-stops the assistant: the turn ends at once and a model request in flight is abandoned; what the
-assistant already started keeps running. **Stop microscope** is
-the main window's Stop: the same queued signals to Core (state idle aborts the running mode, the
-time lapse is cancelled) plus the stage stop, sent straight from the tab with nothing of the
-assistant in between, so it is as immediate as the button on the main window and works before the
-assistant has ever connected. It cancels the assistant as well.
+```{figure} ../../screenshots/AIAssistantChat.png
+:alt: The chat window of the AI Assistant
+:width: 60%
+
+The chat window. The grey lines are the calls the assistant made to the microscope.
+```
+
+Type in the chat window. Enter sends; Shift+Enter starts a new line, as in an editor. While the
+assistant works the input is locked, so there is one request at a time. The chat opens with a
+few grey lines that say which skills this chat has and whether the conversation is saved.
+
+Under the input are four controls, and one beside it:
+
+- **Stop microscope** (beside the input) is the main window's Stop: it stops the stage and
+  whatever is running, at once, with nothing of the assistant in between. It stops the assistant
+  as well. It works at any time.
+- **Cancel prompt** stops the assistant only. The turn ends at once; whatever the microscope was
+  already doing carries on.
+- **Clear context (12,400 of 900,000 tokens)** empties the conversation and starts afresh, with
+  the same model and skills. The numbers show how full the model's memory is: the size of the
+  whole conversation as the provider last counted it, out of what this model takes. See *The
+  size of the conversation* below.
+- **Create skill** asks the assistant to write down the procedure you just did together as one
+  of your personal skills. You see the whole text and decide before anything is saved. See
+  [Skills](skills.md).
+- **Show tool calls** shows or hides the grey lines that list each call the assistant made to the
+  microscope. They are on by default, so you can see what the assistant is doing to your
+  instrument.
+
+The model is offered every Remote Control command, the same ones TCP and MCP serve. That includes
+what the windows show and offer: the live view's levels, lookup tables and regions of interest,
+pictures of the windows, the optimizer, the processor chain and the analyses of image files.
+Every model is sampled at temperature 0 where it accepts one, which means it gives its most
+likely answer and not a creative one.
 
 **Live and long runs do not hold the line.** A live mode the assistant starts returns as soon as
 live runs, and from then on it is the operator's live view whoever started it: settings and moves
@@ -109,12 +126,29 @@ course is the software's own time lapse (`time_lapse_start`, an interval and a n
 points); the assistant keeps no timer of its own. During live, a look reads the frame live shows
 instead of taking a snap.
 
-**The session's size.** The conversation is kept whole until **Clear context**, so every request
-carries the session so far. The line above the input shows what the last request cost in input
-tokens; past the model's warning it says the session is large, and past its ceiling no message is
-sent until Clear context. On Anthropic models the request is cached: the tools and instructions
-for an hour, the conversation for five minutes, so each request pays in full only for what is
-new. Gemini and OpenAI cache such a prefix on their own.
+**The size of the conversation.** The assistant keeps the whole conversation until **Clear
+context**, so every request carries everything said so far, and the number on the button grows
+with each message. It turns orange where a request starts to cost more, and red at the model's
+ceiling. At the ceiling no new message is sent until you clear the context: nothing is trimmed or
+summarised behind your back. Clearing asks first when the conversation is not saved, because it
+would be gone for good. On Anthropic models the unchanged start of each request is cached (the
+tools and instructions for an hour, the conversation for five minutes), so each request pays in
+full only for what is new. Gemini and OpenAI do this on their own.
+
+**What the assistant can look up.** A chat has three tools that touch no instrument:
+
+- `get_status` answers "where do things stand?" in one short reply: the microscope (busy or idle,
+  what is running, the position, the main settings, the disk, recent warnings) and the assistant
+  itself (the model, how full its context is, this chat's skills, whether the conversation is
+  saved).
+- `search` looks through the mesoSPIM documentation and your saved conversations and returns a
+  few short excerpts with the place of each. Ask "how do I align the light sheet?" or "what did
+  we do last time on this sample?".
+- `read_passage` reads one of those places in full.
+
+The search is a ranked word search. It finds the passages that contain your words and puts the
+best matches first, using the small database that comes with Python, so it needs no internet
+connection. It works best with the words the documentation would use.
 
 **Unclear requests and plans.** When a request is unclear, the assistant suggests what it would
 do and asks before doing it; when it does not know, it asks. For several steps it says its plan in
@@ -127,31 +161,15 @@ and the offset of the sample from the centre with the stage move that would cent
 takes `frames` ("last 3", "1,7", "3-10") and compares them (image shift, focus, peak); the vision
 model sees exactly those frames and keeps only its text afterwards. The readout carries the
 history in brief and a map made from it: per zoom and light, where the frames put the sample, its
-best focus from the focus curve, the last good light and labelled places. The vision model has a
-conversation of its own for the session, so `ask_eyes` puts a question to the frames seen without
-taking a new one. Clear context and Disconnect clear the frames and the eyes with the transcript.
+best focus from the focus curve, the last good light and labelled places. `ask_eyes` puts a
+question to the frames seen without taking a new one. Clear context and ending the chat clear
+the frames with the transcript.
 
 **Calibrate.** Until calibrated, the move that centres the sample uses the nominal pixel size and
-the coordinate system below. `calibrate` moves x and y by
+the coordinate system from the config file. `calibrate` moves x and y by
 a tenth of the field and back, measures how the image moved, and keeps the result per zoom beside
 the configuration, in a git-ignored file. Centring moves then use the measured scale and
 direction, which also corrects a coordinate system set the wrong way round.
-
-**The coordinate system.** The box under Preferences says what a positive move on x, y and z
-does to the sample in the image: right or left, up or down, toward or away from the camera.
-The model is told, so "move it up", "a bit to the left" and "closer to the camera" become signed
-moves on the right axis, and it says which axis and sign it used. The microscope config can set
-the start-up choice with `ai_assistant_axes`, a dict such as `{"x": "left", "y": "up", "z":
-"toward the camera"}`; the box is locked while connected, like the rest of the setup.
-
-**An OpenAI-style server and images.** The preset cannot know whether the model behind an
-arbitrary server accepts images, so `look` gives such a model the frame's numbers only, and the
-status line says "no vision". Tick **Can see images** next to the base URL when it does; a model
-chosen in the Vision model box is always shown the frame.
-
-**A tight per-minute limit at the host.** Set `ai_assistant_request_interval_s` in the microscope
-config to space the requests to the model by at least that many seconds; the status line shows
-it.
 
 ## Limitations
 
@@ -173,13 +191,32 @@ loaded.
 
 ## Privacy
 
-Nothing of the chat is saved. Prompts, replies, tool calls and frames stay in memory for the
-session and are discarded by Clear context, Disconnect, or closing mesoSPIM; none of it is
-written to disk or to the mesoSPIM log. What leaves the machine is what a cloud provider receives
-to answer a turn; a local model keeps everything on the PC.
+**Conversations are not saved unless the facility turns saving on**, and the tab always says
+which it is. When saving is off, prompts, replies, tool calls and frames stay in memory and are
+discarded by Clear context, by ending the chat, or by closing mesoSPIM.
+
+When saving is on, each chat is written to a file in your own folder
+(`~/mesoSPIM/conversations` unless the config file says otherwise): what you typed, the calls the
+assistant made with their results, and its replies. Camera images are never written, only the
+numbers that describe them. The **Saved conversations…** button lists your saved conversations,
+and **Remove** erases one for good; it then no longer turns up in a search.
+
+**Every call to the microscope is written to the mesoSPIM log**, whether conversations are saved
+or not: the person logged in, the model, the call with its values and how it ended. The log holds
+calls only, never what you typed or what the model answered. It is there so that a problem can be
+traced afterwards. See [Remote Control](../remote_control/index.md).
+
+What leaves the machine is what a cloud provider receives to answer a turn; a model your
+facility hosts keeps everything on its own server.
 
 ## Testing
 
 `python mesoSPIM/test/remote_control/run.py pyqt` runs the real-PyQt scripts, among them one that
-builds the tab offscreen and checks the setup layout and the input keys. No model, network or
-hardware is involved.
+builds the tab offscreen and checks the setup layout, the scrolling skill lists, the input keys,
+and that the assistant's question before it saves a skill reaches the window from its own thread.
+No model, network or hardware is involved.
+
+`python -m mesoSPIM.test.ai_assistant.live.desk_walkthrough` runs a real model on the simulated
+instrument through the status, the search, a skill created from a conversation and loaded in the
+next chat, an unticked skill left alone and a declined skill not written. It needs an API key in
+`ANTHROPIC_API_KEY` and costs a few cents.

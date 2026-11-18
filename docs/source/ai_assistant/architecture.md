@@ -21,12 +21,18 @@ All in `mesoSPIM/src/ai_assistant/`:
 
 ```text
 config.py     provider presets (with each model's token warning and ceiling), timing, texts
+settings.py   the ai_assistant block of the microscope's config file, and each person's ticks
 assistant.py  the Endpoint chosen in the tab, the tool builder, the completion wrapper
-              (dispatch_and_wait), and the AssistantWorker that runs each turn off the GUI/Core threads
+              (dispatch_and_wait), the Desk a chat is started with, and the AssistantWorker that
+              runs each turn off the GUI/Core threads
+skills.py     system and personal skills: listing both folders, saving, changing, removing
+search.py     the ranked word search over the documentation and the saved conversations
+conversations.py  one file per chat, when the facility has turned saving on
+keys.py       the key check with the provider, and the operating system's password store
 frames.py     the frame history, its measures, the map and the calibration
-gui.py        the AiAssistantGUI tab (setup, status, Connect and Disconnect) and the AssistantWindow
-              it opens while connected: transcript, input line, Stop microscope, Cancel prompt,
-              Clear context, Show tool calls
+gui.py        the AiAssistantGUI tab (provider, model, key, the two skill lists, Start Chat
+              Window) and the AssistantWindow it opens: transcript, input line, Stop microscope,
+              Cancel prompt, Clear context, Create skill, Show tool calls
 manual.md     the rules (units, frames, safety); the system prompt adds the offered commands by kind,
               and each tool's description and schema, derived from the command registry
 ```
@@ -118,11 +124,34 @@ model acts on current values without reading them first; the block is data, esca
 text in it can close it. The history is append-only until Clear context: nothing earlier is ever
 rewritten, which keeps a provider's signed thinking valid and its prompt cache warm. The
 instructions and tools come first and never change; on Anthropic they are cached for an hour
-and the conversation for five minutes. The tab shows each request's input tokens and stops at
-the model's ceiling.
+and the conversation for five minutes. The Clear context button shows the last request's input
+tokens out of the model's ceiling, and no turn starts at the ceiling.
 
-The conversation lives in memory only. Nothing of the chat (prompts, replies, tool calls, frames)
-is written to disk or to the mesoSPIM log; Clear context and Disconnect discard it.
+## What a chat is started with
+
+Start Chat Window fills in a `Desk`: the skills that were ticked, the folders (personal skills,
+documentation, saved conversations), and a way to ask the operator a yes-or-no question. It
+stays as it is until the chat ends, which is why the list of skills can sit in the instructions
+without disturbing the provider's cache. With a desk the model has five more tools, none of them
+a Remote Control command, so they exist for the assistant only:
+
+- `get_status`: the essentials of `get_snapshot`, and the assistant's own state.
+- `search` and `read_passage`: the documentation and the saved conversations (search.py).
+- `save_skill` and `edit_skill`: personal skills only. The tool calls `ask_operator`, which
+  emits `sig_confirm`; the window shows the whole text and calls `answer`. The tool runs on a
+  thread of its own, so the question can stay open as long as the operator needs, and Cancel
+  counts as no.
+
+Without a desk (the offline evaluation) the agent has the microscope's calls only, and its
+instructions are unchanged.
+
+## What is written to disk
+
+Unless the config file turns saving on, the conversation lives in memory only, and Clear context
+and ending the chat discard it. With saving on, the worker writes the chat to one file after
+every turn (conversations.py): the prompts, the tool calls with their results, the replies, never
+an image. Every call to the instrument is written to the mesoSPIM log by the Acceptor, with the
+model's name, whether conversations are saved or not; the log holds calls only.
 
 ## Failures
 

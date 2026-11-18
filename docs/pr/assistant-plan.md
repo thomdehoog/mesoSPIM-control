@@ -1,8 +1,11 @@
 # Finishing the AI Assistant: the plan
 
-Written on 2026-11-18, from a planning conversation and two pages of handwritten notes. Nothing in
-this file is built yet. It describes what we agreed to build on top of the Remote Control and AI
-Assistant work in pull request #8 on the fork (branch `remote-control-ai-assistant`).
+Written on 2026-11-18, from a planning conversation and two pages of handwritten notes. It
+describes what we agreed to build on top of the Remote Control and AI Assistant work in pull
+request #8 on the fork (branch `remote-control-ai-assistant`).
+
+Most of it has since been built. The last section, "Built so far", says what exists, what is
+still missing, and where the result differs from the plan as written below.
 
 The aim is to finish the AI Assistant, not to give it many more features. Three ideas run through
 the whole plan:
@@ -398,3 +401,84 @@ set has its description tested in the same way.
 1. **Which skills go into the starter set.** None are written yet.
 2. **Whether the documentation is installed along with mesoSPIM.** `search` depends on it. This
    will be checked in the code when the work starts.
+
+## Built so far
+
+Built on 2026-11-18 on top of `remote-control-ai-assistant`. The user-facing description is in
+`docs/source/ai_assistant/` (index, skills, configuration) and in the Remote Control page's
+section "The log of calls".
+
+### What exists
+
+| Section of this plan | State |
+|---|---|
+| 1. The setup window | Built. |
+| 2. The config file | Built, as one `ai_assistant` block. |
+| 3. What "personal" means | Built: the home folder and the password store of whoever is logged in. |
+| 4. Skills | Built, except the starter set, which has no skills yet. |
+| 5. The chat window | Built. |
+| 6. `get_status` and `search` | Built. |
+| 7. Saving conversations | Built. |
+| 8. Log files | Built. |
+| 9. The API key | Built. |
+| 10. Checking that the assistant still chooses well | Started: a live walkthrough only (see below). |
+
+### Where it differs from the plan
+
+- **`get_status` is a tool of the assistant, not a new Remote Control call.** While building it
+  turned out that Remote Control already has `get_snapshot`, one readout of the whole microscope,
+  and that the assistant is already given that readout with every message. A second call with
+  the same content for scripts and outside programs would only have duplicated it. `get_status`
+  therefore takes the essentials from `get_snapshot` and adds the assistant's own half. Outside
+  clients keep using `get_snapshot`, and the number of Remote Control calls stays at 84.
+- **The separate "Vision model" box is gone, and nothing replaces it in the tab.** The model that
+  answers also looks at the camera images when it can. The config file's `vision` line has three
+  states: left out (each model does what it can), `False` (never send images), and `True` (needed
+  only to say that a model at the facility's own address accepts images).
+- **Stop microscope and Cancel prompt already existed** in the chat window of #8 and were kept as
+  they are. Stop microscope is the Stop button this plan asks for.
+- **Finished long runs are not a log line of their own.** A call that starts a move or an
+  acquisition is logged when it is accepted. Its end shows in the `get_progress` lines that
+  follow, which are logged like every other call. Because everything is logged, a client that
+  waits for a long run produces many such lines: the assistant asks about seven times a second
+  while it waits for a move. The log is complete, and it is not short.
+- **The "Saved conversations" button is shown only when saving is on.** With saving off there is
+  nothing to list.
+- **The assistant is told when to search.** In a first live run the model answered a question
+  about "last time" from the memory of its own chat. A chat that has the search now gets a short
+  paragraph in its instructions: it remembers this chat only, and searches the saved
+  conversations and the documentation before answering about either.
+- **`search` builds its index anew for every question.** For the size of the mesoSPIM
+  documentation this takes a few hundredths of a second, and the answer always reflects the files
+  as they are at that moment, also a conversation that was just removed.
+
+### How it was checked
+
+- **Offline tests:** 1,412 pass. This is the existing suite of the development branch
+  (`agent/gui-handles`) with the new tests added. Two recorded "open TIFF" cases fail in the
+  container this was built in, as they did before any change.
+- **The real window toolkit, off screen:** the tab and the chat window are built with PyQt5, the
+  skill lists scroll with twenty skills, and the assistant's question before it saves a skill
+  reaches the window from its own thread and the answer gets back.
+- **A real model on the simulated instrument** (`desk_walkthrough.py`, Claude Haiku 5.5): 9 of 9
+  checks. The status, the search over the documentation, a skill created from a conversation and
+  confirmed, that skill loaded in the next chat, an earlier conversation found, an unticked skill
+  left alone, and a declined skill not written.
+- **The key check against the real provider:** an accepted key and a refused key each gave the
+  right answer.
+
+### Not done yet
+
+- **The starter set of system skills.** None are written.
+- **The evaluation of section 10.** The recorded tool-choice cases still run without the five new
+  tools, so they do not yet measure whether the new tools confuse the choice of the old ones. The
+  live walkthrough is a first check, not a measurement.
+- **mesoSPIM itself in demo mode.** The tab was run on its own, off screen, not inside the full
+  application.
+- **The Windows password store.** Remembering a key was tested with a stand-in for the `keyring`
+  library, not with the Windows Credential Manager.
+- **A microscope.** Nothing here has been run on hardware.
+- **The documentation folder of an installed mesoSPIM.** The `documentation` line defaults to the
+  `docs/source` folder of a copy of the repository. An installation without that folder needs the
+  line set, or `search` says that the documentation is not available.
+
