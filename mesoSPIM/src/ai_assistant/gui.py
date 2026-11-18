@@ -1,15 +1,22 @@
-"""The 'AI Assistant' tab and window.
+"""The 'AI Assistant' tab and the chat window.
 
-The tab is shaped like the Remote Control tab: one Setup AI assistant box (Preferences, Language
-model, Vision model), a status line, and Connect and Disconnect. Connect applies the boxes, takes
-the session and opens the assistant window; Disconnect, or closing that window, cancels a running
-turn, closes it and hands the session back, so the Remote Control transports can start. The two
-are mutually exclusive.
+The tab is the setup. It asks for three things only: the provider, the model and your API key.
+Under them are two lists of skills, the microscope's own (system skills) and yours (personal
+skills), each with a tick box. Start Chat Window checks the key with the provider and then opens
+the chat with exactly the skills that are ticked. Everything else the assistant needs (the
+system prompt, the folders, whether conversations are saved, whether camera images may be sent)
+is in the microscope's config file, where the facility sets it once (settings.py).
 
-The window is the chat, styled like a coding-agent chat: your question bold on its own panel, the
-answer plain under the commands it ran when Show tool calls is on. Images stay out of the chat: a
-frame goes to the vision model only. Enter submits; the input disables during a turn
-(single-flight); Cancel prompt stops the assistant, Stop microscope stops the instrument.
+The chat is a window of its own: your question bold on its own panel, the answer plain under the
+commands it ran. Enter sends. While the assistant works the input is locked, so there is one
+request at a time. Under the input are Cancel prompt (stops the assistant), Clear context (starts
+the conversation afresh; the button shows how full the model's memory is), Create skill (asks
+the assistant to write down the procedure you just did together) and Show tool calls. Stop
+microscope, beside the input, stops the instrument itself, exactly as the main window's Stop
+does.
+
+There is one chat at a time. Closing the chat window ends it and hands the microscope back, so
+that the Remote Control tab can start a server; the two cannot run together.
 
 Maintainer (2026):
     Thom de Hoog
@@ -20,24 +27,47 @@ Maintainer (2026):
 
 import dataclasses
 import html as _htmllib
+import json
 import re
 import os
+import threading
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import config
+from . import conversations
+from . import keys
+from . import settings as assistant_settings
 from . import skills as skill_files
-from ..remote_control import config as rc_config
-from .assistant import AssistantWorker, Endpoint, offered_commands
+from .assistant import AssistantWorker, Desk, Endpoint, offered_commands
 
-CLOUD_MODE = "Cloud AI"
-SAME_AS_LANGUAGE = "Same as language model"
 NO_COMMANDS_SENT = "no command was sent to the microscope in this turn"
 PAIR_GAP = 14                   # px before an inner label, more than the 8 between it and its field
+SKILL_LIST_HEIGHT = 112         # px: each skill list shows about four skills and scrolls for more
 _ORPHANED_THREADS = []          # worker threads still in a model call at exit; kept so Qt never destroys a running one
 
 _BUBBLE = "#2b3b47"      # the operator's own turns only — the answers stay on the tab background
 _DIM = "#9aa7b0"         # tool-call and note text
+_GREEN, _RED, _GREY, _ORANGE = "#5fd38d", "#ff6b6b", "#7d8a93", "#e0a040"
+
+# --- the words the operator reads ---
+KEY_NOTICE = ("Use your own API key. Your messages, and the camera images the assistant looks at, are sent to "
+              "the provider you choose, and the use is billed to the owner of the key.")
+REMEMBER_LABEL = "Remember this key on this computer"
+REMEMBER_TIP = ("The key is kept in the password store of your Windows account, encrypted, so you do not have to "
+                "type it again. Only tick this if you are the only person using this Windows account: anyone "
+                "else on it would be spending on your key.")
+CANNOT_REMEMBER_TIP = ("Keys cannot be remembered on this computer: the 'keyring' library is not installed. "
+                       "Everything else works; the key is asked for each time mesoSPIM starts.")
+NOT_SAVED_NOTICE = ("Conversations are not saved. The calls the assistant makes are written to the mesoSPIM log.")
+SAVED_NOTICE = ("Conversations are being saved in {folder}. The calls the assistant makes are written to the "
+                "mesoSPIM log.")
+NO_SKILLS = "(none)"
+CREATE_SKILL_SHOWN = "Create a skill from this conversation."
+LOSE_ON_CLEAR = ("This conversation is not saved. If you clear the context it is gone for good.\n\n"
+                 "Clear it?")
+LOSE_ON_CLOSE = ("This conversation is not saved. If you close the chat it is gone for good.\n\n"
+                 "Close it?")
 
 
 def _md_to_html(markdown):
@@ -100,117 +130,125 @@ def _describe(endpoint):
     return f"{endpoint.provider}, {endpoint.model}"
 
 
-class ModelPicker(QtWidgets.QGroupBox):
-    """A titled box that names one model. A Type dropdown (Cloud AI, and for the vision box "Same
-    as language model") decides the fields after it: provider and model, then the API key and,
-    for an OpenAI-style server, its base URL."""
+def skill_text(kind, details):
+    """What the operator is shown before a skill is saved: its name, its description, the tools it
+    uses and its steps, in full. For a changed skill, the steps as they are now follow, so the two
+    can be compared."""
+    lines = [f"Name: {details.get('name', '')}", f"Description: {details.get('description', '')}"]
+    if details.get("tools"):
+        lines.append("Tools it uses: " + ", ".join(details["tools"]))
+    lines += ["", "Steps:", str(details.get("steps", "")).strip()]
+    if kind == "edit_skill" and details.get("was"):
+        lines += ["", "", "The steps as they are now:", str(details["was"]).strip()]
+    return "\n".join(lines)
 
-    def __init__(self, title, font, parent, same_as=None):
-        super().__init__(title, parent)
-        self.setFont(font)
-        self.grid = QtWidgets.QGridLayout(self)
-        self.grid.setContentsMargins(12, 12, 12, 12)
-        self.grid.setHorizontalSpacing(8)
-        self.grid.setVerticalSpacing(10)
 
-        self.mode = QtWidgets.QComboBox(self)
-        self.mode.addItems(([same_as] if same_as else []) + [CLOUD_MODE])
-        self.provider = QtWidgets.QComboBox(self)
-        self.provider.addItems(list(config.PROVIDERS))
-        self.provider.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)  # as wide as its names
-        self.model = QtWidgets.QLineEdit("", self)
-        self.model.setMinimumWidth(120)                           # grows with the window
-        self.key = QtWidgets.QLineEdit("", self)
-        self.key.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.key.setMinimumWidth(100)
-        self.base_url = QtWidgets.QLineEdit("", self)
-        self.base_url.setMinimumWidth(160)                        # grows with the window
-        # An OpenAI-style server says nothing about what its model can do: the operator says
-        # whether it accepts images. Unticked, look hands the model the numbers only.
-        self.sees = QtWidgets.QCheckBox("Can see images", self)
-        self.sees.setToolTip("Tick when the model behind this server accepts images; look then shows it "
-                             "the frame. Unticked, look gives it the frame's numbers only.")
-        for widget in (self.mode, self.provider, self.model, self.key, self.base_url, self.sees):
-            widget.setFont(font)
-        self.type_label = _field_label("Type", self, font, gap=0)
-        self.provider_label = _field_label("Provider", self, font)
-        self.model_label = _field_label("Model", self, font)
-        self.key_label = _field_label("API key", self, font)
-        self.base_url_label = _field_label("Base URL", self, font)
+class SkillDialog(QtWidgets.QDialog):
+    """The question the assistant puts to the operator before it saves a skill: the full text, and
+    two buttons. Nothing is written unless Save skill is pressed; closing the dialog is a no."""
 
-        # Line one: the type and the provider. Line two: the model. Line three: the key, or the base
-        # URL with the key on the line below it (_on_provider_changed), so an OpenAI-style server is
-        # no wider than any other provider. Columns 5 and 7 take the leftover width, so the model,
-        # the URL and the key all grow with the window.
-        grid = self.grid
-        grid.addWidget(self.type_label, 0, 0)
-        grid.addWidget(self.mode, 0, 1)
-        grid.addWidget(self.provider_label, 0, 2)
-        grid.addWidget(self.provider, 0, 3)
-        grid.addWidget(self.model_label, 1, 2)
-        grid.addWidget(self.model, 1, 3, 1, 6)
-        grid.addWidget(self.base_url_label, 2, 2)
-        grid.addWidget(self.base_url, 2, 3, 1, 6)
-        grid.addWidget(self.sees, 4, 3, 1, 6)
-        grid.setColumnStretch(5, 1)
-        grid.setColumnStretch(7, 1)
+    def __init__(self, parent, kind, details, font):
+        super().__init__(parent)
+        new = kind == "save_skill"
+        self.setWindowTitle("Save this new skill?" if new else "Save this change to your skill?")
+        layout = QtWidgets.QVBoxLayout(self)
+        intro = QtWidgets.QLabel(
+            ("The assistant would like to save this as one of your personal skills. Read it through, the "
+             "description above all: it is what the assistant goes by when it decides whether to use the skill."
+             if new else
+             "The assistant would like to change one of your personal skills to the text below."), self)
+        intro.setWordWrap(True)
+        intro.setFont(font)
+        layout.addWidget(intro)
+        self.text = QtWidgets.QPlainTextEdit(self)
+        self.text.setReadOnly(True)
+        self.text.setFont(font)
+        self.text.setPlainText(skill_text(kind, details))
+        layout.addWidget(self.text, 1)
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addStretch(1)
+        self.save_button = QtWidgets.QPushButton("Save skill", self)
+        self.decline_button = QtWidgets.QPushButton("Don't save", self)
+        for button in (self.save_button, self.decline_button):
+            button.setFont(font)
+            buttons.addWidget(button)
+        self.save_button.clicked.connect(self.accept)
+        self.decline_button.clicked.connect(self.reject)
+        self.decline_button.setDefault(True)             # Enter by accident does not save
+        layout.addLayout(buttons)
+        self.resize(640, 560)
 
-        self.provider.setCurrentText(config.DEFAULT_PROVIDER)
-        self.mode.setCurrentText(same_as or CLOUD_MODE)
-        self.mode.currentTextChanged.connect(self._on_mode_changed)
-        self.provider.currentTextChanged.connect(self._on_provider_changed)
-        self._on_provider_changed(config.DEFAULT_PROVIDER)     # prefills, then shows the mode's fields
 
-    @property
-    def same(self):
-        """True when this box defers to the language model (the vision box's first choice)."""
-        return self.mode.currentText() != CLOUD_MODE
+class ConversationsDialog(QtWidgets.QDialog):
+    """The operator's saved conversations, newest first, each with a Remove button. Removing one
+    erases its file for good, after a question, and it no longer turns up in a search."""
 
-    def _on_mode_changed(self, *_):
-        """Show the fields for the type chosen."""
-        cloud = not self.same
-        server = cloud and config.PROVIDERS[self.provider.currentText()]["kind"] == "openai-compatible"
-        for widget in (self.provider_label, self.provider, self.model_label, self.model,
-                       self.key_label, self.key):
-            widget.setVisible(cloud)
-        for widget in (self.base_url_label, self.base_url, self.sees):
-            widget.setVisible(server)
+    def __init__(self, parent, folder, font):
+        super().__init__(parent)
+        self.folder = folder
+        self._font = font
+        self.setWindowTitle("Saved conversations")
+        layout = QtWidgets.QVBoxLayout(self)
+        where = QtWidgets.QLabel(f"These are the conversations saved in {folder}. Only you can see them. The "
+                                 "assistant can search them when you ask what was done before.", self)
+        where.setWordWrap(True)
+        where.setFont(font)
+        layout.addWidget(where)
+        self.area = QtWidgets.QScrollArea(self)
+        self.area.setWidgetResizable(True)
+        layout.addWidget(self.area, 1)
+        close = QtWidgets.QPushButton("Close", self)
+        close.setFont(font)
+        close.clicked.connect(self.accept)
+        row = QtWidgets.QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(close)
+        layout.addLayout(row)
+        self.remove_buttons = {}
+        self.fill()
+        self.resize(720, 480)
 
-    def _on_provider_changed(self, name):
-        """Prefill the preset. An OpenAI-style server also shows its base URL, and its key is
-        optional: Ollama wants none, a gateway or a hosted API wants one."""
-        preset = config.PROVIDERS[name]
-        self.model.setText(preset["model"])
-        self.base_url.setText(preset.get("base_url", ""))
-        key_env = preset.get("key_env")
-        in_env = bool(key_env and os.environ.get(key_env))
-        if preset["kind"] == "openai-compatible":
-            placeholder = "optional"
-        else:
-            placeholder = f"using {key_env} from the environment" if in_env else f"{name} API key"
-        self.key.setPlaceholderText(placeholder)
-        # The key takes the whole third line, or the fourth, under the base URL.
-        self.grid.removeWidget(self.key_label)
-        self.grid.removeWidget(self.key)
-        if preset["kind"] == "openai-compatible":
-            self.grid.addWidget(self.key_label, 3, 2)
-            self.grid.addWidget(self.key, 3, 3, 1, 6)
-        else:
-            self.grid.addWidget(self.key_label, 2, 2)
-            self.grid.addWidget(self.key, 2, 3, 1, 6)
-        self._on_mode_changed()
+    def fill(self):
+        """List the conversations as they are on disk now."""
+        inner = QtWidgets.QWidget(self.area)
+        rows = QtWidgets.QVBoxLayout(inner)
+        rows.setAlignment(QtCore.Qt.AlignTop)
+        self.remove_buttons = {}
+        found = conversations.listing(self.folder)
+        if not found:
+            empty = QtWidgets.QLabel("No conversation is saved yet.", inner)
+            empty.setFont(self._font)
+            rows.addWidget(empty)
+        for item in found:
+            line = QtWidgets.QHBoxLayout()
+            label = QtWidgets.QLabel(f"{item['started']}   {item['title']}", inner)
+            label.setFont(self._font)
+            label.setToolTip(f"{item['turns']} message(s). File: {item['path']}")
+            button = QtWidgets.QPushButton("Remove", inner)
+            button.setFont(self._font)
+            button.clicked.connect(lambda _checked=False, path=item["path"]: self.on_remove(path))
+            self.remove_buttons[item["path"]] = button
+            line.addWidget(label, 1)
+            line.addWidget(button)
+            rows.addLayout(line)
+        self.area.setWidget(inner)
 
-    def cloud_endpoint(self):
-        server = config.PROVIDERS[self.provider.currentText()]["kind"] == "openai-compatible"
-        return Endpoint.from_preset(self.provider.currentText(), self.model.text(), self.key.text(),
-                                    self.base_url.text(), vision=self.sees.isChecked() if server else None)
+    def on_remove(self, path):
+        answer = QtWidgets.QMessageBox.question(
+            self, "Remove this conversation?",
+            "The conversation is erased for good and can no longer be searched.\n\nRemove it?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+        if answer == QtWidgets.QMessageBox.Yes:
+            if not conversations.remove(path):
+                QtWidgets.QMessageBox.warning(self, "Not removed", f"The file {path} could not be erased.")
+            self.fill()
 
 
 class AssistantWindow(QtWidgets.QWidget):
     """The chat, in a window of its own: the transcript, the input line with Stop microscope
-    beside it, and under them Cancel prompt, Clear context and Show tool calls. It exists while
-    the assistant is connected: Connect in the tab opens it, Disconnect closes it, and closing it
-    disconnects. The tab owns the session and the turn; this window is what it shows."""
+    beside it, and under them Cancel prompt, Clear context, Create skill and Show tool calls. It
+    exists while a chat is open: Start Chat Window in the tab opens it, and closing it ends the
+    chat. The tab owns the session and the turn; this window is what it shows."""
 
     def __init__(self, tab, font):
         super().__init__(tab.main_window, QtCore.Qt.Window)
@@ -237,14 +275,6 @@ class AssistantWindow(QtWidgets.QWidget):
         self.status.setVisible(False)                             # shown only while a turn runs
         layout.addWidget(self.status)
 
-        # The token meter: what the last request of the session cost in input tokens. The history
-        # is append-only, so it grows with every turn; past the model's warning it says so, and
-        # past its ceiling no turn starts until Clear context.
-        self.meter = QtWidgets.QLabel("", self)
-        self.meter.setObjectName("AiAssistantMeter")
-        self.meter.setFont(font)
-        layout.addWidget(self.meter)
-
         self.input = _Input(self)
         self.input.setPlaceholderText("Ask the microscope…")
         self.input.setObjectName("AiAssistantInput")
@@ -252,14 +282,27 @@ class AssistantWindow(QtWidgets.QWidget):
         self.input.returnPressed.connect(tab.on_submit)
         self.interrupt = QtWidgets.QPushButton("Cancel prompt", self)
         self.interrupt.setFont(font)
+        self.interrupt.setToolTip("Stops the assistant. Whatever the microscope is doing carries on.")
         self.interrupt.clicked.connect(tab.on_interrupt)      # always clickable; a no-op between turns
         self.stop_button = QtWidgets.QPushButton("Stop microscope", self)
         self.stop_button.setObjectName("AiAssistantStopButton")
         self.stop_button.setFont(font)
+        self.stop_button.setToolTip("Stops the stage and whatever is running, as the main window's Stop does, "
+                                    "and stops the assistant.")
         self.stop_button.clicked.connect(tab.on_stop_microscope)   # always enabled: the emergency stop
+        # Clear context carries the size of the conversation: the tokens of the last request, out
+        # of what the model takes. The history only grows, so this number does too, until cleared.
         self.clear_button = QtWidgets.QPushButton("Clear context", self)
+        self.clear_button.setObjectName("AiAssistantClearButton")
         self.clear_button.setFont(font)
+        self.clear_button.setToolTip("Empties the conversation and starts afresh, with the same model and skills. "
+                                     "The numbers show how full the model's memory is.")
         self.clear_button.clicked.connect(tab.on_clear_all)
+        self.create_skill_button = QtWidgets.QPushButton("Create skill", self)
+        self.create_skill_button.setFont(font)
+        self.create_skill_button.setToolTip("Asks the assistant to write down the procedure you just did together "
+                                            "as a personal skill. You see the text and decide before it is saved.")
+        self.create_skill_button.clicked.connect(tab.on_create_skill)
         self.show_tool_calls = QtWidgets.QCheckBox("Show tool calls", self)
         self.show_tool_calls.setFont(font)
         self.show_tool_calls.setChecked(config.SHOW_TOOL_CALLS)
@@ -275,7 +318,7 @@ class AssistantWindow(QtWidgets.QWidget):
         layout.addLayout(entry)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
-        for widget in (self.interrupt, self.clear_button, self.show_tool_calls):
+        for widget in (self.interrupt, self.clear_button, self.create_skill_button, self.show_tool_calls):
             buttons.addWidget(widget)
         buttons.addStretch(1)
         layout.addLayout(buttons)
@@ -283,18 +326,30 @@ class AssistantWindow(QtWidgets.QWidget):
         self.hide()
 
     def closeEvent(self, event):
-        """The window's own close button: the operator is done with the assistant."""
-        event.accept()
-        self.tab.on_window_closed()
+        """The window's own close button: the operator is done with this chat. A conversation that
+        is not saved would be lost, so the tab asks first."""
+        if self.tab.may_close():
+            event.accept()
+            self.tab.on_window_closed()
+        else:
+            event.ignore()
 
 
 class AiAssistantGUI(QtWidgets.QWidget):
-    """The tab: setup and the session, shaped like the Remote Control tab. One Setup AI assistant
-    box (Language model, Vision model, Preferences), a status line, and Connect and Disconnect;
-    the chat is in the AssistantWindow, which Connect opens."""
+    """The tab: the setup and the session. Provider, model and API key, the two skill lists, a
+    status line and Start Chat Window; the chat is in the AssistantWindow, which that button
+    opens."""
 
     sig_run_turn = QtCore.pyqtSignal(str)
     sig_check_run = QtCore.pyqtSignal()      # is the run the assistant started still under way?
+    sig_key_checked = QtCore.pyqtSignal(bool, str)   # the provider's answer to the key check, from its thread
+
+    # The key check talks to the provider over the network, which can take seconds, so it runs
+    # on a thread of its own and the window stays responsive. The tests switch this off.
+    checks_in_background = True
+    # The tools the assistant has that are not Remote Control calls: a skill may name them.
+    ASSISTANT_TOOLS = ("look", "ask_eyes", "calibrate", "load_skill", "get_status", "search", "read_passage",
+                       "save_skill", "edit_skill")
 
     def __init__(self, parent):
         super().__init__(parent.TabWidget)
@@ -304,17 +359,27 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker = None
         self._thread = None
         self._state = "idle"                    # idle or ready; the status line shows it
-        self._endpoints = {}                    # "language" and, when it is its own, "vision"
+        self._endpoints = {}                    # "language": the model that answers
         self._running = False                   # a turn is in flight
         self._run_turn_slot = None
         self._blocks = []                       # oldest first: HTML, or a finished answer's turn dict
         self._active = None                     # the running turn: {"tools", "reply", "error"}
         self._tokens = 0                        # the input tokens of the session's last request
+        self._pending = None                    # the endpoint whose key is being checked
+        self._entries = []                      # the skill files of both folders (skills.library)
+        self.skill_boxes = {}                   # skill name -> its tick box
+        self.remove_buttons = {}                # personal skill name -> its Remove button
+        self._skill_rows = {skill_files.SYSTEM: [], skill_files.PERSONAL: []}
+        self.check_key = keys.check
+        # What the facility set in the config file, and what this person chose last time.
+        self.settings = assistant_settings.read(getattr(self.core, "cfg", None))
+        self.choices = assistant_settings.read_choices(self.settings)
         # The done notice: while a run the assistant started is under way, the worker is asked every
         # DONE_CHECK_MS whether it has ended. It never runs a turn.
         self._done_check = QtCore.QTimer(self)
         self._done_check.setInterval(config.DONE_CHECK_MS)
         self._done_check.timeout.connect(self.sig_check_run.emit)
+        self.sig_key_checked.connect(self._on_key_checked)
         self._build_ui()
         index = parent.TabWidget.indexOf(parent.remote_control)   # RemoteControlGUI instance
         if index >= 0:
@@ -354,20 +419,27 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._worker.sig_served.connect(self._on_served)
         self._worker.sig_error.connect(self._on_error)
         self._worker.sig_done.connect(self._on_done)
+        self._worker.sig_confirm.connect(self._on_confirm)
+        self._worker.sig_skill_saved.connect(self._on_skill_saved)
+        self._worker.sig_note.connect(self._on_note)
         self._apply_options()
         self._thread.start()
         return True
 
     def _apply_options(self, *_):
+        """Hand the worker the settings that used to be boxes in this tab and now come from the
+        config file: how much a camera image is shrunk, how sharpness is measured, and what a
+        positive move on each axis does to the sample in the image."""
         if self._worker is not None:
-            self._worker.look_image_bin = int(self.frame_bin.currentText())
-            self._worker.focus_metric = self.focus_metric.currentData()
+            self._worker.look_image_bin = self.settings.look_bin
+            self._worker.focus_metric = self.settings.focus_metric
             self._worker.axes = self.axes()
 
     def axes(self):
-        """What a positive move on x, y and z does to the sample in the image, as chosen."""
-        return {axis: combo.currentText() for axis, combo in self.axis_boxes.items()}
+        """What a positive move on x, y and z does to the sample in the image, from the config file."""
+        return dict(self.settings.axes)
 
+    # --- building the tab ---
     def _build_ui(self):
         # Only the padding: qdarkstyle's buttons hug their text, its labels carry 7 px a side that
         # the setup grids do not want, and every other property cascades.
@@ -375,6 +447,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
                            "QGroupBox QLabel { padding: 0px; }")
         font = self.font()
         font.setPointSize(12)                                     # match Remote Control
+        self._font = font
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
@@ -383,9 +456,74 @@ class AiAssistantGUI(QtWidgets.QWidget):
         column = QtWidgets.QVBoxLayout(group)
         column.setContentsMargins(12, 12, 12, 12)
         column.setSpacing(8)
-        column.addWidget(self._build_setup(group, font))
 
-        # The status line: what the session is doing, and what a failed Connect needs.
+        # Provider, model and key: the three things an operator decides.
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(10)
+        self.provider = QtWidgets.QComboBox(group)
+        self.provider.addItems(list(config.PROVIDERS))
+        self.provider.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.model = QtWidgets.QLineEdit("", group)
+        self.model.setMinimumWidth(120)
+        self.key = QtWidgets.QLineEdit("", group)
+        self.key.setEchoMode(QtWidgets.QLineEdit.Password)      # dots, never the characters
+        self.key.setMinimumWidth(160)
+        # The light: grey until the key has been checked, green when the provider accepted it,
+        # red when it did not. The sentence beside it says which.
+        self.light = QtWidgets.QLabel("●", group)
+        self.light.setObjectName("AiAssistantLight")
+        self.light_text = QtWidgets.QLabel("", group)
+        self.remember = QtWidgets.QCheckBox(REMEMBER_LABEL, group)
+        self.forget_button = QtWidgets.QPushButton("Forget key", group)
+        self.forget_button.setToolTip("Removes the key that was remembered for this provider.")
+        self.forget_button.clicked.connect(self.on_forget_key)
+        for widget in (self.provider, self.model, self.key, self.light, self.light_text, self.remember,
+                       self.forget_button):
+            widget.setFont(font)
+        grid.addWidget(_field_label("Provider", group, font, gap=0), 0, 0)
+        grid.addWidget(self.provider, 0, 1)
+        grid.addWidget(_field_label("Model", group, font), 0, 2)
+        grid.addWidget(self.model, 0, 3, 1, 3)
+        grid.addWidget(_field_label("API key", group, font, gap=0), 1, 0)
+        grid.addWidget(self.key, 1, 1, 1, 3)
+        grid.addWidget(self.light, 1, 4)
+        grid.addWidget(self.light_text, 1, 5)
+        grid.addWidget(self.remember, 2, 1, 1, 3)
+        grid.addWidget(self.forget_button, 2, 4, 1, 2)
+        grid.setColumnStretch(3, 1)
+        column.addLayout(grid)
+        self.key_notice = QtWidgets.QLabel(KEY_NOTICE, group)
+        self.key_notice.setWordWrap(True)
+        self.key_notice.setFont(font)
+        column.addWidget(self.key_notice)
+
+        # The two skill lists. Each has a fixed height and scrolls, so the tab keeps its size
+        # however many skills there are.
+        self._skill_layouts = {}
+        for kind, title, tip in (
+                (skill_files.SYSTEM, "System skills",
+                 "Procedures that belong to this microscope. Everyone who uses it sees them."),
+                (skill_files.PERSONAL, "Personal skills",
+                 "Your own procedures. Only you see them. The assistant can write one for you from a "
+                 "conversation (Create skill, in the chat window).")):
+            label = QtWidgets.QLabel(title, group)
+            label.setFont(font)
+            label.setToolTip(tip)
+            column.addWidget(label)
+            area = QtWidgets.QScrollArea(group)
+            area.setWidgetResizable(True)
+            area.setFixedHeight(SKILL_LIST_HEIGHT)
+            inner = QtWidgets.QWidget(area)
+            rows = QtWidgets.QVBoxLayout(inner)
+            rows.setContentsMargins(6, 4, 6, 4)
+            rows.setSpacing(2)
+            rows.setAlignment(QtCore.Qt.AlignTop)
+            area.setWidget(inner)
+            column.addWidget(area)
+            self._skill_layouts[kind] = (inner, rows)
+
+        # The status line: what the session is doing, and what a failed start needs.
         status_row = QtWidgets.QHBoxLayout()
         status_row.setSpacing(8)
         status_row.addWidget(_field_label("Status", group, font, gap=0))
@@ -396,117 +534,224 @@ class AiAssistantGUI(QtWidgets.QWidget):
         status_row.addWidget(self.status_label, 1)
         column.addLayout(status_row)
 
-        self.connect_button = QtWidgets.QPushButton("Connect", group)
-        self.connect_button.setFont(font)
-        self.connect_button.clicked.connect(self.on_connect)
-        self.disconnect_button = QtWidgets.QPushButton("Disconnect", group)
-        self.disconnect_button.setFont(font)
-        self.disconnect_button.clicked.connect(self.on_disconnect)
+        self.start_button = QtWidgets.QPushButton("Start Chat Window", group)
+        self.start_button.setFont(font)
+        self.start_button.setToolTip("Checks your key with the provider and opens a new chat with the skills "
+                                     "that are ticked. While a chat is open, this brings it to the front.")
+        self.start_button.clicked.connect(self.on_start_chat)
+        self.conversations_button = QtWidgets.QPushButton("Saved conversations…", group)
+        self.conversations_button.setFont(font)
+        self.conversations_button.clicked.connect(self.on_saved_conversations)
+        self.conversations_button.setVisible(self.settings.save_conversations)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
-        buttons.addWidget(self.connect_button)
-        buttons.addWidget(self.disconnect_button)
+        buttons.addWidget(self.start_button)
+        buttons.addWidget(self.conversations_button)
         buttons.addStretch(1)
         column.addLayout(buttons)
+        # Whether conversations are kept is the facility's decision (the config file); the tab
+        # always says which it is, and where the calls are recorded.
+        self.saving_notice = QtWidgets.QLabel(self.saving_text(), group)
+        self.saving_notice.setWordWrap(True)
+        self.saving_notice.setFont(font)
+        column.addWidget(self.saving_notice)
         layout.addWidget(group)
         layout.addStretch(1)
         self.chat_window = AssistantWindow(self, font)
-        self._set_connect_state("idle")
 
-    def _build_setup(self, parent, font):
-        """Three titled boxes, in the order they are decided: the Language model, the Vision model,
-        then Preferences on one line. Connect applies them."""
-        setup = QtWidgets.QWidget(parent)
-        column = QtWidgets.QVBoxLayout(setup)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(8)
+        self.provider.setCurrentText(self.choices.get("provider")
+                                     if self.choices.get("provider") in config.PROVIDERS else config.DEFAULT_PROVIDER)
+        self.provider.currentTextChanged.connect(self._on_provider_changed)
+        self.key.textChanged.connect(self._on_key_typed)
+        self._on_provider_changed(self.provider.currentText())
+        self.refresh_skills()
+        self._set_state("idle")
+        if self.settings.problems:                                # a line of the config file that could not be used
+            self.status_label.setText(" ".join(self.settings.problems))
 
-        preferences = QtWidgets.QGroupBox("Preferences", setup)
-        preferences.setFont(font)
-        options = QtWidgets.QGridLayout(preferences)
-        options.setContentsMargins(12, 12, 12, 12)
-        options.setHorizontalSpacing(8)
-        options.setVerticalSpacing(10)
-        cfg = getattr(self.core, "cfg", None)
-        self.frame_bin = QtWidgets.QComboBox(preferences)
-        self.frame_bin.addItems([str(factor) for factor in rc_config.FRAME_BINS])
-        self.frame_bin.setCurrentText(str(config.LOOK_BIN))
-        self.focus_metric = QtWidgets.QComboBox(preferences)
-        self.focus_metric.addItem("Laplacian", "laplacian")
-        self.focus_metric.addItem("DCT-Shannon (Auto-Focus)", "dct_shannon")
-        self.focus_metric.setCurrentIndex(self.focus_metric.findData(config.FOCUS_METRIC))
-        for widget in (self.frame_bin, self.focus_metric):
-            widget.setFont(font)
+    def saving_text(self):
+        """The sentence that says whether conversations are saved, and where."""
+        if self.settings.save_conversations:
+            return SAVED_NOTICE.format(folder=self.settings.conversations)
+        return NOT_SAVED_NOTICE
 
-        # The bin and the focus metric on one line, the leftover width after them.
-        image_label = _field_label("Bin image", preferences, font, gap=0)
-        focus_label = _field_label("Focus metric", preferences, font)
-        options.addWidget(image_label, 0, 0)
-        options.addWidget(self.frame_bin, 0, 1)
-        options.addWidget(focus_label, 0, 2)
-        options.addWidget(self.focus_metric, 0, 3)
-        options.setColumnStretch(4, 1)
+    def showEvent(self, event):
+        """Each time the tab is shown the skill folders are read again, so a file added or changed
+        by hand appears without restarting mesoSPIM."""
+        if self._state == "idle":
+            self.refresh_skills()
+        super().showEvent(event)
 
-        # The coordinate system as the operator sees it: one row per axis, what a positive move
-        # does to the sample in the image. "Move it up" then has one meaning for the model.
-        axes_box = QtWidgets.QGroupBox("Coordinate system", setup)
-        axes_box.setFont(font)
-        axes_grid = QtWidgets.QGridLayout(axes_box)
-        axes_grid.setContentsMargins(12, 12, 12, 12)
-        axes_grid.setHorizontalSpacing(8)
-        axes_grid.setVerticalSpacing(10)
-        configured_axes = getattr(cfg, config.AXES_CONFIG_KEY, None) or {}
-        self.axis_boxes = {}
-        for row, axis in enumerate(("x", "y", "z")):
-            label = _field_label(f"{axis}+ moves the sample", axes_box, font, gap=0)
-            combo = QtWidgets.QComboBox(axes_box)
-            combo.addItems(list(config.AXIS_CHOICES[axis]))
-            start = configured_axes.get(axis) if isinstance(configured_axes, dict) else None
-            combo.setCurrentText(start if start in config.AXIS_CHOICES[axis] else config.DEFAULT_AXES[axis])
-            combo.setFont(font)
-            axes_grid.addWidget(label, row, 0)
-            axes_grid.addWidget(combo, row, 1)
-            self.axis_boxes[axis] = combo
-        axes_grid.setColumnStretch(2, 1)
+    # --- provider, model and key ---
+    def _on_provider_changed(self, name):
+        """Prefill the model for this provider (the one used last time, else the usual one), and
+        say in the key field where the key will come from when nothing is typed."""
+        preset = config.PROVIDERS[name]
+        self.model.setText((self.choices.get("models") or {}).get(name) or preset["model"])
+        self.key.setText("")
+        key_env = preset.get("key_env")
+        own_address = preset["kind"] == "openai-compatible"
+        kept = bool(keys.remembered(name))
+        if kept:
+            placeholder = "your remembered key is used"
+        elif own_address:
+            placeholder = "optional"
+        elif key_env and os.environ.get(key_env):
+            placeholder = f"using {key_env} from the environment"
+        else:
+            placeholder = f"{name} API key"
+        self.key.setPlaceholderText(placeholder)
+        can = keys.can_remember()
+        self.remember.setEnabled(can and self._state == "idle")
+        self.remember.setChecked(kept)
+        self.remember.setToolTip(REMEMBER_TIP if can else CANNOT_REMEMBER_TIP)
+        self.forget_button.setEnabled(kept and self._state == "idle")
+        self._set_light(None, "not checked yet")
 
-        self.language = ModelPicker("Language model", font, setup)
-        self.vision = ModelPicker("Vision model", font, setup, same_as=SAME_AS_LANGUAGE)
-        column.addWidget(self.language)
-        column.addWidget(self.vision)
-        column.addWidget(preferences)
-        column.addWidget(axes_box)
+    def _on_key_typed(self, *_):
+        if self._pending is None and self._state == "idle":
+            self._set_light(None, "not checked yet")           # a new key has not been checked
 
-        # The boxes share their first columns, each as wide as its widest occupant, so Type sits
-        # under Bin image, the dropdowns under each other, Provider under Focus metric.
-        pickers = (self.language, self.vision)
+    def _set_light(self, accepted, text):
+        """Green for a key the provider accepted, red for one it did not, grey for not yet known."""
+        colour = _GREY if accepted is None else (_GREEN if accepted else _RED)
+        self.light.setStyleSheet(f"color: {colour};")
+        self.light_text.setText(text)
+        self.light_state = accepted
 
-        def widest(*widgets):
-            return max(widget.sizeHint().width() for widget in widgets)
+    def on_forget_key(self):
+        """Remove the key remembered for the chosen provider."""
+        name = self.provider.currentText()
+        if keys.forget(name):
+            self.status_label.setText(f"The remembered key for {name} was removed.")
+        else:
+            self.status_label.setText(f"The remembered key for {name} could not be removed.")
+        self._on_provider_changed(name)
 
-        widths = (
-            widest(image_label, *(p.type_label for p in pickers)),
-            widest(self.frame_bin, *(p.mode for p in pickers)),   # "Same as language model" sets it
-            widest(focus_label, *(w for p in pickers for w in (p.provider_label, p.base_url_label, p.key_label))),
-        )
-        for grid in (options, self.language.grid, self.vision.grid):
-            for index, width in enumerate(widths):
-                grid.setColumnMinimumWidth(index, width)
-        self.frame_bin.currentTextChanged.connect(self._apply_options)
-        self.focus_metric.currentIndexChanged.connect(self._apply_options)
-        for combo in self.axis_boxes.values():
-            combo.currentTextChanged.connect(self._apply_options)
-        return setup
+    def _chosen_endpoint(self):
+        """The model the setup names. The key is the one typed, else the remembered one, else the
+        one in the environment. The address of a model that the facility hosts itself, and whether
+        camera images may be sent, come from the config file."""
+        name = self.provider.currentText()
+        preset = config.PROVIDERS[name]
+        own_address = preset["kind"] == "openai-compatible"
+        key = self.key.text().strip() or keys.remembered(name)
+        if own_address:
+            sees = self.settings.vision is True          # mesoSPIM cannot know; the config file says
+        else:
+            sees = False if self.settings.vision is False else None      # None: as the model allows
+        endpoint = Endpoint.from_preset(name, self.model.text(), key,
+                                        self.settings.address if own_address else "", vision=sees)
+        if self.settings.request_interval_s > 0:        # the config file spaces the requests, for a tight limit
+            endpoint = dataclasses.replace(endpoint, request_interval_s=self.settings.request_interval_s)
+        return endpoint
+
+    # --- the skill lists ---
+    def refresh_skills(self):
+        """Read both skill folders and rebuild the two lists. A file that cannot be used is shown
+        greyed out with the reason, and a skill that names a call mesoSPIM no longer has is marked
+        as out of date."""
+        offered = [cmd.name for cmd in offered_commands()] + list(self.ASSISTANT_TOOLS)
+        self._entries = skill_files.library(self.settings.system_skills, self.settings.personal_skills, offered)
+        switched_off = set(self.choices.get("skills_off") or [])
+        self.skill_boxes, self.remove_buttons = {}, {}
+        editable = self._state == "idle"
+        for kind, (inner, rows) in self._skill_layouts.items():
+            for row in self._skill_rows[kind]:
+                rows.removeWidget(row)
+                row.hide()                      # gone from the list at once; Qt frees it a moment later
+                row.setParent(None)
+                row.deleteLater()
+            self._skill_rows[kind] = []
+            entries = [entry for entry in self._entries if entry.kind == kind]
+            entries.sort(key=lambda entry: not entry.usable)      # the files that cannot be used go last
+            if not entries:
+                empty = QtWidgets.QLabel(NO_SKILLS, inner)
+                empty.setFont(self._font)
+                rows.addWidget(empty)
+                self._skill_rows[kind].append(empty)
+            for entry in entries:
+                row = QtWidgets.QWidget(inner)
+                line = QtWidgets.QHBoxLayout(row)
+                line.setContentsMargins(0, 0, 0, 0)
+                line.setSpacing(6)
+                if entry.usable:
+                    text, tip = entry.key, entry.description
+                    if entry.missing_tools:
+                        text += f"   (out of date: no tool {', '.join(entry.missing_tools)})"
+                        tip += ("\n\nThis skill uses a call that this version of mesoSPIM does not have, so it "
+                                "would fail half way. Change the skill, or untick it.")
+                else:
+                    text, tip = f"{entry.path.name}   (cannot be used)", entry.problem
+                box = QtWidgets.QCheckBox(text, row)
+                box.setFont(self._font)
+                box.setToolTip(tip)
+                box.setChecked(entry.usable and entry.key not in switched_off)
+                box.setEnabled(entry.usable and editable)
+                if entry.usable:
+                    box.toggled.connect(lambda checked, key=entry.key: self._on_tick(key, checked))
+                    self.skill_boxes[entry.key] = box
+                line.addWidget(box, 1)
+                if kind == skill_files.PERSONAL:
+                    button = QtWidgets.QPushButton("Remove", row)
+                    button.setFont(self._font)
+                    button.setEnabled(editable)
+                    button.setToolTip("Takes this skill out of your list. The file is moved to a 'deleted' "
+                                      "folder next to your skills, so it can be put back.")
+                    button.clicked.connect(lambda _checked=False, chosen=entry: self.on_remove_skill(chosen))
+                    self.remove_buttons[entry.key] = button
+                    line.addWidget(button)
+                # Each row keeps its full height, so a long list scrolls and is never squeezed.
+                row.setMinimumHeight(max(box.sizeHint().height(), 22) + 2)
+                rows.addWidget(row)
+                self._skill_rows[kind].append(row)
+            # Tell the scrolling area how tall the whole list is: the rows, the gaps between them
+            # and the margins. Without this it squeezes the rows into the height it has.
+            heights = [row.minimumHeight() for row in self._skill_rows[kind]]
+            inner.setMinimumHeight(sum(heights) + 2 * max(len(heights) - 1, 0) + 8)
+
+    def _on_tick(self, key, checked):
+        """A skill was ticked or unticked: remember it for this person. The next chat follows it;
+        a chat that is already open keeps what it started with."""
+        switched_off = set(self.choices.get("skills_off") or [])
+        if checked:
+            switched_off.discard(key)
+        else:
+            switched_off.add(key)
+        self.choices["skills_off"] = sorted(switched_off)
+        assistant_settings.write_choices(self.settings, self.choices)
+
+    def on_remove_skill(self, entry):
+        """Remove a personal skill, after a question. The file is moved, not erased."""
+        answer = QtWidgets.QMessageBox.question(
+            self, "Remove this skill?",
+            f"Remove your skill '{entry.key}' from the list?\n\nThe file is moved to the 'deleted' folder next to "
+            "your skills, so you can put it back if this was a mistake.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        try:
+            moved = skill_files.remove_personal(entry.path)
+            self.status_label.setText(f"The skill '{entry.key}' was moved to {moved.parent}.")
+        except OSError as error:
+            self.status_label.setText(f"The skill '{entry.key}' could not be removed: {error}")
+        self.refresh_skills()
 
     # --- the session ---
-    def _set_connect_state(self, state, detail=""):
-        """idle: Connect is the one button that works and the window is closed. ready: connected,
-        the window open and titled with what answers."""
+    def _set_state(self, state, detail=""):
+        """idle: the setup can be changed and no chat is open. ready: a chat is open, the window
+        titled with the model that answers, and the setup is locked until that chat ends."""
         self._state = state
-        text = {"idle": "disconnected", "ready": f"connected: {detail}"}[state]
-        self.status_label.setText(text)
-        self.connect_button.setEnabled(state == "idle")
-        self.disconnect_button.setEnabled(state != "idle")
-        self._set_setup_enabled(state == "idle")
+        if state == "idle":
+            self.status_label.setText("no chat is open")
+        else:
+            self.status_label.setText(f"a chat is open: {detail}")
+        for widget in (self.provider, self.model, self.key):
+            widget.setEnabled(state == "idle")
+        self.remember.setEnabled(state == "idle" and keys.can_remember())
+        self.forget_button.setEnabled(state == "idle" and bool(keys.remembered(self.provider.currentText())))
+        for widget in list(self.skill_boxes.values()) + list(self.remove_buttons.values()):
+            widget.setEnabled(state == "idle")
         if state == "ready":
             self.chat_window.setWindowTitle(f"mesoSPIM AI Assistant — {detail}")
             self.chat_window.show()
@@ -516,22 +761,123 @@ class AiAssistantGUI(QtWidgets.QWidget):
             self._done_check.stop()
             self.chat_window.hide()
 
-    def _set_setup_enabled(self, enabled):
-        """The setup is applied by Connect and read only after it: Disconnect first to change it."""
-        for widget in (self.language, self.vision, self.frame_bin, self.focus_metric, *self.axis_boxes.values()):
-            widget.setEnabled(enabled)
+    # --- starting a chat ---
+    def on_start_chat(self):
+        """Start Chat Window. With a chat already open, bring it to the front: there is one chat
+        at a time. Otherwise check the key with the provider first, and open the chat when the
+        provider has accepted it (_on_key_checked)."""
+        if self._state == "ready":
+            self.chat_window.show()
+            self.chat_window.raise_()
+            self.chat_window.activateWindow()
+            return
+        if self._pending is not None:
+            return                                          # the check is already under way
+        endpoint = self._chosen_endpoint()
+        self._pending = endpoint
+        self.start_button.setEnabled(False)
+        self._set_light(None, "checking…")
+        self.status_label.setText(f"Checking the key with {endpoint.provider}…")
 
-    # --- connecting ---
-    def on_connect(self):
-        if self._state == "idle":
-            self._connect()
+        def work():
+            try:
+                accepted, sentence = self.check_key(endpoint)
+            except Exception as error:                      # the check itself must never crash the tab
+                accepted, sentence = False, f"The key could not be checked: {error}"
+            self.sig_key_checked.emit(accepted, sentence)
+        if self.checks_in_background:
+            threading.Thread(target=work, name="ai-assistant-key-check", daemon=True).start()
+        else:
+            work()
 
-    def on_disconnect(self):
-        """Hand the session back so the Remote Control tab can start a transport, without
-        restarting mesoSPIM: a running turn is cancelled, the window closes, and the next Connect
-        starts fresh: the transcript and the model's memory of it are cleared, so what is on screen
-        is what the model knows. A run the assistant started carries on, and the main window's
-        STOP ends it."""
+    def _on_key_checked(self, accepted, sentence):
+        """The provider's answer. A key that was not accepted stops here, with the reason on the
+        status line; an accepted one is remembered if the box is ticked, and the chat opens."""
+        endpoint, self._pending = self._pending, None
+        self.start_button.setEnabled(True)
+        if endpoint is None:
+            return
+        self._set_light(accepted, "connected" if accepted else "not connected")
+        if not accepted:
+            self.status_label.setText(sentence)
+            return
+        typed = self.key.text().strip()
+        if typed and self.remember.isChecked() and keys.can_remember():
+            keys.remember(endpoint.provider, typed)
+        self.choices["provider"] = endpoint.provider
+        self.choices.setdefault("models", {})[endpoint.provider] = endpoint.model
+        assistant_settings.write_choices(self.settings, self.choices)
+        self._open_chat(endpoint)
+
+    def _open_chat(self, endpoint):
+        """Take the session, hand the worker the model and what this chat is given, and open the
+        window. Returns False, after a note that says what to do, when the microscope is taken by
+        the Remote Control."""
+        if not self._ensure_worker():
+            self._note(getattr(self.core, "_assistant_refusal", None)
+                       or "Stop the Remote Control transport to use the AI Assistant.")
+            return False
+        self._apply_options()
+        self._endpoints = {"language": endpoint}
+        self._blocks, self._active = [], None
+        self._worker.configure(endpoint, None)
+        self.refresh_skills()                                   # the files as they are now
+        switched_off = set(self.choices.get("skills_off") or [])
+        ticked = skill_files.chosen(self._entries, switched_off)
+        desk = Desk(skills=ticked,
+                    switched_off=tuple(entry.key for entry in self._entries if entry.usable and entry.key in switched_off),
+                    personal_skills=self.settings.personal_skills,
+                    documentation=self.settings.documentation,
+                    conversations=self.settings.conversations,
+                    saving=self.settings.save_conversations)
+        recorder_factory = None
+        if self.settings.save_conversations:
+            folder, model = self.settings.conversations, endpoint.model
+            recorder_factory = lambda: conversations.Recorder(folder, model)        # noqa: E731
+        ceiling = self._ceiling()[1]
+        self._worker.open_desk(desk, system_prompt_file=self.settings.system_prompt,
+                               recorder_factory=recorder_factory,
+                               context_max_tokens=None if ceiling == float("inf") else ceiling)
+        # The chat opens with what it was given, so the operator sees it and can scroll back to it.
+        opening = ["Skills in this chat: " + ", ".join(ticked) if ticked else "No skill is ticked for this chat."]
+        opening += [f"The skill '{entry.key}' is out of date: it uses {', '.join(entry.missing_tools)}, which "
+                    "mesoSPIM no longer has." for entry in self._entries if entry.key in ticked and entry.missing_tools]
+        opening += list(self.settings.problems)
+        if not endpoint.vision:
+            opening.append("Camera images are not sent: the assistant works from the numbers that describe an image.")
+        opening.append(self.saving_text())
+        self._blocks = [self._note_block(line) for line in opening]
+        self._show_tokens(0)
+        self._render()
+        detail = _describe(endpoint)
+        if endpoint.request_interval_s > 0:
+            detail += f"; {endpoint.request_interval_s:g} s between requests"
+        self._set_state("ready", detail)
+        return True
+
+    # --- ending a chat ---
+    def has_conversation(self):
+        """True once the operator has said something in this chat."""
+        return self._active is not None or any(isinstance(block, dict) for block in self._blocks)
+
+    def may_close(self):
+        """May the chat window close? Always when the conversation is saved or empty; otherwise
+        the operator is asked, because closing would lose it."""
+        if self._state != "ready" or self.settings.save_conversations or not self.has_conversation():
+            return True
+        return self._ask_yes_no("Close this chat?", LOSE_ON_CLOSE)
+
+    def _ask_yes_no(self, title, text):
+        answer = QtWidgets.QMessageBox.question(self.chat_window, title, text,
+                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                                                QtWidgets.QMessageBox.No)
+        return answer == QtWidgets.QMessageBox.Yes
+
+    def on_end_chat(self):
+        """End the chat and hand the session back so the Remote Control tab can start a
+        transport, without restarting mesoSPIM: a running turn is cancelled, the window closes,
+        and the next chat starts fresh. A run the assistant started carries on, and the main
+        window's STOP ends it."""
         if self._state == "idle":
             return
         self._release_session()
@@ -540,11 +886,12 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._blocks, self._active = [], None
         self._show_tokens(0)
         self._render()
-        self._set_connect_state("idle")
+        self._set_state("idle")
+        self.refresh_skills()                   # a skill made in that chat can now be ticked
 
     def on_window_closed(self):
-        """The window's ×: the same as Disconnect."""
-        self.on_disconnect()
+        """The chat window's ×: the chat is over."""
+        self.on_end_chat()
 
     def _release_session(self):
         """Stop the worker, joining with a bound so the GUI never hangs on an in-flight model call,
@@ -554,6 +901,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._worker is None:
             return
         self._worker.interrupt()
+        self._worker.answer(False)              # a question still open is answered no
         if self._run_turn_slot is not None:
             self.sig_run_turn.disconnect(self._run_turn_slot)
             self.sig_check_run.disconnect(self._worker.check_run)
@@ -565,76 +913,44 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._call_on_core("stop_ai_assistant")
         self._worker, self._thread = None, None
 
-    def _connect(self):
-        """Apply the three boxes. Returns True when the assistant can take a message now; False
-        after a note that says what to fix."""
-        if not self._ensure_worker():
-            self._note(getattr(self.core, "_assistant_refusal", None)
-                       or "Stop the Remote Control transport to use the AI Assistant.")
-            return False
-        plan = self._plan()
-        if plan is None:
-            return False
-        self._endpoints = {role: endpoint for role, endpoint in plan.items() if endpoint is not None}
-        self._use()
-        return True
-
-    def _plan(self):
-        """What each box asks for, by role: an Endpoint, or None when the vision model is the
-        language model. None altogether after a note that says what to fix."""
-        plan = {}
-        for role, picker in (("language", self.language), ("vision", self.vision)):
-            if picker.same:
-                plan[role] = None
-            else:
-                endpoint = picker.cloud_endpoint()
-                if endpoint.needs_key and not endpoint.api_key:
-                    key_env = config.PROVIDERS[endpoint.provider].get("key_env")
-                    if role == "language":
-                        self._note(f"Enter an API key for {endpoint.provider}, or set {key_env} before starting mesoSPIM.")
-                        return None
-                    self._note(f"Vision model {endpoint.provider} needs an API key, or {key_env} in the environment; "
-                               "the language model will read frames if it can.")
-                    endpoint = None
-                if role == "vision" and endpoint is not None:
-                    endpoint = dataclasses.replace(endpoint, vision=True)   # chosen to see, so it may
-                plan[role] = endpoint
-        return plan
-
-    def _use(self):
-        """Hand the endpoints to the worker; the status line says which, and the window opens."""
-        language, vision = self._endpoints["language"], self._endpoints.get("vision")
-        interval = float(getattr(getattr(self.core, "cfg", None), config.REQUEST_INTERVAL_CONFIG_KEY, 0) or 0)
-        if interval > 0:                        # the microscope config spaces the requests, for a tight host limit
-            language = dataclasses.replace(language, request_interval_s=interval)
-            vision = dataclasses.replace(vision, request_interval_s=interval) if vision else None
-        self._load_skills()
-        self._worker.configure(language, vision)
-        detail = _describe(language) + (f"; vision: {_describe(vision)}" if vision else "")
-        if interval > 0:
-            detail += f"; {interval:g} s between requests"
-        if vision is None and not language.vision:
-            detail += "; no vision: look gives the numbers only"   # the box above says how to change that
-        self._set_connect_state("ready", detail)
-
-    def _load_skills(self):
-        """The microscope's skills, from the folder next to its config; the transcript says which were
-        found and why a file was left out, so a lab sees at connect what the assistant will use."""
-        found, problems = skill_files.load(skill_files.folder_of(getattr(self.core, "cfg", None)))
-        offered = [cmd.name for cmd in offered_commands()] + ["look", "ask_eyes", "calibrate"]
-        self._worker.skills = found
-        lines = problems + skill_files.unknown_tools(found, offered)
-        if found:
-            lines.insert(0, "Skills: " + ", ".join(found))
-        for line in lines:
-            self._blocks.append(self._note_block(line))
-
     def _note(self, text):
-        """What a Connect needs: on the status line, where the setup is, and in the transcript,
-        where it stays readable once connected (a vision model without its key, say)."""
+        """What a start needs: on the status line, where the setup is, and in the transcript,
+        where it stays readable once the chat is open."""
         self.status_label.setText(text)
         self._blocks.append(self._note_block(text))
         self._render()
+
+    # --- questions from the assistant, and what it saved ---
+    def _on_confirm(self, kind, details_json):
+        """The assistant asks to save or change a skill: show the full text, and pass the
+        operator's answer back. The tool that asked is waiting for it."""
+        try:
+            details = json.loads(details_json)
+        except ValueError:
+            details = {}
+        agreed = self._confirm_skill(kind, details)
+        if self._worker is not None:
+            self._worker.answer(agreed)
+
+    def _confirm_skill(self, kind, details):
+        """True when the operator pressed Save skill."""
+        dialog = SkillDialog(self.chat_window, kind, details, self._font)
+        return dialog.exec_() == QtWidgets.QDialog.Accepted
+
+    def _on_skill_saved(self, name):
+        """A personal skill was saved or changed: say so in the chat and show it in the list."""
+        self._blocks.append(self._note_block(f"The skill '{name}' was saved to your personal skills."))
+        self._render()
+        self.refresh_skills()
+
+    def _on_note(self, text):
+        """A grey line from the worker that belongs to no turn (a conversation that could not be saved)."""
+        self._blocks.append(self._note_block(text))
+        self._render()
+
+    def on_saved_conversations(self):
+        """Show this person's saved conversations, where one can be removed."""
+        ConversationsDialog(self, self.settings.conversations, self._font).exec_()
 
     # --- transcript rendering ---
     def _user_block(self, text):
@@ -687,22 +1003,46 @@ class AiAssistantGUI(QtWidgets.QWidget):
         text = self.chat_window.input.text().strip()
         if not text or not self.chat_window.input.isEnabled() or self._state != "ready":
             return
-        if self._tokens >= self._ceiling()[1]:                # the session is as large as the model takes
-            self._blocks.append(self._note_block(config.CONTEXT_FULL))
-            self._render()
+        if self._context_full():
             return
         self.chat_window.input.clear()
         self._submit(text)
 
-    def _submit(self, text):
-        """One turn: the operator's message."""
-        self._blocks.append(self._user_block(text))
+    def _context_full(self):
+        """True, after a grey line that says so, when the conversation is as large as the model
+        takes. No turn starts then until Clear context: nothing is trimmed behind the operator's
+        back."""
+        if self._tokens < self._ceiling()[1]:
+            return False
+        self._blocks.append(self._note_block(config.CONTEXT_FULL))
+        self._render()
+        return True
+
+    def _submit(self, text, shown=None):
+        """One turn: the operator's message. `shown` is what the transcript shows in its place,
+        for a button that sends a longer request than its label."""
+        self._blocks.append(self._user_block(shown or text))
         self._active = {"tools": [], "reply": None, "error": None}
         self._set_running(True)
         self._render()
         self.sig_run_turn.emit(text)
 
-    # --- the token meter ---
+    def on_create_skill(self):
+        """Create skill: ask the assistant to look back over the conversation, choose the
+        procedure worth keeping and propose it as a personal skill. It then calls save_skill,
+        which shows the operator the text and waits for a yes."""
+        if self._running or self._state != "ready":
+            return
+        if not self.has_conversation():
+            self._blocks.append(self._note_block("There is no conversation yet to make a skill from. Do the "
+                                                 "procedure with the assistant first, then press Create skill."))
+            self._render()
+            return
+        if self._context_full():
+            return
+        self._submit(config.CREATE_SKILL_REQUEST, shown=CREATE_SKILL_SHOWN)
+
+    # --- the size of the conversation, on the Clear context button ---
     def _ceiling(self):
         """The language model's (warning, ceiling) in input tokens; none for an unknown server."""
         language = self._endpoints.get("language")
@@ -714,15 +1054,24 @@ class AiAssistantGUI(QtWidgets.QWidget):
             self._show_tokens(tokens)
 
     def _show_tokens(self, tokens):
-        """The meter: the last request's input tokens, a warning past the model's, and the stop."""
+        """Clear context (12,400 of 900,000 tokens): the size of the whole conversation as the
+        provider last counted it, out of what this model takes. The number turns orange where a
+        request starts to cost more, and red at the ceiling, where no turn starts until cleared."""
         self._tokens = tokens
         warn, ceiling = self._ceiling()
-        text = f"{tokens:,} tokens per request" if tokens else ""
+        size = f"{tokens:,} tokens" if ceiling == float("inf") else f"{tokens:,} of {ceiling:,} tokens"
+        button = self.chat_window.clear_button
+        button.setText(f"Clear context ({size})")
         if tokens >= ceiling:
-            text += f" · {config.CONTEXT_FULL}"
+            button.setStyleSheet(f"color: {_RED}; font-weight: bold;")
+            button.setToolTip(config.CONTEXT_FULL)
         elif tokens >= warn:
-            text += f" · {config.CONTEXT_LARGE}"
-        self.chat_window.meter.setText(text)
+            button.setStyleSheet(f"color: {_ORANGE};")
+            button.setToolTip(config.CONTEXT_LARGE)
+        else:
+            button.setStyleSheet("")
+            button.setToolTip("Empties the conversation and starts afresh, with the same model and skills. "
+                              "The numbers show how full the model's memory is.")
 
     # --- the done notice ---
     def _on_run_ended(self, text):
@@ -752,9 +1101,14 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._render()
 
     def on_clear_all(self):
-        """Clear the transcript and the model's memory of it; the models stay connected."""
+        """Clear context: empty the transcript and the model's memory of it. The model and the
+        skills stay. A conversation that is not saved would be lost, so the operator is asked
+        first; a saved one stays on disk and can still be searched."""
         if self._running:
             return                                  # not while a turn runs
+        if not self.settings.save_conversations and self.has_conversation() \
+                and not self._ask_yes_no("Clear the context?", LOSE_ON_CLEAR):
+            return
         self._blocks = []
         self._active = None
         if self._worker is not None:
@@ -767,6 +1121,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         window = self.chat_window
         window.input.setEnabled(not running)
         window.clear_button.setEnabled(not running)   # the memory is cleared between turns
+        window.create_skill_button.setEnabled(not running)
         window.status.setText("mesoSPIM is working…" if running else "")
         window.status.setVisible(running)
         if not running:
@@ -802,7 +1157,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._render()
 
     def shutdown(self):
-        """Called by MainWindow on app exit: release the session as Disconnect does. The
+        """Called by MainWindow on app exit: release the session as ending a chat does. The
         instrument is the main window's to stop."""
         self._release_session()
         self.chat_window.hide()

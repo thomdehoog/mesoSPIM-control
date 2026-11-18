@@ -10,7 +10,7 @@ There are two kinds of setting, kept in two places.
         'personal_skills':    '~/mesoSPIM/skills',   # each person's own skills
         'documentation':      '',                    # the folder with the mesoSPIM documentation
         'save_conversations': False,                 # keep each conversation as a file?
-        'vision':             True,                  # may camera images be sent to the provider?
+        'vision':             False,                 # only to forbid sending camera images; see below
         'address':            '',                    # a model reached at your own address
         'look_bin':           2,                     # how much a camera image is shrunk before it is sent
         'focus_metric':       'laplacian',           # how sharpness is measured: 'laplacian' or 'dct_shannon'
@@ -22,6 +22,12 @@ Every line is optional. A line that is left out takes the value shown here. A pa
 start at the root of the disk is read from the folder the config file is in, and `~` stands for
 the home folder of whoever is logged in to the computer. That is how one line, shared by
 everyone, gives each person a folder of their own.
+
+The `vision` line decides whether camera images may be sent to the provider. Left out, each
+model does what it can: one that accepts images is shown them. `False` forbids it for every
+model, which is the line for a facility whose samples may not leave the building; the assistant
+then works from the numbers that describe an image. `True` is only needed for a model reached at
+your own address, to say that this model accepts images, since mesoSPIM cannot know.
 
 **Each person's own choices** (which skills are ticked) are kept in a small file next to their
 personal skills, so they are remembered the next time that person starts mesoSPIM.
@@ -66,7 +72,7 @@ class Settings:
     personal_skills: Path = Path(DEFAULT_PERSONAL_SKILLS)
     documentation: Path | None = None
     save_conversations: bool = False
-    vision: bool = True
+    vision: bool | None = None           # None: as each model allows; False: never; True: also at an own address
     address: str = ""
     look_bin: int = config.LOOK_BIN
     focus_metric: str = config.FOCUS_METRIC
@@ -116,6 +122,8 @@ def read(cfg) -> Settings:
         given = block.get(key, default)
         if isinstance(given, bool) and bool not in (kinds if isinstance(kinds, tuple) else (kinds,)):
             given = None                           # True is not a number or a path here
+        if key not in block:
+            return default
         if given is None or not isinstance(given, kinds):
             if key in block:
                 problems.append(f"The config file's {CONFIG_KEY}['{key}'] cannot be used; the usual value is taken.")
@@ -173,7 +181,7 @@ def read(cfg) -> Settings:
         personal_skills=_path(value("personal_skills", str, DEFAULT_PERSONAL_SKILLS), base),
         documentation=documentation,
         save_conversations=value("save_conversations", bool, False),
-        vision=value("vision", bool, True),
+        vision=value("vision", bool, None),
         address=value("address", str, "").strip(),
         look_bin=look_bin,
         focus_metric=focus_metric,

@@ -86,8 +86,8 @@ LOOK_BIN = 2
 # Optimizer's). The Configure box switches it; a request may name the other for its own frames.
 FOCUS_METRIC = "laplacian"
 
-# Whether the chat lists the commands each answer ran; the Configure box switches it.
-SHOW_TOOL_CALLS = False
+# Whether the chat lists the commands each answer ran, as grey lines; the chat window's box switches it.
+SHOW_TOOL_CALLS = True
 
 # What the assistant tells the model a command is for, where the wire hint is not enough. The
 # hint stays as it is for TCP and MCP clients; this is the assistant's tool description only.
