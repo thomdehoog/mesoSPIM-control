@@ -111,15 +111,14 @@ computer:
 - Saved conversations live there too.
 - A remembered API key is kept in that person's entry in the Windows password store.
 
-Where each person signs in to Windows with their own account, Windows already keeps these private.
+On the microscope computers this plan is written for, each person signs in to Windows with their
+own account. Windows therefore already keeps these private, and mesoSPIM does not need to add
+anything.
 
-There is one honest limit. On a computer where everyone shares one Windows login, "personal" means
-shared by everyone on that login. A facility in that situation can also choose to write a fixed
-path in the config file and accept that. The notice in the window says where things are stored, so
-that nobody is surprised.
-
-**This is an assumption that still needs confirming**: how people sign in on the microscope
-computers we have in mind.
+There is one honest limit for other sites. On a computer where everyone shares one Windows login,
+"personal" means shared by everyone on that login. A facility in that situation can also choose to
+write a fixed path in the config file and accept that. The notice in the window says where things
+are stored, so that nobody is surprised.
 
 ## 4. Skills
 
@@ -396,8 +395,6 @@ set has its description tested in the same way.
 
 ## Still to settle
 
-1. **How people sign in on the microscope computers**: each with their own Windows account, or
-   one shared login. Section 3 assumes the first.
-2. **Which skills go into the starter set.** None are written yet.
-3. **Whether the documentation is installed along with mesoSPIM.** `search` depends on it. This
+1. **Which skills go into the starter set.** None are written yet.
+2. **Whether the documentation is installed along with mesoSPIM.** `search` depends on it. This
    will be checked in the code when the work starts.
