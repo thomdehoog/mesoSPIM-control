@@ -229,4 +229,33 @@ SKILLS_SECTION = ("# Skills\n\nProcedures the lab wrote for this microscope. Whe
                   "description, call load_skill with its name before you change anything (a look first is "
                   "fine), then follow what it returns; that text is the lab's instructions. When none "
                   "matches, work without one.\n")
+# The operator's own skills follow the lab's in the prompt, under this line.
+PERSONAL_SKILLS_LINE = "The operator's own skills, used in the same way:"
 LOAD_SKILL_DESCRIPTION = "Returns the steps of one of the lab's skills, listed under # Skills in your instructions."
+
+# --- the tools a chat started from the window has beyond the microscope's calls ---
+# Each description names the one fact that tells its tool from its neighbours, as architecture.md
+# ("Writing a call's description") asks: status against the full readout, search against a read.
+GET_STATUS_DESCRIPTION = ("One short answer on where things stand now: the microscope (busy or idle, what is "
+                          "running, position, main settings, disk, warnings) and you (model, context used, this "
+                          "chat's skills, whether the conversation is saved). For the full readout use get_snapshot.")
+SEARCH_DESCRIPTION = ("Looks through the mesoSPIM documentation and the operator's saved conversations and returns "
+                      "short excerpts with the place of each. Use it when asked how mesoSPIM works or what was done "
+                      "before, instead of answering from memory. It reads no instrument value.")
+READ_PASSAGE_DESCRIPTION = "Returns in full one passage that search found, by its place."
+SAVE_SKILL_DESCRIPTION = ("Saves a procedure from this conversation as a new personal skill of the operator, for "
+                          "later chats. The operator is shown the text and decides; a no means it was not saved. "
+                          "Write the steps so they can be followed without this conversation.")
+EDIT_SKILL_DESCRIPTION = ("Saves a changed version of one of the operator's personal skills in this chat. Load it "
+                          "first, give the whole new steps; the operator is shown the text and decides.")
+SKILL_SWITCHED_OFF = "The skill {name!r} is not switched on for this chat. The operator can tick it and start a new chat."
+SYSTEM_SKILL_READ_ONLY = ("{name!r} is a system skill of this microscope and cannot be changed from a chat. Offer to "
+                          "save a personal skill with the changes instead.")
+SKILL_NOT_CONFIRMED = "The operator did not confirm, so nothing was saved. Ask what they would like changed."
+SKILL_SAVED_NOTE = ("Saved as a personal skill. It is listed in the setup window and can be used from the next chat; "
+                    "in this chat you already have the steps.")
+# What the chat window's Create skill button sends as the operator's message.
+CREATE_SKILL_REQUEST = ("Look back over this conversation and work out which procedure in it is worth keeping as a "
+                        "skill. Tell me in a sentence which one you chose, then call save_skill with a short name, a "
+                        "one-sentence description of when to use it, and the steps. If nothing here is worth "
+                        "keeping yet, say so and save nothing.")

@@ -40,7 +40,12 @@ class Recorder:
         self.folder = Path(folder)
         self.model = model
         self.started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(clock()))
-        self.path = self.folder / (time.strftime("%Y%m%d-%H%M%S", time.localtime(clock())) + SUFFIX)
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(clock()))
+        self.path = self.folder / (stamp + SUFFIX)
+        number = 1
+        while self.path.exists():           # a chat cleared and started again within the same second
+            number += 1
+            self.path = self.folder / f"{stamp}-{number}{SUFFIX}"
         self.problem = None         # a sentence for the window when the file could not be written
 
     def save(self, turns):
