@@ -82,6 +82,78 @@ def top(widget, within):
     return widget.mapTo(within, widget.rect().topLeft()).y()
 
 
+class _Acceptor:
+    """What the worker needs of the Acceptor here: a place for its name, and reads that answer."""
+
+    client = None
+
+    def dispatch(self, _name, _args):
+        return {}
+
+
+def question_crosses_the_threads(app, window):
+    """The assistant asks "save this skill?" from a tool, which runs on a thread of its own while
+    the turn runs on the worker's thread. The question must reach the window's thread, where a
+    dialog may be shown, and the answer must get back to the tool that waits for it. A real
+    worker in a real thread runs one turn whose only step is that question; no model is called."""
+    import asyncio
+    import threading
+
+    from mesoSPIM.src.ai_assistant import assistant as ai
+
+    core = window.core
+    core.start_ai_assistant = lambda: setattr(core, "_assistant_acceptor", _Acceptor())
+    core.stop_ai_assistant = lambda: setattr(core, "_assistant_acceptor", None)
+    tab = AiAssistantGUI(window)
+    tab._call_on_core = lambda method: getattr(core, method)()        # this Core has no slots to invoke
+    tab.checks_in_background = False
+    tab.check_key = lambda endpoint: (True, "accepted")
+    asked_on, got = [], []
+
+    def confirm(kind, details):
+        asked_on.append((threading.current_thread() is threading.main_thread(), kind, details["name"]))
+        return True                                                   # the operator presses Save skill
+    tab._confirm_skill = confirm
+
+    class _Result:
+        output = "Saved."
+
+        def new_messages(self):
+            return []
+
+        def all_messages(self):
+            return []
+
+    class _Agent:
+        def __init__(self, worker):
+            self.worker = worker
+
+        async def run(self, _prompt, message_history=None):
+            got.append(await asyncio.to_thread(self.worker.ask_operator, "save_skill", {"name": "overview"}))
+            return _Result()
+
+    built = ai.build_agent
+    ai.build_agent = lambda *_a, **_k: _Agent(tab._worker)
+    try:
+        tab.provider.setCurrentText("Anthropic")
+        tab.key.setText("not-a-real-key")
+        tab.on_start_chat()
+        assert tab._state == "ready", tab.status_label.text()
+        tab.chat_window.input.setText("make a skill of that")
+        tab.on_submit()
+        deadline = QtCore.QDeadlineTimer(10_000)
+        while tab._running and not deadline.hasExpired():
+            app.processEvents(QtCore.QEventLoop.AllEvents, 50)
+        assert not tab._running, "the turn did not end: the question or its answer was lost between threads"
+        assert asked_on == [(True, "save_skill", "overview")], asked_on      # asked on the window's thread
+        assert got == [True]                                                 # and the tool got the yes
+        assert "Saved." in tab.chat_window.output.toPlainText()
+    finally:
+        ai.build_agent = built
+        tab.on_end_chat()
+    assert tab._state == "idle" and tab._worker is None
+
+
 def main():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     write_skills()
@@ -157,6 +229,8 @@ def main():
     assert "Snap once." in dialog.text.toPlainText() and dialog.text.isReadOnly()
     assert dialog.decline_button.isDefault() and not dialog.save_button.isDefault()
     dialog.deleteLater()
+
+    question_crosses_the_threads(app, window)
 
     # Widths are only real with real fonts: offscreen Qt on Windows has none, and draws every
     # letter as a wide box.
