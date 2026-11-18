@@ -1255,6 +1255,13 @@ class AssistantWorker(QtCore.QObject):
         self._endpoint = endpoint
         self._vision_endpoint = vision_endpoint
         self._agent = None
+        # Every call is written to the mesoSPIM log with who made it: here, the assistant and
+        # the model that is answering, so a line can be traced back to the model behind it.
+        if endpoint is not None:
+            try:
+                self._acceptor.client = f"AI Assistant ({endpoint.model})"
+            except AttributeError:               # a stand-in acceptor that takes no label
+                pass
         reader = vision_endpoint or endpoint
         self.eyes = VisionSession(reader, clock=self.now) if reader is not None and reader.vision else None
 
