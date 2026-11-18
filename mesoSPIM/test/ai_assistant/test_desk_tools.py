@@ -157,3 +157,10 @@ def test_the_worker_asks_the_window_and_saves_the_chat(tmp_path, monkeypatch):
     first = worker.recorder.path
     worker.reset()
     assert worker.recorder is not None and worker.tokens == 0 and first.exists()   # the cleared chat stays saved
+
+
+def test_only_a_chat_with_a_desk_is_told_when_to_look_things_up(tmp_path):
+    desk, _, _ = _desk(tmp_path)
+    assert config.LOOKUP_SECTION in ai.build_system_prompt(skills=desk.skills, desk=desk)
+    assert config.LOOKUP_SECTION not in ai.build_system_prompt(skills=desk.skills)
+    assert ai.build_system_prompt() == ai.build_system_prompt(desk=None)      # the evaluation's prompt is unchanged

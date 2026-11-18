@@ -1234,7 +1234,7 @@ def axes_section(axes):
             "see in the image: convert them to signed moves with this, and say which axis and sign you used.")
 
 
-def build_system_prompt(acceptor=None, axes=None, skills=None, preamble_file=None):
+def build_system_prompt(acceptor=None, axes=None, skills=None, preamble_file=None, desk=None):
     """The hand-written preamble (units, frames, safety) plus the offered commands grouped by
     kind. What each does and its argument shape are in its tool description and schema, which the
     model receives anyway; the prompt does not repeat them. manual.md speaks to the operator as
@@ -1248,7 +1248,10 @@ def build_system_prompt(acceptor=None, axes=None, skills=None, preamble_file=Non
     lines = [f"- {label}: {', '.join(cmd.name for cmd in offered if cmd.kind == kind)}"
              for kind, label in _KINDS if any(cmd.kind == kind for cmd in offered)]
     prompt = preamble + "\n\n# Commands\n\nBy kind; each tool's description says what it does.\n" + "\n".join(lines)
-    return prompt + axes_section(axes) + skills_section(skills)
+    # A chat started from the window can look things up; the prompt then says when to. The text
+    # is the same for every chat, so the provider's cache still serves it.
+    lookup = "\n\n" + config.LOOKUP_SECTION if desk is not None else ""
+    return prompt + axes_section(axes) + lookup + skills_section(skills)
 
 
 def skills_section(skills):
@@ -1380,7 +1383,8 @@ def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None,
     # append-only history is what its cache serves cheapest.
     if desk is not None:
         skills = desk.skills
-    agent = Agent(model, instructions=build_system_prompt(axes=axes, skills=skills, preamble_file=preamble_file),
+    agent = Agent(model, instructions=build_system_prompt(axes=axes, skills=skills, preamble_file=preamble_file,
+                                                          desk=desk),
                   tools=build_tools(acceptor, cancel, on_call, endpoint=endpoint,
                                     vision_endpoint=vision_endpoint, image_bin=image_bin, store=store,
                                     vision_session=vision_session, axes=axes,

@@ -254,6 +254,12 @@ SYSTEM_SKILL_READ_ONLY = ("{name!r} is a system skill of this microscope and can
 SKILL_NOT_CONFIRMED = "The operator did not confirm, so nothing was saved. Ask what they would like changed."
 SKILL_SAVED_NOTE = ("Saved as a personal skill. It is listed in the setup window and can be used from the next chat; "
                     "in this chat you already have the steps.")
+# Said in the prompt of a chat that has the search. Without it a model asked about "last time"
+# answered from this chat's memory and never looked (live walkthrough, claude-haiku-5-5).
+LOOKUP_SECTION = ("# What you remember\n\nYou remember this chat only. What was said or done in an earlier chat "
+                  "(\"last time\", \"yesterday\", \"before\") is not in your memory: search the saved conversations "
+                  "for it before you answer, and say so when nothing is saved. For how mesoSPIM works, search the "
+                  "documentation rather than answer from memory.")
 # What the chat window's Create skill button sends as the operator's message.
 CREATE_SKILL_REQUEST = ("Look back over this conversation and work out which procedure in it is worth keeping as a "
                         "skill. Tell me in a sentence which one you chose, then call save_skill with a short name, a "
