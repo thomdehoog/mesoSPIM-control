@@ -487,6 +487,27 @@ section "The log of calls".
 
 Added on 2026-11-19. This is an idea to explore, not a decision, and nothing of it is built.
 
+### A rule for everything in this section and the ones after it
+
+**Nothing that is done for a local model may make the assistant worse with a cloud model.** The
+assistant was built and evaluated for Gemini 3.5 Flash-Lite and Claude Haiku 5.5, and most
+facilities will keep using one of them. So:
+
+- **Every change for local models is switched on only when a local model is chosen.** With a
+  cloud model the instructions, the list of tools and the behaviour stay exactly as they are
+  today. This holds for the core set and the catalogue, for a shorter readout, and for anything
+  else in this section.
+- **Settings for the local model get their own place in the config file**, apart from the lines
+  that hold for every model. One example shows why. We suggest switching camera images off for
+  a local model, so that a look does not push the main chat out of the server's memory. The
+  `vision` line as it is today holds for every model, so using it for this would take the images
+  away from the cloud models too. The setting has to sit with the local model.
+- **A local model uses memory and the processor only when it is in use.** A facility that works
+  with a cloud model starts no server, and nothing is taken from mesoSPIM.
+- **The existing tests are the guard.** The recorded runs of the cloud models are replayed
+  offline, and they fail when a request to the model grows or its score changes. They must keep
+  passing unchanged after every step taken for local models.
+
 ### The problem
 
 We would like the assistant to answer quickly with a model that runs on the microscope computer
