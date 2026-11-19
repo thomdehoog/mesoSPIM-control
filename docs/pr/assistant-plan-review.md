@@ -1,8 +1,13 @@
 # A critical review of the AI Assistant plan
 
 Written on 2026-11-19, as a review of `assistant-plan.md` in this folder and of what has been
-built from it. The review was asked for; nothing in the plan or in the code was changed because
-of it. It is kept so that the points are not lost.
+built from it. It is kept so that the points are not lost.
+
+**What happened since.** The plan was one file when this was written. Following point 12 below,
+it was split the same day into `assistant-built.md`, `assistant-decisions.md` and
+`assistant-local-models.md`, and the passages that point 12 lists as wrong were corrected there.
+The other points still stand. Where this review says "the plan", it means the file as it was
+before the split.
 
 **In one sentence:** the built part is in decent shape, but the plan document has drifted, one of
 its safety claims is weaker than it reads, and the part about local models rests on a stack of
