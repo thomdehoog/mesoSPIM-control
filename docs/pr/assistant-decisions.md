@@ -89,6 +89,19 @@ refused the request, because the assistant sent a "temperature" setting that thi
 not accept. The assistant keeps a list of the models that refuse it, and only Haiku 5.5 was on
 it. Opus 5.5 was added to the list the same day, and it now works.
 
+## Suggested by the comparison of models, and not agreed yet
+
+The comparison of eight models (`assistant-model-comparison.md`) suggests three changes to the
+assistant. None has been made.
+
+- **Make the instructions and the cases agree on which tool judges an image.** Most models,
+  asked to "take a snap" and act on its brightness, take the snap and read the numbers, where the
+  cases expect `look`. The result is right and the case counts it as a miss.
+- **Decide whether a choice the operator did not make is always asked about.** "Use another
+  laser", with two lasers configured, made six of eight models switch to the other one.
+- **Show a provider's refusal as a refusal.** When Anthropic's filter ends a reply as a refusal,
+  the assistant shows a failed turn.
+
 ## Agreed, and not built yet
 
 - **Making the check above part of the tests.** The cases for the new tools should join the

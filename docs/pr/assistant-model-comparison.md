@@ -56,6 +56,11 @@ eight did this. Qwen did pass the other planted-instruction case (an instruction
 limits) five times of five, so the weakness is text that arrives through the microscope's own
 readout.
 
+Qwen also ran away with itself twice. In one case it made 44 calls in a single request, among
+them eight further snaps and many repeated reads, and in another 27. No other model made more
+than 14 calls in any case. On a real sample, snaps that nobody asked for are light on the sample
+that nobody asked for.
+
 ### 3. A stronger cloud model buys almost nothing
 
 From the smallest Claude model to the largest the difference is seven cases, and the three
@@ -73,29 +78,51 @@ Qwen3-14B and Ministral 14B pass 103 and 101. Most of the difference is in the c
 images, where they pass 12 and 10 of 29, against 22 to 26 for the others. For a small model,
 letting a second model look at the images, or switching images off, would matter a great deal.
 
-### 5. The cases that most models miss point at the assistant
+### 5. Many misses are the right result reached by another tool
 
 72 of the 137 cases were passed by every model. Six were missed by five or more of the eight:
 
-| Case | Missed by | What happens |
+| Case | Missed by | What the models did |
 |---|---|---|
-| A saturated image: halve the intensity | 7 of 8 | The model judges the brightness from the frame's numbers and does not look at the image. |
-| A second look is expected after a change | 7 of 8 | The model looks once, or not at all, and reports the change as done. |
-| "Another laser", with no laser named | 6 of 8, all four Claude models among them | The model picks one where the case expects a question. |
-| A question about earlier frames, with no new frame | 6 of 8 | The model takes a new look where the case expects it to ask about the frames already seen. |
+| "Take a snap. If the image is saturated, halve the laser intensity" | 7 of 8 | They took the snap, read the frame's numbers with `get_frame`, and halved the intensity. The result is right. The case counts it as a miss because it expects the `look` tool. |
+| The same, then a second snap to check that it helped | 7 of 8 | The same route, twice. Right result, other tool. |
+| "Use another laser", with no laser named | 6 of 8, all four Claude models among them | They read which lasers exist and switched to the other one. The case expects a question first. |
+| "Without looking again: what changed between the two frames you saw?" | 6 of 8 | They answered from what they had been told about the two frames. The case expects them to put the question to the vision model again (`ask_eyes`). |
 | A dim image: double the intensity | 5 of 8 | As the first row. |
-| Is the image saturated? | 5 of 8 | As the first row. |
+| "Is the image saturated?" | 5 of 8 | As the first row. |
 
-When the strongest models miss a case in the same way as the weakest, the model is probably not
-the cause. Two things in the assistant are worth looking at, and improving them would lift every
-model:
+In five of these six the model did what the operator asked, and the miss is about which tool it
+used. Counting only the misses where every expectation about the result was met and only the
+expected tool differed:
 
-- **Whether a brightness judgement needs a look.** The instructions say that exposure is judged
-  from the numbers, since the picture is scaled for display. The cases expect a look all the
-  same. One of the two is wrong, and they should be made to agree.
-- **Whether a missing choice means asking.** The instructions say to suggest and ask when a
-  request is unclear. With "another laser" and only two lasers configured, picking the other one
-  is a reasonable reading. Either the case is too strict or the instructions should name this.
+| Model | Passed | Misses where only the tool differed | Passed, if those counted |
+|---|---|---|---|
+| Claude Sonnet 5.5 | 128 | 3 | 131 |
+| Claude Fable 5.2 | 127 | 6 | 133 |
+| Claude Opus 5.5 | 125 | 1 | 126 |
+| Claude Haiku 5.5 | 121 | 7 | 128 |
+| Qwen3.6-35B-A3B | 118 | 7 | 125 |
+| Gemma 4 26B | 115 | 3 | 118 |
+| Qwen3-14B | 103 | 11 | 114 |
+| Ministral 14B | 101 | 18 | 119 |
+
+This does not mean the cases are wrong. `look` is not the same as a snap followed by
+`get_frame`: it keeps the frame in the session's history with its measures, and it avoids
+exposing the sample twice. But the operator in these cases says "take a snap", and the tool's
+own description says that exposure is judged from the numbers. The assistant and its cases
+should be made to agree, one way or the other:
+
+- **Either the instructions say plainly that a judgement about an image goes through `look`**,
+  also when the operator says "snap". Then the cases stay as they are, and the models should
+  follow.
+- **Or the cases accept either route** where the result is the same.
+
+The same holds for "another laser": with two lasers configured, switching to the other one is a
+fair reading. Either the case is too strict, or the instructions should say that a choice the
+operator did not make is always asked about.
+
+Settling these two points would lift every model's score, and it is cheaper than any change of
+model.
 
 ## By kind of case
 
@@ -177,8 +204,9 @@ OpenRouter's as nearer to what a compressed copy on our own computer would do.
 
 ## What is suggested
 
-1. **Make the instructions and the cases agree on brightness and on a missing choice** (point 5
-   above). This is the cheapest improvement and helps every model.
+1. **Make the instructions and the cases agree on which tool judges an image, and on a choice
+   the operator did not make** (point 5 above). This is the cheapest improvement and helps every
+   model.
 2. **Show a provider's refusal as a refusal.**
 3. **For a local model, take Gemma 4 26B to the test on the microscope computer**, as described
    in `assistant-local-models.md`. Its accuracy is no longer the open question; its speed, and

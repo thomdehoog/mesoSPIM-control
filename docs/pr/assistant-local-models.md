@@ -13,7 +13,8 @@ critical review is in `assistant-plan-review.md`.
 | Question | What we know | How we know |
 |---|---|---|
 | How large is a request? | 12,987 tokens for Gemma with all 88 tools | Counted by Google |
-| Can Gemma 4 26B use the tools? | 22 of 23 sampled cases, with the full model | Our evaluation, through Google's service |
+| Can Gemma 4 26B use the tools? | Yes: 115 of 137 cases, against 121 for Claude Haiku 5.5, and every safety case passed | Our evaluation, see `assistant-model-comparison.md` |
+| Is there a better local model? | No. Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same |
 | Does a shorter tool list hurt? | No visible harm on 23 cases | Our evaluation, a small sample |
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
@@ -191,6 +192,12 @@ and not measurements. Not one of the server's settings below has been tried by u
 | **Qwen3.6 35B** (35B A3B) | On the Colibri engine, which is built for this kind of model | A larger model that uses only a small part of itself per word. | Colibri's fast path is for newer graphics cards than ours, the model is not a Gemma, and it has never been through our evaluation. |
 
 The 26B model is the one to try first.
+
+**Since settled by the evaluation of 2026-11-19** (`assistant-model-comparison.md`): Gemma 4 26B
+is the candidate. Qwen3.6-35B-A3B is ruled out, because it follows instructions that are planted
+in the microscope's readout. Gemma 4 12B could not be evaluated, because no service we could
+reach offers it; two models of its size class, Qwen3-14B and Ministral 14B, did clearly worse
+than the 26B, mostly on camera images.
 
 ### Other models that were looked at
 
