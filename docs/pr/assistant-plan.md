@@ -496,11 +496,12 @@ GeForce GTX 1080 Ti graphics card with 11 GB of memory. Two things make this har
 - **Every request starts with the same long text**, which the model has to read before it can
   answer. A cloud provider reads it once and keeps it. A small graphics card takes much longer.
 - **The memory of the card is shared** between the model itself and everything it is reading. A
-  12B model, stored compactly, takes roughly 7 to 8 GB, which leaves about 3 GB for the
-  conversation. A 24B model takes roughly 14 to 15 GB and does not fit on this card at all.
+  12B model, stored compactly (at 4 bits per number), takes roughly 7 to 8 GB, which leaves
+  about 3 GB for the conversation. The next size up, Gemma 4 26B, takes about 17 GB and does not
+  fit on the card whole. It can still be used, because of how it is built; see "Which models to
+  try, and the test" below.
 
-These sizes are estimates from the layout of the earlier Gemma 3; the exact figures for Gemma 4
-still have to be looked up.
+The sizes come from guides on the web (2026-11-19), not from our own measurement.
 
 ### Where the long text comes from
 
@@ -581,11 +582,15 @@ are not simply switched on and off.
 Two things can be found out without changing any code, and they decide whether this is worth
 building.
 
-1. **How much the prompt cache already solves.** Run the 12B model on the microscope computer
+1. **How much the prompt cache already solves.** Run a local model on the microscope computer
    with room for 32,000 tokens, and compare how long the model's server takes to read the first
    message and the second. If the second takes a second or two, the long start is paid once per
    chat and the rest is tuning. For this the server should keep the model loaded, use a single
-   conversation, and store what it has read at 8-bit precision, which halves its memory.
+   conversation, and store what it has read at 8-bit precision, which halves its memory. The
+   steps are in "Which models to try, and the test" below. There is a known risk here: a report
+   on the server's issue tracker (llama.cpp issue 21831) describes Gemma models reading the whole
+   prompt again on every request. If our test shows the same, the shorter start described above
+   is no longer a nice extra but the main route.
 2. **Whether the camera images get in the way.** A look runs a conversation of its own on the
    same server and can push the main conversation out of the cache. Setting `'vision': False` in
    the config block for the local model, or letting a cloud model do the looking, avoids it.
@@ -602,3 +607,97 @@ once with the full list and once with the core set and the catalogue.
 - Clear the context between tasks, so that the conversation stays short.
 - Send the microscope's readout with each message only where it changed.
 - Switch off the model's "thinking" mode if it has one. A tool call is a short answer.
+
+## Which models to try, and the test
+
+Added on 2026-11-19, after a search of the web. Nothing here has been run by us yet. The figures
+are from other people's write-ups, most of them blog posts, so they are indications and not
+measurements.
+
+### Three candidates for the 11 GB card
+
+| Model | How it runs on this computer | What speaks for it | What is unknown |
+|---|---|---|---|
+| **Gemma 4 26B** (its full name is 26B A4B) | On the standard server (llama.cpp), with part of the model in ordinary memory | The model we wanted. Reported at about 20 tokens per second on an older card with only 8 GB. | How fast it reads our long start, and whether it chooses well among 88 tools. |
+| **Gemma 4 12B** | Whole on the card, with Ollama or llama.cpp | The simplest setup. About 9 GB with room for 32,000 tokens. | Whether a model this small chooses well among 88 tools. |
+| **Qwen3.6 35B** (35B A3B) | On the Colibri engine, which is built for this kind of model | A larger model that uses only a small part of itself per word. | Colibri's fast path is for newer graphics cards than ours, the model is not a Gemma, and it has never been through our evaluation. |
+
+The 26B model is the one to try first.
+
+### Why a 26B model can run on an 11 GB card
+
+Gemma 4 26B is a "mixture of experts" model. It has about 25 billion numbers in all, but for
+each word it writes it uses only about 3.8 billion of them: a part that every word needs, and a
+few "experts" chosen for that word. The server has a setting made for this (`--n-cpu-moe`). It
+keeps the part every word needs on the graphics card, where it is fast, and puts the experts in
+the computer's ordinary memory. Because only a few experts are used per word, this costs far
+less speed than it would for an ordinary model of the same size. The microscope computer appears
+to have about 128 GB of ordinary memory, which is much more than the experts need.
+
+### The test
+
+It takes about half an hour and changes nothing in mesoSPIM.
+
+1. Download llama.cpp for Windows. Take the build for CUDA 12 or the Vulkan build. The newest
+   NVIDIA toolkit (CUDA 13) no longer supports a card as old as the GTX 1080 Ti.
+2. Download the 4-bit file of Gemma 4 26B A4B (its name ends in `Q4_K_M.gguf`).
+3. Start the server. The line below is a sketch and was not run by us; check the names against
+   the server's `--help`.
+
+   ```
+   llama-server -m gemma-4-26b-a4b-Q4_K_M.gguf -ngl 99 --n-cpu-moe 20 -c 32768 --jinja -ctk q8_0 -ctv q8_0 --port 8080
+   ```
+
+   - `-ngl 99` puts as much as possible on the graphics card.
+   - `--n-cpu-moe 20` puts the experts of 20 layers in ordinary memory. If the server runs out
+     of memory, raise the number. If it loads with room to spare, lower it.
+   - `-c 32768` gives room for 32,000 tokens. Our fixed start alone is about 21,000.
+   - `--jinja` switches on the model's own way of calling tools.
+   - `-ctk q8_0 -ctv q8_0` stores what the model has read at 8-bit precision, which halves its
+     memory.
+4. In the config file's `ai_assistant` block, set `'address': 'http://localhost:8080/v1'`. In
+   the AI Assistant tab choose **OpenAI-style** and start a chat.
+5. Send two messages, for example "where is the stage?" and then "move x by 100 micrometres",
+   and read the server's log.
+
+### What the log tells us
+
+| In the log | What it means |
+|---|---|
+| The prompt time of the first message | How long the start of a chat takes. Up to a minute is tolerable, because it happens once per chat. |
+| The prompt time of the second message | The number that matters. A few seconds means the server kept what it had read. |
+| The words "forcing full prompt re-processing" | The server does not keep it for this model. The shorter tool list then becomes necessary. |
+| Tokens per second while answering | About 10 or more feels usable. One request to the microscope takes several answers in a row. |
+
+If the second message is read quickly and the answers make sense, the model is usable as it
+stands. The next step is then to run the tool-choice evaluation on it, to see how well it
+chooses.
+
+### What the web says about small models in general
+
+- **Fewer tools in view.** Several sources agree that a model chooses less well as the list of
+  tools grows or contains similar tools, and that small models suffer more. One guide adds that
+  tools in the middle of a long list are chosen less well than those at its start or end. This
+  supports a core set of about twenty.
+- **Forcing the answer into the tool's shape** is the most recommended way to stop a small model
+  from writing a malformed call. For Gemma 4 there is a limit: a discussion on the server's
+  tracker says that its way of writing a tool call is not the format the server can force in
+  full, so the shape is guaranteed but the values are not.
+- **Training a small model further on our own tools** raises its accuracy (Google reports 58 %
+  to 85 % for its smallest function-calling model). The tool definitions are still sent with
+  every request, so it does not shorten the start. It would be a project of its own.
+- **Ollama starts with room for only 4,000 tokens** on a card with less than 24 GB. With Ollama
+  this has to be raised (`OLLAMA_CONTEXT_LENGTH=32768`), or every request is refused.
+
+### Sources
+
+- Running Gemma 4 26B on an old GTX 1080 with llama.cpp: <https://dev.to/mdda/running-gemma-4-26b-on-an-old-gtx-1080-with-llamacpp-4fi5>
+- Mixture-of-experts models with the experts in ordinary memory: <https://huggingface.co/blog/Doctor-Shotgun/llamacpp-moe-offload-guide>
+- Gemma 4 26B A4B, memory and speed: <https://www.llamabuilds.ai/models/gemma-4-26b-a4b>
+- Gemma 4 sizes and memory: <https://vdf.ai/blog/gemma-4-on-premises-deployment/>
+- The whole prompt read again on every request: <https://github.com/ggml-org/llama.cpp/issues/21831>
+- Tool calls without mistakes, and Gemma 4's format: <https://github.com/ggml-org/llama.cpp/discussions/21839>
+- How many tools a model should see: <https://arxiv.org/html/2605.24660v1>
+- Fine-tuning Google's smallest function-calling model: <https://ai.google.dev/gemma/docs/mobile-actions>
+- The Colibri engine: <https://github.com/JustVugg/colibri>
+
