@@ -472,9 +472,10 @@ snapping, and a busy microscope. Cases that need camera images were left out of 
 ### What this does and does not tell us
 
 - **The model is good enough to be worth setting up.** On this sample it is close to the cloud
-  models the assistant was built for. The recorded runs of Claude Haiku pass all 23 of these
-  cases, but that recording keeps a passing run where the model can give one, so the two are not
-  a like-for-like comparison.
+  models the assistant was built for. For comparison, on the whole evaluation of 137 cases Claude
+  Haiku 5.5 passed 121 in a run on 11 October 2026, and the recorded run of Gemini 3.5 Flash-Lite
+  passes 126. Of the 23 cases sampled here, that Gemini recording fails one (the unclear move,
+  where it should have asked).
 - **The shorter tool list did no visible harm on this small sample**, and it makes a request
   less than half as large. That is all the data supports. Only a handful of the 23 cases need a
   command from the catalogue, and whether it holds on the whole evaluation is not known.
