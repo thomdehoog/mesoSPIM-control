@@ -226,17 +226,12 @@ The traces are in `assistant-plan-evidence/wording-experiments/`.
 
 ## Open questions that need an answer
 
-### 1. The separate vision model
+### 1. The separate vision model: decided and built
 
-The notes said the vision setting moves to the config file. What was built removes the second
-model altogether: the model that answers also looks at camera images, or nobody does. In #8 a
-text-only model could be paired with a second one that sees. The choice is:
-
-- bring it back as lines in the config file (a provider, a model and where its key comes from);
-- or leave it out on purpose.
-
-A local model makes this more pressing, because there a look can push the main chat out of the
-server's memory, and letting a second model do the looking avoids that.
+The notes said the vision setting moves to the config file. The first version of this work
+removed the second model altogether. On 2026-11-19 it was decided that it comes back, and it was
+built the same day as the `vision_model` block of the config file; see `assistant-built.md`. The
+tab still has no second set of fields for it.
 
 ### 2. How this reaches #8 and the public repository
 
@@ -314,7 +309,7 @@ reason.
 3. The cloud evaluation with the new tools shows no loss against the recorded results.
 4. The sweep on a real microscope from #8 has been run with an operator present.
 5. A starter set of skills exists, or it is decided that mesoSPIM ships without one.
-6. The open questions 1 to 3 and 6 above are answered.
+6. The open questions 2, 3 and 6 above are answered.
 7. The work is in one pull request that can be reviewed.
 
 ## The order suggested for the next steps

@@ -18,6 +18,7 @@ ai_assistant = {
     'save_conversations': False,                 # keep each conversation as a file?
     # 'vision':           False,                 # only to forbid sending camera images; see below
     'address':            '',                    # a model reached at your own address
+    # 'vision_model':     {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},   # a second model that looks
     'look_bin':           2,                     # how much a camera image is shrunk before it is sent
     'focus_metric':       'laplacian',           # how sharpness is measured
     'axes':               {'x': 'right', 'y': 'up', 'z': 'toward the camera'},
@@ -87,6 +88,35 @@ the tab.
 one hosted by the university, instead of through a commercial provider. It is the address of a
 server that speaks the OpenAI API, such as `http://models.example.org/v1`. The operator then
 chooses **OpenAI-style** as the provider. It stays empty for everyone else.
+
+**`vision_model`** names a second model that looks at the camera images, so that the model that
+answers never receives an image. When the assistant looks, the image goes to this second model
+with the question, and only its answer in words comes back into the conversation. Leave the line
+out and the model that answers looks itself, when it can.
+
+A second model is worth having in three situations: the model that answers cannot take images;
+it is a small model on the facility's own computer, and a stronger one should do the looking; or
+the images should go to a different provider than the conversation.
+
+The block has a `provider`, which is one of the names the tab offers, and optionally a `model`
+(left out, that provider's usual model is taken) and an `address` (for a model reached at your
+own address):
+
+```python
+'vision_model': {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},
+```
+
+The tab has no second key field. The key for the vision model is found like this:
+
+- When both models are at the same provider, the key typed in the tab serves both.
+- Otherwise it is the key that person had remembered for that provider. To set it up, choose
+  that provider in the tab once, type the key, tick **Remember this key on this computer**, and
+  start a chat.
+- Failing that, the provider's environment variable.
+
+The vision model's key is checked together with the other one when a chat starts. If it has no
+key, or its provider refuses it, the chat still opens: the model that answers then looks itself,
+if it can, and the chat says so in its first lines. `'vision': False` forbids images for both.
 
 **`look_bin`** is how much a camera image is shrunk before it is sent to the model: 1, 2, 4 or
 8. With 2, a frame 2048 pixels wide arrives 1024 wide. A coarser image is cheaper and faster, and

@@ -67,8 +67,7 @@ AI Assistant
 - **The last line** always says whether conversations are saved, and that calls are logged.
 
 What left the tab: the box for a separate vision model, the image bin, the focus metric, the
-coordinate system, and Connect and Disconnect. The first of these was removed without being
-asked for; see `assistant-decisions.md`.
+coordinate system, and Connect and Disconnect. All of these are now lines in the config file.
 
 ## 2. The config file
 
@@ -84,6 +83,7 @@ ai_assistant = {
     'save_conversations': False,                 # keep each conversation as a file?
     # 'vision':           False,                 # only to forbid sending camera images
     'address':            '',                    # a model reached at your own address
+    # 'vision_model':     {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},   # a second model that looks
     'look_bin':           2,                     # how much a camera image is shrunk before it is sent
     'focus_metric':       'laplacian',           # how sharpness is measured
     'axes':               {'x': 'right', 'y': 'up', 'z': 'toward the camera'},
@@ -100,6 +100,14 @@ ai_assistant = {
 - **`vision`** has three states. Left out, each model does what it can. `False` forbids sending
   camera images for every model. `True` is needed only together with `address`, to say that the
   model there accepts images.
+- **`vision_model`** names a second model that looks at the camera images. The model that
+  answers then receives no image, only what the second one says about it. Its key is the one
+  typed in the tab when both are at the same provider, else the key that person had remembered
+  for that provider, else the provider's environment variable. It is checked with the other key
+  when a chat starts; if it cannot be used, the chat opens all the same, the model that answers
+  looks itself, and the chat's first lines say so. The first version of this work had dropped the
+  second model; it was brought back on 2026-11-19. Checked live: Claude Haiku 5.5 answered,
+  Claude Sonnet 5.5 looked and counted three objects in a test image, and no image reached Haiku.
 - A line that cannot be used is named on the tab's status line, and its usual value is taken.
 - The two older lines `ai_assistant_axes` and `ai_assistant_request_interval_s` are still read.
 
@@ -236,8 +244,8 @@ name), the call with its values, how it ended, how long it took to answer, and w
 **Claude Opus 5.5 can now be used.** The assistant sends every model a "temperature" of 0, which
 asks for its most likely answer, except the models that refuse that setting. Opus 5.5 refuses
 it, like Haiku 5.5, and was not on the list, so its first message failed with an error. It is on
-the list now. Sonnet 5.5 accepts the setting and still gets it. Checked against the real model
-on 2026-11-19.
+the list now. Sonnet 5.5 needs no entry: the library that talks to Anthropic leaves the setting
+out for it by itself. Checked against the real model on 2026-11-19.
 
 **An image is judged with `look`.** A model asked to judge an image often took a snap and read
 the frame's numbers, or took a snap and then looked, which puts light on the sample twice. The
@@ -249,7 +257,7 @@ read, are unchanged.
 
 ## How it was checked
 
-- **Offline tests: 1,416 pass.** This is the suite of the development branch
+- **Offline tests: 1,424 pass.** This is the suite of the development branch
   (`agent/gui-handles`) with the new tests added. Two recorded "open TIFF" cases fail in the
   container this was built in, as they did before any change.
 - **The real window toolkit, off screen, on Linux.** The tab and the chat window are built with

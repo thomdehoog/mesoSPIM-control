@@ -84,3 +84,17 @@ def test_ticks_are_remembered(tmp_path):
     assert assistant_settings.read_choices(found) == {}
     assert assistant_settings.write_choices(found, {"skills_off": ["overview"]})
     assert assistant_settings.read_choices(found) == {"skills_off": ["overview"]}
+
+
+def test_the_vision_model_block_names_a_second_model(tmp_path):
+    def read(**block):
+        return assistant_settings.read(types.SimpleNamespace(__file__=str(tmp_path / "c.py"), ai_assistant=block))
+    none = read()
+    assert (none.vision_provider, none.vision_model, none.problems) == ("", "", ())
+    found = read(vision_model={"provider": "Gemini", "model": " gemini-3.5-flash-lite "})
+    assert (found.vision_provider, found.vision_model, found.problems) == ("Gemini", "gemini-3.5-flash-lite", ())
+    own = read(vision_model={"provider": "OpenAI-style", "address": "http://eyes.example.org/v1"})
+    assert (own.vision_provider, own.vision_model, own.vision_address) == ("OpenAI-style", "", "http://eyes.example.org/v1")
+    for wrong in ({"provider": "Nobody"}, {"model": "x"}, "Gemini"):
+        bad = read(vision_model=wrong)
+        assert bad.vision_provider == "" and len(bad.problems) == 1 and "vision_model" in bad.problems[0]

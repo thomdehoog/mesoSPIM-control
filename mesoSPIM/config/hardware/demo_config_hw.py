@@ -582,6 +582,7 @@ ai_assistant = {
     # 'save_conversations': False,            # True keeps each conversation as a file in the person's own folder
     # 'vision': False,                        # False forbids sending camera images to the provider
     # 'address': '',                          # a model your facility hosts itself, e.g. 'http://models.example.org/v1'
+    # 'vision_model': {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},   # a second model that looks at the camera images
     # 'look_bin': 2,                          # how much a camera image is shrunk before it is sent: 1, 2, 4 or 8
     # 'focus_metric': 'laplacian',            # how sharpness is measured: 'laplacian' or 'dct_shannon'
     # 'axes': {'x': 'right', 'y': 'up', 'z': 'toward the camera'},   # what a positive move does to the sample in the image

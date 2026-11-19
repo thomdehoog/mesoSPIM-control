@@ -12,6 +12,7 @@ There are two kinds of setting, kept in two places.
         'save_conversations': False,                 # keep each conversation as a file?
         'vision':             False,                 # only to forbid sending camera images; see below
         'address':            '',                    # a model reached at your own address
+        'vision_model':       {},                    # a second model that looks at the camera images
         'look_bin':           2,                     # how much a camera image is shrunk before it is sent
         'focus_metric':       'laplacian',           # how sharpness is measured: 'laplacian' or 'dct_shannon'
         'axes':               {'x': 'right', 'y': 'up', 'z': 'toward the camera'},
@@ -28,6 +29,20 @@ model does what it can: one that accepts images is shown them. `False` forbids i
 model, which is the line for a facility whose samples may not leave the building; the assistant
 then works from the numbers that describe an image. `True` is only needed for a model reached at
 your own address, to say that this model accepts images, since mesoSPIM cannot know.
+
+The `vision_model` line names a second model that does the looking, so that the model that
+answers never receives an image. It is useful when the answering model cannot take images, or
+should not (a small model on the facility's own computer, with a stronger model for the eyes).
+It is a small block of its own:
+
+    'vision_model': {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},
+
+`provider` is one of the names the tab offers. `model` may be left out to take that provider's
+usual model, and `address` is given for a model reached at your own address. The key for the
+vision model is found as for any model: it is the key typed in the tab when both models are at
+the same provider, else the key that person had remembered for that provider, else the
+provider's environment variable. Without a key the answering model looks itself, if it can, and
+the chat says so. `'vision': False` still forbids images altogether.
 
 **Each person's own choices** (which skills are ticked) are kept in a small file next to their
 personal skills, so they are remembered the next time that person starts mesoSPIM.
@@ -74,6 +89,9 @@ class Settings:
     save_conversations: bool = False
     vision: bool | None = None           # None: as each model allows; False: never; True: also at an own address
     address: str = ""
+    vision_provider: str = ""             # the provider of a second model that looks at images; "" for none
+    vision_model: str = ""                # that model's name; "" takes the provider's usual one
+    vision_address: str = ""              # its address, for a model reached at the facility's own address
     look_bin: int = config.LOOK_BIN
     focus_metric: str = config.FOCUS_METRIC
     axes: dict = field(default_factory=lambda: dict(config.DEFAULT_AXES))
@@ -175,6 +193,21 @@ def read(cfg) -> Settings:
         problems.append("The config file's request_interval_s must be a number of seconds, 0 or more.")
         interval = 0
 
+    # A second model that looks at the camera images, in a small block of its own.
+    vision_provider = vision_model = vision_address = ""
+    given_vision = block.get("vision_model")
+    if isinstance(given_vision, dict) and given_vision:
+        provider = given_vision.get("provider")
+        if provider in config.PROVIDERS:
+            vision_provider = provider
+            vision_model = str(given_vision.get("model") or "").strip()
+            vision_address = str(given_vision.get("address") or "").strip()
+        else:
+            problems.append(f"The config file's {CONFIG_KEY}['vision_model'] needs a 'provider' that is one of "
+                            f"{list(config.PROVIDERS)}; the model that answers looks at the images itself.")
+    elif given_vision not in (None, {}):
+        problems.append(f"The config file's {CONFIG_KEY}['vision_model'] must be a block in curly brackets.")
+
     return Settings(
         system_prompt=system_prompt,
         system_skills=system_skills,
@@ -183,6 +216,9 @@ def read(cfg) -> Settings:
         save_conversations=value("save_conversations", bool, False),
         vision=value("vision", bool, None),
         address=value("address", str, "").strip(),
+        vision_provider=vision_provider,
+        vision_model=vision_model,
+        vision_address=vision_address,
         look_bin=look_bin,
         focus_metric=focus_metric,
         axes=axes,

@@ -680,3 +680,85 @@ def test_saved_conversations_are_listed_and_one_can_be_removed(tmp_path):
     QtWidgets.QMessageBox.answers.append(QtWidgets.QMessageBox.Yes)
     dialog.remove_buttons[path].clicked.emit()
     assert not path.exists() and dialog.remove_buttons == {}
+
+
+# --- a second model that looks at the camera images ---
+
+def test_without_a_vision_model_in_the_config_the_answering_model_looks(monkeypatch):
+    gui, worker, _ = _started(monkeypatch)
+    assert "vision" not in gui._endpoints and "second model" not in gui.chat_window.output.toPlainText()
+
+
+def test_a_vision_model_at_the_same_provider_uses_the_key_in_use(tmp_path, monkeypatch):
+    gui = _gui(tmp_path, vision_model={"provider": "Anthropic", "model": "claude-sonnet-5-5"})
+    seen = []
+    gui.check_key = lambda endpoint: (seen.append(endpoint.model), (True, "accepted"))[1]
+    configured = []
+    worker, _ = _with_worker(gui, monkeypatch)
+    worker.configure = lambda endpoint, vision=None: configured.append((endpoint, vision))
+    _choose(gui, "Anthropic")
+    gui.key.setText("my-key")
+    gui.on_start_chat()
+    (answering, vision), = configured
+    assert (vision.provider, vision.model, vision.api_key, vision.vision) == ("Anthropic", "claude-sonnet-5-5", "my-key", True)
+    assert seen == ["claude-haiku-5-5", "claude-sonnet-5-5"]              # both were checked with the provider
+    shown = gui.chat_window.output.toPlainText()
+    assert "looked at by a second model (Anthropic, claude-sonnet-5-5)" in shown
+    assert "vision: Anthropic, claude-sonnet-5-5" in gui.status_label.text()
+
+
+def test_a_vision_model_at_another_provider_uses_that_person_s_remembered_key(tmp_path, monkeypatch, _own_home):
+    _own_home["Gemini"] = "remembered-gemini-key"
+    gui = _gui(tmp_path, vision_model={"provider": "Gemini"})
+    configured = []
+    worker, _ = _with_worker(gui, monkeypatch)
+    worker.configure = lambda endpoint, vision=None: configured.append((endpoint, vision))
+    _choose(gui, "Anthropic")
+    gui.key.setText("my-key")
+    gui.on_start_chat()
+    answering, vision = configured[0]
+    assert answering.api_key == "my-key"
+    assert (vision.provider, vision.model, vision.api_key) == ("Gemini", "gemini-3.5-flash-lite", "remembered-gemini-key")
+
+
+def test_a_vision_model_without_a_key_is_said_and_the_answering_model_looks(tmp_path, monkeypatch):
+    gui = _gui(tmp_path, vision_model={"provider": "Gemini"})
+    configured = []
+    worker, _ = _with_worker(gui, monkeypatch)
+    worker.configure = lambda endpoint, vision=None: configured.append(vision)
+    _choose(gui, "Anthropic")
+    gui.key.setText("my-key")
+    gui.on_start_chat()
+    assert configured == [None] and gui._state == "ready"                 # the chat still opens
+    shown = gui.chat_window.output.toPlainText()
+    assert "The vision model (Gemini) has no key" in shown and "GEMINI_API_KEY" in shown
+
+
+def test_a_vision_model_the_provider_refuses_does_not_stop_the_chat(tmp_path, monkeypatch):
+    gui = _gui(tmp_path, vision_model={"provider": "Anthropic", "model": "claude-sonnet-5-5"})
+    gui.check_key = lambda endpoint: (endpoint.model != "claude-sonnet-5-5", "Anthropic did not accept this key.")
+    configured = []
+    worker, _ = _with_worker(gui, monkeypatch)
+    worker.configure = lambda endpoint, vision=None: configured.append(vision)
+    _choose(gui, "Anthropic")
+    gui.key.setText("my-key")
+    gui.on_start_chat()
+    assert configured == [None] and gui._state == "ready" and gui.light_state is True
+    assert "cannot be used" in gui.chat_window.output.toPlainText()
+
+
+def test_forbidding_images_also_switches_the_vision_model_off(tmp_path, monkeypatch):
+    gui = _gui(tmp_path, vision=False, vision_model={"provider": "Anthropic"})
+    configured = []
+    worker, _ = _with_worker(gui, monkeypatch)
+    worker.configure = lambda endpoint, vision=None: configured.append((endpoint.vision, vision))
+    _choose(gui, "Anthropic")
+    gui.key.setText("my-key")
+    gui.on_start_chat()
+    assert configured == [(False, None)]
+    assert "Camera images are not sent" in gui.chat_window.output.toPlainText()
+
+
+def test_a_vision_model_with_an_unknown_provider_is_named_as_a_problem(tmp_path):
+    gui = _gui(tmp_path, vision_model={"provider": "Nobody"})
+    assert gui.settings.vision_provider == "" and "vision_model" in gui.status_label.text()

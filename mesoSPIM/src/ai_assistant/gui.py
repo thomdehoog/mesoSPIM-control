@@ -366,6 +366,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self._active = None                     # the running turn: {"tools", "reply", "error"}
         self._tokens = 0                        # the input tokens of the session's last request
         self._pending = None                    # the endpoint whose key is being checked
+        self._pending_vision = None             # the second model that looks at images, checked with it
+        self._vision_note = None                # why a vision model the config names is not in use
         self._entries = []                      # the skill files of both folders (skills.library)
         self.skill_boxes = {}                   # skill name -> its tick box
         self.remove_buttons = {}                # personal skill name -> its Remove button
@@ -646,6 +648,30 @@ class AiAssistantGUI(QtWidgets.QWidget):
             endpoint = dataclasses.replace(endpoint, request_interval_s=self.settings.request_interval_s)
         return endpoint
 
+    def _chosen_vision_endpoint(self, answering):
+        """The second model that looks at the camera images, when the config file names one
+        (its `vision_model` block), else None. Returns (endpoint, note): the note is a sentence
+        for the chat when the config asks for a vision model and it cannot be used.
+
+        Its key is found without a second field in the tab. When it is at the same provider as
+        the model that answers, the key in use for that one serves both. Otherwise it is the key
+        this person had remembered for that provider, else the provider's environment variable."""
+        wanted = self.settings.vision_provider
+        if not wanted or self.settings.vision is False:        # none named, or images are forbidden altogether
+            return None, None
+        own_address = config.PROVIDERS[wanted]["kind"] == "openai-compatible"
+        key = answering.api_key if wanted == answering.provider else keys.remembered(wanted)
+        endpoint = Endpoint.from_preset(wanted, self.settings.vision_model, key,
+                                        self.settings.vision_address if own_address else "", vision=True)
+        if endpoint.needs_key and not endpoint.api_key:
+            key_env = config.PROVIDERS[wanted].get("key_env")
+            return None, (f"The vision model ({wanted}) has no key. To give it one, choose {wanted} in the tab once, "
+                          f"type your key and tick '{REMEMBER_LABEL}', or set {key_env} before starting mesoSPIM. "
+                          "Until then the model that answers looks at the images itself, if it can.")
+        if self.settings.request_interval_s > 0:
+            endpoint = dataclasses.replace(endpoint, request_interval_s=self.settings.request_interval_s)
+        return endpoint, None
+
     # --- the skill lists ---
     def refresh_skills(self):
         """Read both skill folders and rebuild the two lists. A file that cannot be used is shown
@@ -774,7 +800,8 @@ class AiAssistantGUI(QtWidgets.QWidget):
         if self._pending is not None:
             return                                          # the check is already under way
         endpoint = self._chosen_endpoint()
-        self._pending = endpoint
+        vision, self._vision_note = self._chosen_vision_endpoint(endpoint)
+        self._pending, self._pending_vision = endpoint, vision
         self.start_button.setEnabled(False)
         self._set_light(None, "checking…")
         self.status_label.setText(f"Checking the key with {endpoint.provider}…")
@@ -784,6 +811,17 @@ class AiAssistantGUI(QtWidgets.QWidget):
                 accepted, sentence = self.check_key(endpoint)
             except Exception as error:                      # the check itself must never crash the tab
                 accepted, sentence = False, f"The key could not be checked: {error}"
+            # The vision model is checked too. If its provider refuses, the chat still opens:
+            # the model that answers then looks at the images itself, and the chat says why.
+            if accepted and vision is not None:
+                try:
+                    seeing, why = self.check_key(vision)
+                except Exception as error:
+                    seeing, why = False, f"its key could not be checked: {error}"
+                if not seeing:
+                    self._pending_vision = None
+                    self._vision_note = (f"The vision model ({vision.provider}, {vision.model}) cannot be used: {why} "
+                                         "The model that answers looks at the images itself, if it can.")
             self.sig_key_checked.emit(accepted, sentence)
         if self.checks_in_background:
             threading.Thread(target=work, name="ai-assistant-key-check", daemon=True).start()
@@ -794,6 +832,7 @@ class AiAssistantGUI(QtWidgets.QWidget):
         """The provider's answer. A key that was not accepted stops here, with the reason on the
         status line; an accepted one is remembered if the box is ticked, and the chat opens."""
         endpoint, self._pending = self._pending, None
+        vision, self._pending_vision = self._pending_vision, None
         self.start_button.setEnabled(True)
         if endpoint is None:
             return
@@ -807,20 +846,23 @@ class AiAssistantGUI(QtWidgets.QWidget):
         self.choices["provider"] = endpoint.provider
         self.choices.setdefault("models", {})[endpoint.provider] = endpoint.model
         assistant_settings.write_choices(self.settings, self.choices)
-        self._open_chat(endpoint)
+        self._open_chat(endpoint, vision)
 
-    def _open_chat(self, endpoint):
+    def _open_chat(self, endpoint, vision=None):
         """Take the session, hand the worker the model and what this chat is given, and open the
-        window. Returns False, after a note that says what to do, when the microscope is taken by
-        the Remote Control."""
+        window. `vision` is the second model that looks at the camera images, when the config
+        file names one. Returns False, after a note that says what to do, when the microscope is
+        taken by the Remote Control."""
         if not self._ensure_worker():
             self._note(getattr(self.core, "_assistant_refusal", None)
                        or "Stop the Remote Control transport to use the AI Assistant.")
             return False
         self._apply_options()
         self._endpoints = {"language": endpoint}
+        if vision is not None:
+            self._endpoints["vision"] = vision
         self._blocks, self._active = [], None
-        self._worker.configure(endpoint, None)
+        self._worker.configure(endpoint, vision)
         self.refresh_skills()                                   # the files as they are now
         switched_off = set(self.choices.get("skills_off") or [])
         ticked = skill_files.chosen(self._entries, switched_off)
@@ -843,13 +885,20 @@ class AiAssistantGUI(QtWidgets.QWidget):
         opening += [f"The skill '{entry.key}' is out of date: it uses {', '.join(entry.missing_tools)}, which "
                     "mesoSPIM no longer has." for entry in self._entries if entry.key in ticked and entry.missing_tools]
         opening += list(self.settings.problems)
-        if not endpoint.vision:
+        if self._vision_note:
+            opening.append(self._vision_note)
+        if vision is not None:
+            opening.append(f"Camera images are looked at by a second model ({_describe(vision)}). The model that "
+                           "answers is told what that one sees and receives no image itself.")
+        elif not endpoint.vision:
             opening.append("Camera images are not sent: the assistant works from the numbers that describe an image.")
         opening.append(self.saving_text())
         self._blocks = [self._note_block(line) for line in opening]
         self._show_tokens(0)
         self._render()
         detail = _describe(endpoint)
+        if vision is not None:
+            detail += f"; vision: {_describe(vision)}"
         if endpoint.request_interval_s > 0:
             detail += f"; {endpoint.request_interval_s:g} s between requests"
         self._set_state("ready", detail)

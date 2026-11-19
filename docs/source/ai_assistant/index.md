@@ -73,6 +73,12 @@ looks at, are sent to the provider you chose, and the use is billed to the owner
 facility whose samples may not leave the building can forbid sending images with one line in the
 config file; the assistant then works from the numbers that describe an image.
 
+**A second model for the images.** Looking is a step of its own: when the assistant looks, the
+image goes to a model together with the question, and only the answer in words comes back into
+the conversation. The conversation itself never holds an image. By default the model you chose
+does this looking too. The facility can name a second model for it in the config file (see
+[Configuration](configuration.md)); the chat's first lines then say which model looks.
+
 **A network that inspects HTTPS.** On a PC whose network re-signs encrypted traffic (an antivirus
 or a company proxy), a cloud provider may fail with "could not be reached" although the key is
 right: the Python client trusts only its own list of certificates. Point it at one that includes
