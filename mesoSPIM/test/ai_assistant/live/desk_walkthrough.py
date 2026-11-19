@@ -4,6 +4,12 @@ conversation and confirmed, that skill found and loaded in the next chat, an ear
 found by search, and an unticked skill left alone.
 
     ANTHROPIC_API_KEY=... python -m mesoSPIM.test.ai_assistant.live.desk_walkthrough [--model NAME]
+    GEMINI_API_KEY=... python -m mesoSPIM.test.ai_assistant.live.desk_walkthrough --provider Gemini \
+        --model gemma-4-26b-a4b-it
+
+The second line tries an open model that Google also serves, such as Gemma 4 26B. That shows how
+well the model uses the tools before anyone sets it up on a computer of their own; it says
+nothing about how fast it would be there.
 
 It prints, per message, the tools the model called and the start of its reply, and ends with one
 line per check: PASS or FAIL. Nothing is written outside a temporary folder. It costs a few cents.
@@ -64,11 +70,12 @@ class Chat:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--provider", default="Anthropic", choices=["Anthropic", "Gemini", "OpenAI"])
     parser.add_argument("--model", default="")
     arguments = parser.parse_args()
-    endpoint = ai.Endpoint.from_preset("Anthropic", model=arguments.model)
+    endpoint = ai.Endpoint.from_preset(arguments.provider, model=arguments.model)
     if not endpoint.api_key:
-        raise SystemExit("set ANTHROPIC_API_KEY first")
+        raise SystemExit(f"set {config.PROVIDERS[arguments.provider]['key_env']} first")
     root = Path(tempfile.mkdtemp(prefix="mesospim-desk-"))
     (root / "config" / "skills").mkdir(parents=True)
     for name in ("centring", "exposure"):                # two of the evaluation's skills, as system skills
