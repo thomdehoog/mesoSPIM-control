@@ -102,6 +102,18 @@ TOOL_DESCRIPTIONS = {
     # The wire schema gives the range (0.001 to 5) and no unit, and the GUI shows milliseconds.
     "set_camera": "Camera settings. camera_exposure_time is in SECONDS: 50 ms is 0.05, 500 microseconds is 0.0005.",
 }
+# A sentence added to a command's description for the assistant, whatever the description is (the
+# wire hint or one of the above). Each tells its tool apart from look, at the place where a model
+# makes that choice. Without them, a model asked to judge an image took a snap and read the
+# numbers with get_frame, or took a snap and then looked, which exposes the sample twice. Tried on
+# Claude Haiku 5.5 on 2026-11-19: on the held-out image cases 102 of 135 runs pass with these
+# sentences against 93 without, and on 100 multi-step cases written independently 77 against 71
+# (focusing 14 of 20 against 8). See docs/pr/assistant-decisions.md.
+TOOL_NOTES = {
+    "get_frame": " To judge what a new image shows (brightness, saturation, focus, content), use look instead: "
+                 "it takes the snap itself and keeps the frame.",
+    "snap": " To judge an image, use look, which takes its own snap; a snap and then a look exposes the sample twice.",
+}
 # The checks that take acquisition rows describe them by reference to set_acquisition_list instead
 # of repeating the row schema; the dispatcher validates the rows the same either way.
 ROWS_BY_REFERENCE = ("get_disk_space", "check_motion_limits", "acquire_start")

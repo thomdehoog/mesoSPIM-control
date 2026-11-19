@@ -807,7 +807,7 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
         schema, renamed = _safe_keys(schema)
         if renamed:
             fn = _original_keys(fn, renamed)
-        description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name)
+        description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name) + config.TOOL_NOTES.get(cmd.name, "")
         tools.append(Tool.from_schema(fn, name=cmd.name, description=description, json_schema=schema, sequential=True))
     if endpoint is not None:
         eyes = vision_endpoint or endpoint  # a dedicated reader, or the main model when it can see
