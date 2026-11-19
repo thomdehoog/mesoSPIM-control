@@ -253,9 +253,13 @@ name), the call with its values, how it ended, how long it took to answer, and w
 - **The Windows password store.** Remembering a key was tested with a stand-in for the `keyring`
   library.
 - **A microscope.** Nothing here has been run on hardware.
-- **The evaluation with the new tools.** The recorded runs of the cloud models are replayed
-  without the five new tools. Whether the new tools make a cloud model choose worse among the old
-  ones has not been measured. This is the most important gap; see the review.
+- **The new tools in the offline tests.** The recorded runs of the cloud models are replayed
+  without the five new tools. A targeted check with Claude Haiku 5.5 found that the new tools do
+  not make it choose worse among the old ones (38 of 39 cases with and without them, and 12 of 12
+  new cases; see `assistant-decisions.md`). That check is a one-off run, not yet part of the
+  tests, and Gemini 3.5 Flash-Lite was not checked.
+- **Claude Opus 5.5 cannot be used.** The provider refuses the "temperature" setting the
+  assistant sends for it. A one-line change, not made yet.
 - **The starter set of system skills.** None are written.
 - **The documentation folder of an installed mesoSPIM.** An installation without the
   repository's `docs/source` folder needs the `documentation` line set.

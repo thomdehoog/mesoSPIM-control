@@ -39,18 +39,63 @@ These were agreed in the planning conversation and hold for everything that is b
    local model get their own place in the config file, and a local model takes memory and
    processor time only when it is in use.
 
-A caution about rule 9. The tests that are meant to guard it replay the recorded runs of the
-cloud models **without** the five tools that every chat from the window now has. So they do not
-yet test what operators use. Until the evaluation below is done, rule 9 is a rule and not a
-checked fact.
+A caution about rule 9. The offline tests that are meant to guard it replay the recorded runs of
+the cloud models **without** the five tools that every chat from the window now has. So they do
+not test what operators use. A targeted check with a real model was run on 2026-11-19 and found
+no harm (see "The targeted check of the new tools" below), but that check is not part of the
+offline tests, so nothing repeats it automatically after a later change.
+
+## The targeted check of the new tools
+
+Run on 2026-11-19 with Claude Haiku 5.5 on the simulated microscope. The question was whether
+the five tools that a chat from the window has (`get_status`, `search`, `read_passage`,
+`save_skill`, `edit_skill`) make a cloud model choose worse among the old tools. Running all 137
+cases twice would mostly have tested things the new tools cannot touch, so the check took the
+cases where a new tool could be mistaken for an old one.
+
+| What was run | Without the new tools | With the new tools |
+|---|---|---|
+| 39 existing cases: reading values, acquisition lists, handling errors, and the 16 "confusable" cases | 38 of 39 | 38 of 39 |
+| 12 new cases written for this check | not applicable | 12 of 12 |
+
+- **In none of the 39 existing cases did the model call a new tool.** It was not drawn to them
+  where an old tool was right.
+- **The one miss on each side is a different case, and both are a habit of Haiku.** The two
+  cases ask it to install an acquisition and run it, or to start a time lapse. Haiku sometimes
+  edits a row that has an intensity of 0, notices that the run would be dark, and asks before
+  running. That is sensible, and it is not what the case expects. Each of the two cases was run
+  three more times on each side: without the new tools they passed 0 of 4 and 2 of 4 runs in
+  all, with them 4 of 4 and 1 of 4. So these two cases are unsteady for Haiku either way, and
+  the new tools do not explain it. Claude Sonnet 5.5 passed the first of them twice out of
+  twice, which shows that the case and the assistant are sound.
+- **The 12 new cases.** Four check that a new tool is used when it should be (its own status,
+  the documentation, an earlier conversation, saving a skill on request). Eight check that it is
+  not used when an old tool is right: saving the acquisition list or the settings is not saving
+  a skill, loading the sample is not loading a skill, changing a row is not changing a skill,
+  and "search for the sample" means looking, not searching the documentation. One of them failed
+  on the first run because the case itself was wrong: it asked for the list to be saved under a
+  name ending in `.bin`, and Haiku correctly answered that the list can only be saved as CSV.
+  With the name corrected it passed.
+
+**What it shows:** on the cases most at risk, the new tools did no harm to Haiku's choices, and
+it used them when it should.
+
+**What it does not show:** it is one model, each case run once apart from the two repeats, and
+Gemini 3.5 Flash-Lite was not checked. It was run by a script outside mesoSPIM
+(`assistant-plan-evidence/cloud-check/desk_eval.py`), so it is not repeated by the offline tests.
+
+**A side finding.** Claude Opus 5.5 could not be tested: the provider refuses the request,
+because the assistant sends a "temperature" setting that this model does not accept. The
+assistant keeps a list of the models that refuse it, and only Haiku 5.5 is on it. As it stands
+the assistant cannot be used with Opus 5.5. This is a one-line change in
+`mesoSPIM/src/ai_assistant/config.py` and has not been made.
 
 ## Agreed, and not built yet
 
-- **The evaluation with the new tools.** The tool-choice cases are to be run for the cloud
-  models with `get_status`, `search`, `read_passage`, `save_skill` and `edit_skill` on offer, to
-  see whether the new tools make a model choose worse among the old ones, and whether it picks
-  the new ones when it should. Picking the right skill was the weakest result in #8 (61 of 75),
-  so the cases for skills get the most attention.
+- **Making the check above part of the tests.** The cases for the new tools should join the
+  evaluation on the development branch, with a recorded run that the offline tests replay, and
+  Gemini 3.5 Flash-Lite should be checked as Haiku was. Picking the right skill was the weakest
+  result in #8 (61 of 75), so the cases for skills still deserve the most attention.
 - **A starter set of system skills.** mesoSPIM is to come with a few. The place for them and
   everything around them is built; no skill is written. Each has to be written and tested, at
   least in demo mode, and its description tested like the others. The five test skills of the
@@ -119,6 +164,8 @@ already have. The tool also adds to every request that a cloud model receives.
 The agreed way to decide: if the cloud evaluation with the new tools shows that they cost
 accuracy among the old tools, `get_status` is the first to be removed or cut down to the
 assistant's half. If it shows no cost, the tool stays as it is.
+
+**Outcome, 2026-11-19:** the targeted check above showed no cost, so `get_status` stays as it is.
 
 ### 7. Open decisions carried over from #8
 

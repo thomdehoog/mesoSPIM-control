@@ -1,0 +1,14 @@
+[
+ {"id": "desk-status-about-itself", "category": "new tools", "prompt": "How full is your context, and which skills do you have in this chat?", "expect": {"calls": ["get_status"], "no_mutations": true}},
+ {"id": "desk-search-documentation", "category": "new tools", "prompt": "How do I start the Remote Control so that a script can connect? Look it up in the documentation.", "expect": {"calls": ["search"], "no_mutations": true}},
+ {"id": "desk-search-last-time", "category": "new tools", "prompt": "What did we do last time? Check our earlier conversations.", "expect": {"calls": ["search"], "no_mutations": true}},
+ {"id": "desk-save-skill-on-request", "category": "new tools", "prompts": ["Set the laser intensity to 15 percent, set the exposure time to 20 ms, then take a snap. This is how I always start with a new sample.", "Save that as a skill called new sample start."], "expect": {"calls": ["save_skill"]}},
+ {"id": "desk-save-list-is-not-a-skill", "category": "new tools", "prompt": "Save the acquisition list to {folder}/plan.csv.", "expect": {"calls": ["save_acquisition_list"], "not_calls": ["save_skill"]}},
+ {"id": "desk-load-sample-is-not-a-skill", "category": "new tools", "prompt": "Load the sample.", "expect": {"not_calls": ["load_skill", "search"]}},
+ {"id": "desk-read-intensity-no-search", "category": "new tools", "prompt": "What is the laser intensity right now?", "expect": {"no_mutations": true, "not_calls": ["search", "read_passage"]}},
+ {"id": "desk-look-is-not-search", "category": "new tools", "prompt": "Search for the sample: look and tell me where it is in the image.", "expect": {"calls_any": ["look"], "not_calls": ["search"]}},
+ {"id": "desk-save-settings-is-not-a-skill", "category": "new tools", "prompt": "Save the current settings to the config file.", "expect": {"calls": ["save_parameters_to_config"], "not_calls": ["save_skill"]}},
+ {"id": "desk-edit-row-is-not-edit-skill", "category": "new tools", "prompts": ["Add one acquisition row: z from 0 to 100 in steps of 10, with the 488 nm laser.", "Now change that row so that it ends at z = 200."], "expect": {"calls_any": ["update_acquisition_row", "set_acquisition_list"], "not_calls": ["edit_skill"]}},
+ {"id": "desk-a-move-needs-no-search", "category": "new tools", "prompt": "Move x by 100 micrometres.", "expect": {"calls": ["move_relative"], "not_calls": ["search", "read_passage"]}},
+ {"id": "desk-find-focus-is-not-search", "category": "new tools", "prompt": "Find the best focus at this position.", "expect": {"not_calls": ["search", "read_passage"]}}
+]
