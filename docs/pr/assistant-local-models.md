@@ -18,7 +18,7 @@ critical review is in `assistant-plan-review.md`.
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
 | Does the server keep what it has read? | Unknown, and there is a report that it does not for Gemma | Not measured |
-| Does it disturb an acquisition? | Unknown | Not measured |
+| Does it disturb an acquisition? | Unknown on the microscope computer; not at all on a second computer | Not measured |
 
 The first thing to do is the test in "Which models to try, and the test". Until then the rest is
 preparation.
@@ -221,6 +221,26 @@ less speed than it would for an ordinary model of the same size. The experts of 
 need about 15 GB of ordinary memory. The computer has at least 64 GB (see "Memory: what goes
 where" below), which is plenty.
 
+### Where the model should run: a second computer first
+
+There are two places a local model can run, and they should be considered in this order.
+
+1. **On a second computer, reached over the network.** The model's server runs on another
+   machine at the facility, and the config file's `address` line points mesoSPIM at it. This
+   already works today and needs no change to mesoSPIM. It takes no memory and no processor time
+   from the microscope computer, so it cannot disturb an acquisition, and the second computer can
+   have a better graphics card than the microscope computer does. One server can also serve
+   several microscopes. Camera images then travel over the facility's own network and stay
+   inside it.
+2. **On the microscope computer itself.** Nothing else has to be bought or kept running, and
+   the microscope works without a network. But the model then shares the processor, the memory
+   and the disk with a running acquisition, and a disturbed acquisition is lost data. This route
+   has to prove that it leaves acquisitions alone before it is chosen; the check is under
+   "Sharing the computer with the microscope" below.
+
+The test below is written for the microscope computer, because that is the harder case and the
+one that was asked about. Its first five steps are the same on any computer.
+
 ### The test
 
 Allow an afternoon; it changes nothing in mesoSPIM. While it runs, keep Task Manager
@@ -328,10 +348,8 @@ This computer runs the microscope. The assistant must never get in the way of an
 - **The check.** After the test above, run an acquisition in demo mode and chat with the
   assistant while it runs. The acquisition's progress must not stutter and no frame may be lost,
   and the chat should stay usable. If the two disturb each other, lower `-t` first.
-- **The alternative that avoids the question.** The model can run on a second computer, and the
-  config file's `address` line points mesoSPIM at it. That already works today and takes nothing
-  from the microscope computer. It should be weighed against running the model on the same
-  computer before that route is chosen.
+- **If the check fails**, the model belongs on a second computer, as described under "Where the
+  model should run".
 
 ### What we expect for responsiveness
 

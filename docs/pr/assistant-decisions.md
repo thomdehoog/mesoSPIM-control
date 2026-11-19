@@ -102,14 +102,25 @@ a decision made in #8, so they need a decision of their own:
   the tool lists per model on purpose.
 - **mesoSPIM starting the model's server itself**, with the memory and processor settings in the
   config file. Step 2 of #8 removed the "Local AI mode" on purpose.
-- **Where the model runs**: on the microscope computer, where it shares the processor and the
-  memory with a running acquisition, or on a second computer reached through the `address` line,
-  which already works and puts no acquisition at risk.
+- **Where the model runs.** The agreed order is: a second computer reached through the `address`
+  line first, because that already works and puts no acquisition at risk; the microscope computer
+  itself only if it proves that it leaves acquisitions alone.
 
 The suggested way to decide: run the test described in that file, and then either go on or
 stop.
 
-### 6. Open decisions carried over from #8
+### 6. Whether `get_status` earns its place
+
+The assistant is given the microscope's full readout with every message, as in #8. So of the two
+halves of `get_status`, only the one about the assistant itself (the model, how full its context
+is, this chat's skills, whether the conversation is saved) tells the model something it does not
+already have. The tool also adds to every request that a cloud model receives.
+
+The agreed way to decide: if the cloud evaluation with the new tools shows that they cost
+accuracy among the old tools, `get_status` is the first to be removed or cut down to the
+assistant's half. If it shows no cost, the tool stays as it is.
+
+### 7. Open decisions carried over from #8
 
 Pull request #8 lists its own: the size of each request, whether waveform generation should
 apply the max amplitude, whether limits on intensity or move size per call are wanted, and the
@@ -125,9 +136,10 @@ disk check that fails off Windows. They are unchanged.
 - **Accounts and passwords inside mesoSPIM.** Rule 7 replaced them.
 - **The token count of each request**, in the window and in the log.
 
-## A proposal for when the assistant counts as finished
+## When the assistant counts as finished
 
-This list is a proposal and has not been agreed.
+Agreed on 2026-11-19 as the list to work towards. An item can still be changed when there is a
+reason.
 
 1. It runs in mesoSPIM's demo mode on Windows: start a chat, send a request, create a skill,
    use it in the next chat, clear the context, close the chat.
@@ -135,7 +147,7 @@ This list is a proposal and has not been agreed.
 3. The cloud evaluation with the new tools shows no loss against the recorded results.
 4. The sweep on a real microscope from #8 has been run with an operator present.
 5. A starter set of skills exists, or it is decided that mesoSPIM ships without one.
-6. The open questions 1 to 3 above are answered.
+6. The open questions 1 to 3 and 6 above are answered.
 7. The work is in one pull request that can be reviewed.
 
 ## The order suggested for the next steps
