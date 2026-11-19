@@ -482,3 +482,123 @@ section "The log of calls".
   `docs/source` folder of a copy of the repository. An installation without that folder needs the
   line set, or `search` says that the documentation is not available.
 
+
+## An idea for local models: a core set of tools and a catalogue
+
+Added on 2026-11-19. This is an idea to explore, not a decision, and nothing of it is built.
+
+### The problem
+
+We would like the assistant to answer quickly with a model that runs on the microscope computer
+itself, such as Gemma 4 with 12 billion parameters ("12B"). The computer we looked at has a
+GeForce GTX 1080 Ti graphics card with 11 GB of memory. Two things make this hard:
+
+- **Every request starts with the same long text**, which the model has to read before it can
+  answer. A cloud provider reads it once and keeps it. A small graphics card takes much longer.
+- **The memory of the card is shared** between the model itself and everything it is reading. A
+  12B model, stored compactly, takes roughly 7 to 8 GB, which leaves about 3 GB for the
+  conversation. A 24B model takes roughly 14 to 15 GB and does not fit on this card at all.
+
+These sizes are estimates from the layout of the earlier Gemma 3; the exact figures for Gemma 4
+still have to be looked up.
+
+### Where the long text comes from
+
+Measured on this branch on 2026-11-19. The counts are estimates from the number of characters; a
+model counts the punctuation of a tool definition more heavily, so the true total is nearer the
+21,000 tokens the tab showed in October.
+
+| Part of the fixed start of every request | Share |
+|---|---|
+| The definitions of the 88 tools | about 90 % |
+| The instructions (the manual and the list of commands) | about 10 % |
+
+- The ten largest tool definitions are 43 % of all tool text. `set_display` and `set_state`
+  alone are about a fifth.
+- The calls that change what the windows show are about 20 % of the tool text.
+- Each message from the operator also carries a readout of the microscope, roughly 300 tokens,
+  which stays in the conversation.
+
+This explains an earlier experience. Shortening the wording of the instructions works on a tenth
+of the text, and it takes away the sentences the model decides by, so it made the assistant worse
+without making it much faster. The tool-choice test in #8 found the same for tool descriptions:
+the shorter ones lost a choice wherever they dropped a distinguishing fact. The text has to be
+reduced by its structure, not by its wording.
+
+### The idea
+
+Treat the tools the way skills are already treated: the model always knows that a tool exists,
+and it fetches the details only when it needs them.
+
+1. **A core set stays as it is.** About twenty tools that are used all the time are offered to
+   the model in full, as today: moving the stage, the laser, the filter, the zoom, a snap, a
+   look, live, stop and the status.
+2. **A catalogue lists all the others** by name with one line each, grouped by what they are
+   for: the stage, the light, the camera, the acquisition list, the windows, the analyses. The
+   catalogue is always part of the instructions.
+3. **Two general tools reach the others.** One returns the full definition of a tool from the
+   catalogue, as text. The other runs a tool from the catalogue with the values the model gives.
+
+Safety does not change. Every call still goes through the same checks, limits and busy gate,
+because the general tool hands the call to the same dispatcher as every other call.
+
+The definition comes back as text inside the conversation. The start of the request therefore
+never changes during a chat. This matters for a local model: its server keeps what it has
+already read of an unchanged start (the prompt cache), and only reads what is new. Adding real
+tools in the middle of a chat would change the start and throw that away, which is why the tools
+are not simply switched on and off.
+
+### What it would give, and what it would cost
+
+- **A shorter start.** A rough guess is that the fixed start drops from about 21,000 tokens to
+  about 6,000. The first, slow reading becomes three to four times shorter, and the conversation
+  may fit in half the memory, which suits an 11 GB card better.
+- **One more step for a rare tool.** The first time the model needs a tool from the catalogue it
+  has to fetch the definition first. Everyday requests use the core set and are not affected.
+- **More mistakes with values.** A small model writes the values of a call less reliably from a
+  description in text than from a real tool definition. The dispatcher refuses a wrong call with
+  a reason, and the model can correct it, but this has to be measured.
+- **A second way of offering the tools.** This would be for local models only. Cloud models keep
+  the full list: they are not slowed by it and they choose better from real definitions. Step 2
+  of #8 removed the different tool lists per model on purpose, to keep the assistant lean, so
+  this brings one back and is a deliberate change of direction.
+
+### What we decided against
+
+- **Choosing the tools by the meaning of each message** (often called RAG, for
+  retrieval-augmented generation: a second model picks the tools that seem to match the message,
+  and only those are offered). The list would change with every message, so the prompt cache
+  would be lost each time. A wrong pick is also silent: when the right tool is left out, the
+  model takes a similar one or says it cannot do the task. It would need a second model on a
+  card that is already full.
+- **A knowledge graph of the tools.** That pays off with thousands of items that refer to each
+  other. Here there are 88 tools and a few dozen pages of documentation. Grouping the catalogue
+  by area is all the structure that is needed.
+- **Shortening the wording**, for the reasons above.
+
+### Before building it
+
+Two things can be found out without changing any code, and they decide whether this is worth
+building.
+
+1. **How much the prompt cache already solves.** Run the 12B model on the microscope computer
+   with room for 32,000 tokens, and compare how long the model's server takes to read the first
+   message and the second. If the second takes a second or two, the long start is paid once per
+   chat and the rest is tuning. For this the server should keep the model loaded, use a single
+   conversation, and store what it has read at 8-bit precision, which halves its memory.
+2. **Whether the camera images get in the way.** A look runs a conversation of its own on the
+   same server and can push the main conversation out of the cache. Setting `'vision': False` in
+   the config block for the local model, or letting a cloud model do the looking, avoids it.
+
+If it is built, the test is the existing tool-choice evaluation, run on the local model twice:
+once with the full list and once with the core set and the catalogue.
+
+### Other, smaller steps for a local model
+
+- Leave out the calls that change what the windows show. They are about a fifth of the tool
+  text, and #8 already lists this as an open decision.
+- Make the two largest definitions, `set_display` and `set_state`, smaller by their structure,
+  for example by splitting them.
+- Clear the context between tasks, so that the conversation stays short.
+- Send the microscope's readout with each message only where it changed.
+- Switch off the model's "thinking" mode if it has one. A tool call is a short answer.
