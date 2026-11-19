@@ -4,8 +4,12 @@ Written on 2026-11-18, from a planning conversation and two pages of handwritten
 describes what we agreed to build on top of the Remote Control and AI Assistant work in pull
 request #8 on the fork (branch `remote-control-ai-assistant`).
 
-Most of it has since been built. The last section, "Built so far", says what exists, what is
-still missing, and where the result differs from the plan as written below.
+Most of it has since been built. The section "Built so far" says what exists, what is still
+missing, and where the result differs from the plan as written below.
+
+A critical review of this plan and of what was built from it is in `assistant-plan-review.md`,
+next to this file. It names several places where this plan is out of date or claims more than
+has been shown. Read it before relying on a detail here.
 
 The aim is to finish the AI Assistant, not to give it many more features. Three ideas run through
 the whole plan:
