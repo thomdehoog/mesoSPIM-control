@@ -631,8 +631,9 @@ each word it writes it uses only about 3.8 billion of them: a part that every wo
 few "experts" chosen for that word. The server has a setting made for this (`--n-cpu-moe`). It
 keeps the part every word needs on the graphics card, where it is fast, and puts the experts in
 the computer's ordinary memory. Because only a few experts are used per word, this costs far
-less speed than it would for an ordinary model of the same size. The microscope computer appears
-to have about 128 GB of ordinary memory, which is much more than the experts need.
+less speed than it would for an ordinary model of the same size. The experts of this model
+need about 15 GB of ordinary memory. The computer has at least 64 GB (see "Memory: what goes
+where" below), which is plenty.
 
 ### The test
 
@@ -647,7 +648,7 @@ should stay near zero.
    the server's `--help`.
 
    ```
-   llama-server -m gemma-4-26b-a4b-Q4_K_M.gguf -ngl 99 --n-cpu-moe 20 -c 32768 --jinja -fa on -ctk q8_0 -ctv q8_0 -t 8 --port 8080
+   llama-server -m gemma-4-26b-a4b-Q4_K_M.gguf -ngl 99 --n-cpu-moe 20 -c 32768 --jinja -fa on -ctk q8_0 -ctv q8_0 -t 6 --cache-ram 8192 --port 8080
    ```
 
    - `-ngl 99` puts as much as possible on the graphics card.
@@ -660,10 +661,13 @@ should stay near zero.
    - `-ctk q8_0 -ctv q8_0` stores what the model has read at 8-bit precision, which halves its
      memory. `q4_0` halves it again, but we would try that last: a model that calls tools is the
      first to suffer from the lost precision.
-   - `-t 8` is the number of processor cores the server uses. The experts in ordinary memory are
-     computed by the processor for every word, so this number matters here. Set it to the number
-     of real cores of the computer, not to the doubled number that Windows shows as "logical
-     processors". Task Manager shows both under Performance, CPU.
+   - `-t 6` is the number of processor cores the server uses. The experts in ordinary memory are
+     computed by the processor for every word, so this number matters here. Count the real cores
+     of the computer, not the doubled number that Windows shows as "logical processors" (Task
+     Manager shows both under Performance, CPU), and give the server about two fewer than that,
+     so that some are always free for mesoSPIM. The 6 in the line above is for a computer with 8.
+   - `--cache-ram 8192` lets the server keep up to 8 GB of snapshots of what it has read in
+     ordinary memory; the number is in megabytes. See "Memory: what goes where" below.
 4. Stop the graphics driver from quietly using ordinary memory as graphics memory. In the
    NVIDIA Control Panel, under Manage 3D settings, set **CUDA - Sysmem Fallback Policy** to
    **Prefer No Sysmem Fallback**. Without this, when the card is full the driver moves the
@@ -675,6 +679,82 @@ should stay near zero.
    the AI Assistant tab choose **OpenAI-style** and start a chat.
 6. Send two messages, for example "where is the stage?" and then "move x by 100 micrometres",
    and read the server's log.
+
+### Memory: what goes where
+
+The computer has two kinds of memory, and the difference decides everything here. The graphics
+card has 11 GB of its own, which is fast. The computer's ordinary memory (RAM) is much larger and
+much slower for this work. Ordinary memory lets things fit; only the card makes them fast.
+
+How much ordinary memory the computer has is not settled. Task Manager's "Shared GPU memory" of
+63.9 GB is normally half of what is installed, which would mean 128 GB, but it may be 64 GB.
+Task Manager shows the real figure under Performance, Memory. The plan below works with 64 GB.
+
+| What | Where it lives | How much |
+|---|---|---|
+| The part of the model every word needs | The graphics card | A few GB |
+| The conversation the model is reading | The graphics card | About 1 GB per 24,000 tokens, half that at 8-bit precision |
+| The model's experts | Ordinary memory | About 15 GB for Gemma 4 26B |
+| Snapshots of what the model has read | Ordinary memory | 8 GB to start |
+| mesoSPIM and Windows | Ordinary memory | Everything that is left, about 40 GB of 64 |
+
+**Snapshots are the best use of spare ordinary memory.** The risk we found is that the server
+reads the whole conversation again on every request for Gemma models. The server's own remedy is
+to keep snapshots of what it has read and to continue from the latest one. They also protect the
+main chat when the assistant looks at a camera image: the look is a conversation of its own, and
+without a snapshot it pushes the main chat out. Three settings belong to this. The names should
+be checked against the server's `--help`, as we have not run them.
+
+- `--cache-ram` sets how much ordinary memory the snapshots may use, in megabytes.
+- `--ctx-checkpoints` sets how many snapshots are kept per conversation.
+- `--swa-full` makes a Gemma model keep its full history, so that what it has read can be reused
+  as with other models. It costs more of the card's memory, so try it only if the log still
+  shows the whole prompt being read again.
+
+**The conversation itself should stay on the card.** The server can also keep the conversation
+in ordinary memory (`--no-kv-offload`), which removes the limit on its size. Every request then
+works through that memory at the processor's pace, and a chat that takes minutes to answer is of
+no use at a microscope. We do not plan to use this.
+
+**How large the conversation can realistically be.** The model accepts 256,000 tokens, which is
+out of reach here. The card's memory should allow 64,000 or more. What limits it in practice is
+the time it takes to read, so we start at 32,000 and go to 64,000 only if the second message is
+read quickly and the card's memory stays well below 11 GB. With all 88 tools the fixed start is
+about 13,000 tokens, which leaves room for roughly 8 to 12 exchanges in 32,000; with a core set
+and a catalogue it is about 5,500, which leaves room for roughly 12 to 17. Small models also
+choose less reliably as a conversation grows, so clearing the context between tasks stays good
+practice whatever the memory allows.
+
+**With 64 GB, the largest models drop off the list.** gpt-oss-120b and Mistral Small 4 are built
+from experts too and could run the same way, but they need about 63 GB of ordinary memory for
+themselves. They are only worth considering if the computer turns out to have 128 GB.
+
+### Sharing the computer with the microscope
+
+This computer runs the microscope. The assistant must never get in the way of an acquisition.
+
+- **Memory.** During an acquisition mesoSPIM holds camera frames in memory and writes large
+  files, and Windows uses spare memory to keep that writing smooth. The model and its snapshots
+  must leave enough for that, which is why the snapshots start at 8 GB and not at 30.
+- **The processor.** With the experts in ordinary memory, the processor computes part of every
+  word the model writes. An acquisition needs the processor too. This is why the server gets
+  fewer cores than the computer has.
+- **The check.** After the test above, run an acquisition in demo mode and chat with the
+  assistant while it runs. The acquisition's progress must not stutter and no frame may be lost,
+  and the chat should stay usable. If the two disturb each other, lower `-t` first.
+
+### What we expect for responsiveness
+
+The aim is that the assistant stays responsive and does not waste the computer. Whether it does
+is exactly what the test measures, so this is an expectation and not a promise.
+
+| Moment | What we expect | What it depends on |
+|---|---|---|
+| The first message of a chat | Slow, perhaps up to a minute | Reading the fixed start once. A shorter tool list shortens it. |
+| Every later message | A few seconds before the answer starts | The server keeping what it has read. This is the open question for Gemma. |
+| The answer itself | About 20 words a second | Reported by others for this model on a similar card. |
+| A request that needs several calls | Several times the above | Each call is a new request to the model. |
+| During an acquisition | No effect on the acquisition | Enough memory and processor cores left for mesoSPIM. |
 
 ### What the log tells us
 
