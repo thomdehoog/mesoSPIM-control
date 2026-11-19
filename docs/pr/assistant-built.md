@@ -239,9 +239,17 @@ it, like Haiku 5.5, and was not on the list, so its first message failed with an
 the list now. Sonnet 5.5 accepts the setting and still gets it. Checked against the real model
 on 2026-11-19.
 
+**An image is judged with `look`.** A model asked to judge an image often took a snap and read
+the frame's numbers, or took a snap and then looked, which puts light on the sample twice. The
+assistant's descriptions of `get_frame` and `snap` now each say that `look` is the tool for
+judging an image. It was tried before it was built, on three sets of cases with Claude Haiku
+5.5, and it was the only one of three changes tried that day that held up; see
+`assistant-decisions.md`. The commands' own descriptions, which scripts and outside programs
+read, are unchanged.
+
 ## How it was checked
 
-- **Offline tests: 1,412 pass.** This is the suite of the development branch
+- **Offline tests: 1,416 pass.** This is the suite of the development branch
   (`agent/gui-handles`) with the new tests added. Two recorded "open TIFF" cases fail in the
   container this was built in, as they did before any change.
 - **The real window toolkit, off screen, on Linux.** The tab and the chat window are built with
