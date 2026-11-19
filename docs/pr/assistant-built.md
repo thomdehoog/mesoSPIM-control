@@ -231,6 +231,14 @@ name), the call with its values, how it ended, how long it took to answer, and w
 - The key is never written to the config file, to a log or into a saved conversation, and it is
   not part of the text the model reads.
 
+## A fix made along the way
+
+**Claude Opus 5.5 can now be used.** The assistant sends every model a "temperature" of 0, which
+asks for its most likely answer, except the models that refuse that setting. Opus 5.5 refuses
+it, like Haiku 5.5, and was not on the list, so its first message failed with an error. It is on
+the list now. Sonnet 5.5 accepts the setting and still gets it. Checked against the real model
+on 2026-11-19.
+
 ## How it was checked
 
 - **Offline tests: 1,412 pass.** This is the suite of the development branch
@@ -258,8 +266,6 @@ name), the call with its values, how it ended, how long it took to answer, and w
   not make it choose worse among the old ones (38 of 39 cases with and without them, and 12 of 12
   new cases; see `assistant-decisions.md`). That check is a one-off run, not yet part of the
   tests, and Gemini 3.5 Flash-Lite was not checked.
-- **Claude Opus 5.5 cannot be used.** The provider refuses the "temperature" setting the
-  assistant sends for it. A one-line change, not made yet.
 - **The starter set of system skills.** None are written.
 - **The documentation folder of an installed mesoSPIM.** An installation without the
   repository's `docs/source` folder needs the `documentation` line set.

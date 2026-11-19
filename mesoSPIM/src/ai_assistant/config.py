@@ -70,8 +70,10 @@ CONTEXT_FULL = "the session is as large as this model takes: Clear context to co
 # times before the turn fails.
 MODEL_TEMPERATURE = 0.0
 # Models that refuse a temperature of 0 ("`temperature` is deprecated for this model"): they get
-# their own default instead. Matched anywhere in the model name.
-MODELS_WITHOUT_TEMPERATURE = ("claude-haiku-5-5",)
+# their own default instead. Matched anywhere in the model name. A model that refuses and is not
+# listed here cannot be used at all: its first message fails with that error. Claude Sonnet 5.5
+# accepts a temperature and is deliberately not listed (checked on 2026-11-19).
+MODELS_WITHOUT_TEMPERATURE = ("claude-haiku-5-5", "claude-opus-5-5")
 TOOL_CALL_RETRIES = 2
 # A reply with no letter or digit in it (a model can answer a refusal with "_") goes
 # back to the model once with this text; a second such reply reaches the operator as the fallback.

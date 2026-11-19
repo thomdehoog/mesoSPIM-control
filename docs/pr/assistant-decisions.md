@@ -84,11 +84,10 @@ it used them when it should.
 Gemini 3.5 Flash-Lite was not checked. It was run by a script outside mesoSPIM
 (`assistant-plan-evidence/cloud-check/desk_eval.py`), so it is not repeated by the offline tests.
 
-**A side finding.** Claude Opus 5.5 could not be tested: the provider refuses the request,
-because the assistant sends a "temperature" setting that this model does not accept. The
-assistant keeps a list of the models that refuse it, and only Haiku 5.5 is on it. As it stands
-the assistant cannot be used with Opus 5.5. This is a one-line change in
-`mesoSPIM/src/ai_assistant/config.py` and has not been made.
+**A side finding, since fixed.** Claude Opus 5.5 could not be tested at first: the provider
+refused the request, because the assistant sent a "temperature" setting that this model does
+not accept. The assistant keeps a list of the models that refuse it, and only Haiku 5.5 was on
+it. Opus 5.5 was added to the list the same day, and it now works.
 
 ## Agreed, and not built yet
 
