@@ -717,3 +717,98 @@ chooses.
 - Fine-tuning Google's smallest function-calling model: <https://ai.google.dev/gemma/docs/mobile-actions>
 - The Colibri engine: <https://github.com/JustVugg/colibri>
 
+
+## First results: Gemma 4 26B, tried through Google's service
+
+Added on 2026-11-19. Google serves the open Gemma 4 models through the same service as its
+Gemini models, so the 26B model could be put through our existing evaluation without setting it
+up on a computer of our own. This shows **how well the model chooses and uses the tools**. It
+says **nothing about speed** on the microscope computer, because Google's servers did the work.
+
+The evaluation ran on the simulated microscope. Nothing real was moved.
+
+### How large a request is for this model
+
+Counted by Google for one request, a question that needs no tool:
+
+| What the model is offered | Tokens in one request |
+|---|---|
+| All 88 tools, as the assistant offers them today | 12,987 |
+| A core set of 22 tools, nothing else | 2,994 |
+
+The earlier figure of about 21,000 tokens came from Anthropic's count. Each family of models
+counts text differently, and for Gemma the same request is smaller. For a local Gemma this is
+good news: a conversation with room for 32,000 tokens has more space left than we assumed, and
+the first reading of a chat is shorter.
+
+### The comparison on 23 cases
+
+The 23 cases are two from most categories of the evaluation: reading values, moves, settings,
+live mode, safety, limits, unclear requests, acquisitions, handling errors, unknown names,
+snapping, and a busy microscope. Cases that need camera images were left out of this sample.
+
+| What the model was offered | Passed | Calls to the microscope |
+|---|---|---|
+| All 88 tools | 22 of 23 | 19 |
+| A core set of 22 tools, a catalogue of the other 61, and two general tools | 22 of 23 | 25, of which 9 through the general tool |
+
+- **Both ways missed the same case**, "snap into a missing folder says why". The request is to
+  take a snap, and the snap folder does not exist. The model never tried the snap. It answered
+  that the shutters were closed and offered to open them first. That is the model's own habit,
+  not an effect of the shorter tool list.
+- **The passes include the harder kinds**: refusing an instruction planted in a folder name to
+  ignore the limits, asking back when a request leaves a value out, not trying a refused value
+  again, and installing and running an acquisition list.
+- **The catalogue was used without further help.** For an unknown laser the model fetched the
+  microscope's configuration through the general tool and then acted with a core tool. For the
+  time lapse it fetched the definition of the acquisition list, wrote one row wrongly (it
+  invented a "channels" entry), was refused by the microscope's own check with the reason,
+  corrected the row, and started the time lapse with the right values.
+- **Once, the model called a catalogue command as if it were one of its tools.** That call did
+  not reach the microscope. The model then used the general tool for it. A built version should
+  answer such a call with a sentence that says how to reach the command.
+
+### What the catalogue costs
+
+- **A large definition is not free.** When the model fetches the arguments of the acquisition
+  list, the reply is long, and it stays in the conversation. For that command the cost is about
+  what it would have been in the tool list, only paid later and only in chats that need it.
+- **More steps.** The two cases that needed catalogue commands took 6 and 5 calls. Each call is a
+  request to the model, which on a local computer is time.
+
+### What this does and does not tell us
+
+- **The model is good enough to be worth setting up.** On this sample it is close to the cloud
+  models the assistant was built for. The recorded runs of Claude Haiku pass all 23 of these
+  cases, but that recording keeps a passing run where the model can give one, so the two are not
+  a like-for-like comparison.
+- **The shorter tool list did not cost accuracy on this sample**, and it makes a request less
+  than half as large. Whether that holds on the whole evaluation is not known yet.
+- **It is a sample.** 23 of the 137 cases, each run once. A model does not answer the same way
+  every time, so a difference of one case means nothing.
+- **The core set was chosen by judgement.** The 22 tools are the ones that seemed everyday. A
+  different choice would give a somewhat different result.
+- **Speed is still unmeasured.** That needs the test on the microscope computer described above.
+
+### How the runs were paced
+
+Google allowed this key 16,000 tokens per minute for the model. With all 88 tools that is one
+request per minute, so 23 cases took about three quarters of an hour. Several cases of the core
+set had to be run again more slowly, because a request right after a fetched definition was
+larger than usual and the provider refused it. Those refusals were the provider's limit and not
+the model's doing; every case in the table above is a run that was not cut short.
+
+### Where the evidence is
+
+In `docs/pr/assistant-plan-evidence/`:
+
+- `gemma-4-26b-full-list-23-cases.jsonl` and `gemma-4-26b-core-set-23-cases.jsonl`: every case
+  with the calls the model made, what came back, and its replies.
+- `core_catalogue_eval.py`: the experiment. It is not part of mesoSPIM and changes none of its
+  code. It swaps the core set, the catalogue and the two general tools in while the evaluation
+  runs, and counts a call made through the general tool as a call to the command it ran, so that
+  the cases' expectations apply as they stand. It needs the evaluation that lives on the
+  development branch (`agent/gui-handles`).
+
+The remaining 114 cases are being run with all 88 tools, to give the full evaluation for this
+model. Their result will be added below.
