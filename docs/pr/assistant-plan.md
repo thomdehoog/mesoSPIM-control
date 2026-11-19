@@ -636,7 +636,9 @@ to have about 128 GB of ordinary memory, which is much more than the experts nee
 
 ### The test
 
-It takes about half an hour and changes nothing in mesoSPIM.
+It takes about half an hour and changes nothing in mesoSPIM. While it runs, keep Task Manager
+open on Performance, GPU: "Dedicated GPU memory" should stay below 11 GB and "Shared GPU memory"
+should stay near zero.
 
 1. Download llama.cpp for Windows. Take the build for CUDA 12 or the Vulkan build. The newest
    NVIDIA toolkit (CUDA 13) no longer supports a card as old as the GTX 1080 Ti.
@@ -645,7 +647,7 @@ It takes about half an hour and changes nothing in mesoSPIM.
    the server's `--help`.
 
    ```
-   llama-server -m gemma-4-26b-a4b-Q4_K_M.gguf -ngl 99 --n-cpu-moe 20 -c 32768 --jinja -ctk q8_0 -ctv q8_0 --port 8080
+   llama-server -m gemma-4-26b-a4b-Q4_K_M.gguf -ngl 99 --n-cpu-moe 20 -c 32768 --jinja -fa on -ctk q8_0 -ctv q8_0 -t 8 --port 8080
    ```
 
    - `-ngl 99` puts as much as possible on the graphics card.
@@ -653,11 +655,25 @@ It takes about half an hour and changes nothing in mesoSPIM.
      of memory, raise the number. If it loads with room to spare, lower it.
    - `-c 32768` gives room for 32,000 tokens. Our fixed start alone is about 21,000.
    - `--jinja` switches on the model's own way of calling tools.
+   - `-fa on` switches on a faster and leaner way of computing ("flash attention"). The next
+     setting needs it. Older versions of the server take `-fa` without the word `on`.
    - `-ctk q8_0 -ctv q8_0` stores what the model has read at 8-bit precision, which halves its
-     memory.
-4. In the config file's `ai_assistant` block, set `'address': 'http://localhost:8080/v1'`. In
+     memory. `q4_0` halves it again, but we would try that last: a model that calls tools is the
+     first to suffer from the lost precision.
+   - `-t 8` is the number of processor cores the server uses. The experts in ordinary memory are
+     computed by the processor for every word, so this number matters here. Set it to the number
+     of real cores of the computer, not to the doubled number that Windows shows as "logical
+     processors". Task Manager shows both under Performance, CPU.
+4. Stop the graphics driver from quietly using ordinary memory as graphics memory. In the
+   NVIDIA Control Panel, under Manage 3D settings, set **CUDA - Sysmem Fallback Policy** to
+   **Prefer No Sysmem Fallback**. Without this, when the card is full the driver moves the
+   overflow into ordinary memory without saying so ("Shared GPU memory" in Task Manager), and the
+   model becomes many times slower. With it, the server stops with an out-of-memory message
+   instead, which tells us to raise `--n-cpu-moe`. Keeping the card below about 90 % full has
+   the same effect.
+5. In the config file's `ai_assistant` block, set `'address': 'http://localhost:8080/v1'`. In
    the AI Assistant tab choose **OpenAI-style** and start a chat.
-5. Send two messages, for example "where is the stage?" and then "move x by 100 micrometres",
+6. Send two messages, for example "where is the stage?" and then "move x by 100 micrometres",
    and read the server's log.
 
 ### What the log tells us
