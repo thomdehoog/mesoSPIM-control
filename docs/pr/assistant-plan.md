@@ -752,7 +752,7 @@ is exactly what the test measures, so this is an expectation and not a promise.
 |---|---|---|
 | The first message of a chat | Slow, perhaps up to a minute | Reading the fixed start once. A shorter tool list shortens it. |
 | Every later message | A few seconds before the answer starts | The server keeping what it has read. This is the open question for Gemma. |
-| The answer itself | About 20 words a second | Reported by others for this model on a similar card. |
+| The answer itself | About 20 tokens a second, which is roughly 15 words | Reported by others for this model on a similar card. |
 | A request that needs several calls | Several times the above | Each call is a new request to the model. |
 | During an acquisition | No effect on the acquisition | Enough memory and processor cores left for mesoSPIM. |
 
