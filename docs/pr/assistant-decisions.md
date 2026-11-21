@@ -319,3 +319,5 @@ reason.
 3. Decide about the separate vision model.
 4. Decide how this reaches #8 and the public repository.
 5. Only then the local model, starting with the test.
+6. Later, and only if the models as they come are too slow or too weak: training a small model on
+   our own examples. The idea is at the end of `assistant-local-models.md`.

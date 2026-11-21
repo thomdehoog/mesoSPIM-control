@@ -503,8 +503,10 @@ chooses.
   tracker says that its way of writing a tool call is not the format the server can force in
   full, so the shape is guaranteed but the values are not.
 - **Training a small model further on our own tools** raises its accuracy (Google reports 58 %
-  to 85 % for its smallest function-calling model). The tool definitions are still sent with
-  every request, so it does not shorten the start. It would be a project of its own.
+  to 85 % for its smallest function-calling model). By itself it does not shorten the start,
+  because the tool definitions are still sent with every request. It would be a project of its
+  own; the idea is worked out in "An idea for later: training a small model on our own examples"
+  at the end of this file.
 - **Ollama starts with room for only 4,000 tokens** on a card with less than 24 GB. With Ollama
   this has to be raised (`OLLAMA_CONTEXT_LENGTH=32768`), or every request is refused.
 
@@ -637,5 +639,116 @@ In `docs/pr/assistant-plan-evidence/`:
   the cases' expectations apply as they stand. It needs the evaluation that lives on the
   development branch (`agent/gui-handles`).
 
-The remaining 114 cases are being run with all 88 tools, to give the full evaluation for this
-model. Their result will be added below.
+The full evaluation for this model, all 137 cases with all 88 tools, has since been run through
+OpenRouter: 115 passed. It is in `assistant-model-comparison.md`.
+
+## An idea for later: training a small model on our own examples
+
+Written on 2026-11-21, after a conversation about it. **Nothing here is built or tried.** It is
+a project of its own, and it comes after everything else in this file.
+
+### What it is
+
+A model can be trained further on examples of one task. This is called fine-tuning. The model
+starts from what it already knows and is shown thousands of examples of the task done well,
+until doing it that way has become its habit. A small model trained like this can do one narrow
+task as well as a much larger model that was never shown the task.
+
+### What prompted it
+
+A chart that Google's Gemma team shared on 2026-11-20. Airbnb took the smallest Gemma 4 model
+(E2B) for a task of their own: reading a text and deciding which policy it falls under. As it
+comes, the model scored about 0.56 on their measure. After training on their own examples it
+scored 0.90 and answered in 36 thousandths of a second, ahead of every large cloud model on the
+chart. We saw the chart as a picture and read the numbers from it, so they are approximate.
+
+Two things on that chart do not carry over to us, and both should be kept in mind:
+
+- **Their task is one label per text.** Ours is a conversation in which the model chooses among
+  88 tools, chains several calls, and asks back when a request is unclear.
+- **Their computer is not ours.** They used a graphics card far larger and faster than the GTX
+  1080 Ti.
+
+### What we hope for
+
+**That the model no longer needs most of its instructions.** The speed problem with a local
+model is the length of each request ("The problem", above), and shortening the instructions by
+hand made the answers worse. Training is the other way to shorten them: what the model has
+learned, it need not be told again.
+
+| Part of a request today | After training |
+|---|---|
+| The general instructions: how to work, the units, when to ask back | Could be left out. They are the same on every microscope. |
+| The list of tools with a description of each, the largest part by far | Could be left out, or cut to one short line per tool. |
+| The readout of the microscope | Stays. It changes with every message. |
+| This microscope's own names for its lasers, filters and zooms | Stays. They differ per facility. |
+| The ticked skills | Stay. The facility and its people write them. |
+
+The three parts that stay are a small fraction of today's request.
+
+### What it would cost
+
+- **Changing the behaviour by editing a text file.** Today a facility can copy the instructions,
+  change a sentence and see the effect in the next chat. Once a rule lives in the model, changing
+  it means training again. A short text on top would still work for small additions.
+- **Adding a tool without training again.** A new or renamed call is unknown to the model until
+  the next training. Keeping one short line per tool in the request softens this.
+- **Doing well outside the examples.** A small trained model tends to do what it was drilled
+  on. The risk is everything that was not in the training: a skill written yesterday, a chain of
+  six calls, a vague request that needs a question back, text planted in the readout.
+- **Camera images.** The two 14B models passed 10 and 12 of the 29 cases with images. With a
+  small model the second model should do the looking, which the `vision_model` line of the
+  config file now allows.
+
+### Which model to train
+
+| Model | What speaks for it | What speaks against it |
+|---|---|---|
+| **Gemma 4 E2B** | The smallest. Training is cheap and quick, and can be repeated whenever the tools change. It fits on the 11 GB card whole, with room left for a long conversation. | The least room for everything that is not routine. |
+| **Gemma 4 12B** | Still fits on the card whole. On Airbnb's chart it scored a little above the 26B, untrained. | We could not evaluate it; no service we reached offers it. |
+| **Inkling 2 Mini** | Already passes 127 of our 137 cases untrained. Its maker built it to be trained further and offers a service for that. | It does not fit on the card whole, so training it does not solve the memory problem. |
+
+The smallest model is the easiest to train. That is not the same as the easiest to get good
+enough. Which of the two matters more is what the pilot below is for.
+
+### How it would go
+
+1. **Finish the basics.** The assistant tried in demo mode on the real computer, and merged.
+2. **Measure the models as they come.** Gemma 4 E2B, 12B and 26B on the microscope computer,
+   with our evaluation. This is the starting point, so that we can say later what the training
+   bought. It may also show that training is not needed.
+3. **Generate the examples.** A strong cloud model, the teacher, works through thousands of
+   requests on the simulated microscope. Only the conversations that the scoring marks as
+   correct are kept.
+4. **Train the small model on them**, on a rented graphics card or at a service made for it.
+5. **Judge it on cases it never saw.** The held-out set, the third set and the safety cases stay
+   out of the training. They show whether the model learned the task or only the examples.
+
+### What to take care of
+
+- **The requests must be new and varied.** They cannot come from our evaluation cases; training
+  on those would be fitting the model to the test.
+- **Several microscopes, not one.** The examples should cover different sets of lasers, filters
+  and zooms, so that the model learns to read the names from the request and does not memorise
+  one instrument.
+- **The awkward situations belong in the training.** Vague requests that need a question back,
+  refused moves, a busy microscope, text planted in the readout. Otherwise the model learns only
+  the easy path.
+- **A small pilot first.** A few hundred examples and one short training run show whether the
+  whole chain works, before thousands are paid for.
+- **The teacher is chosen by the pilot.** Claude Sonnet 5.5 and Claude Fable 5.2 scored the same
+  on our evaluation (128 and 127), and Sonnet costs less. The scoring checks the calls closely
+  and the wording of the replies only loosely, so a stronger teacher might write better
+  questions and refusals. Generate the same few hundred requests with both and compare.
+- **The provider's terms.** Some providers restrict using their model's output to train another
+  model. We have not checked how that applies to a small model for one's own microscope. It has
+  to be read before step 3. An open model as the teacher would avoid the question.
+- **The rule at the top of this file holds.** A trained model is one more model to choose. The
+  shorter request it needs is a setting that only this model uses; the cloud models keep getting
+  everything as they do now.
+
+### Sources
+
+- The chart: a post by Google Gemma on X of 2026-11-20 about a benchmark by Airbnb's engineering
+  team, seen as a picture. The post itself was not read.
+- Fine-tuning Google's smallest function-calling model: <https://ai.google.dev/gemma/docs/mobile-actions>
