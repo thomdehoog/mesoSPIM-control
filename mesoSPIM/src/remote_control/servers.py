@@ -23,10 +23,12 @@ import logging
 import re
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from PyQt5 import QtCore, QtNetwork
 
+from . import call_log
 from . import config
 
 # Importing Commands fills the dispatcher registry before either server accepts requests.
@@ -153,6 +155,7 @@ class Acceptor(QtCore.QObject):
         super().__init__(core)
         self._core = core
         self._closed = False
+        self.client = None                    # who calls through this Acceptor, for the log (call_log)
         self._time_lapse_warning = None       # a warning during a time-lapse point, until its sig_finished
         self._time_point_running = False      # from sig_run_timepoint to that point's sig_finished
         if _core_state(core) == "snap":       # a GUI snap is synchronous: this can only be its leftover
@@ -166,7 +169,21 @@ class Acceptor(QtCore.QObject):
         stalled body that finishes reading) after Stop cannot actuate the microscope."""
         self._closed = True
 
-    def dispatch(self, name, args):
+    def dispatch(self, name, args, client=None):
+        """Run one call and return its result, or raise what refused it. Every call is written
+        to the mesoSPIM log with its outcome (call_log), so that a problem can be traced later.
+        `client` says who is calling, for that line; without it the Acceptor's own `client` is
+        used, which the AI Assistant sets to its model's name."""
+        started = time.monotonic()
+        try:
+            result = self._dispatch(name, args)
+        except Exception as error:
+            call_log.record(client or self.client, name, args, time.monotonic() - started, error=error)
+            raise
+        call_log.record(client or self.client, name, args, time.monotonic() - started, result=result)
+        return result
+
+    def _dispatch(self, name, args):
         if self._closed:
             raise RuntimeError("remote control is shutting down")
 
@@ -295,6 +312,22 @@ class Acceptor(QtCore.QObject):
         self._connections = []
 
 
+def _dispatch_as(acceptor, client, name, args):
+    """Dispatch a call and say who made it, for the log. Anything that is not the Acceptor itself
+    (a stand-in used by a test) is called as before, with the name and the values only."""
+    if isinstance(acceptor, Acceptor):
+        return acceptor.dispatch(name, args, client=client)
+    return acceptor.dispatch(name, args)
+
+
+def _tcp_client(conn):
+    """A TCP client's name for the log: "TCP" and the address it connected from, when known."""
+    try:
+        return f"TCP {conn.peerAddress().toString()}"
+    except Exception:
+        return "TCP"
+
+
 # --- In-process MCP server ---
 _CONTENT_LENGTH = re.compile(r"[0-9]{1,10}")
 
@@ -414,7 +447,7 @@ def _make_handler(acceptor, token):
                 msg = strict_json_loads(body.decode(config.ENCODING))
             except (UnicodeError, ValueError):
                 return self._json(400, {"error": "invalid JSON"})
-            reply = _mcp_reply(acceptor, msg)
+            reply = _mcp_reply(acceptor, msg, client=f"MCP {self.client_address[0]}")
             if reply is None:
                 self.send_response(202)
                 self.send_header("Content-Length", "0")
@@ -425,7 +458,7 @@ def _make_handler(acceptor, token):
     return Handler
 
 
-def _mcp_reply(acceptor, msg):
+def _mcp_reply(acceptor, msg, client="MCP"):
     def rpc_error(rid, code, message):
         return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
 
@@ -474,7 +507,7 @@ def _mcp_reply(acceptor, msg):
         try:
             # pass `arguments` through as-is: run() defaults a missing/None to {} and rejects a
             # non-object ([], "", …), so MCP no longer silently accepts what TCP's parse_call refuses
-            data = acceptor.dispatch(params.get("name"), params.get("arguments"))
+            data = _dispatch_as(acceptor, client, params.get("name"), params.get("arguments"))
             text, is_error = json.dumps(data, allow_nan=False), False
         except Exception as error:
             code, message = error_info(error)
@@ -640,7 +673,7 @@ class TcpAdapter:
             return
         try:
             name, args = parse_call(message)
-            reply = config.OK_MARKER + json.dumps(self._acceptor.dispatch(name, args), allow_nan=False)
+            reply = config.OK_MARKER + json.dumps(_dispatch_as(self._acceptor, _tcp_client(conn), name, args), allow_nan=False)
         except Exception as error:
             code, text = error_info(error)
             reply = f"error: [{code}] {text}"

@@ -199,6 +199,40 @@ installed implementation.
 
 What is not finished or not yet verified is listed in [Open items](open.md).
 
+## The log of calls
+
+Every call is written to the mesoSPIM log, one line each, so that after a problem someone can
+read back what happened: who asked the microscope to do what, with which values, and how it
+ended. This holds for every client (a script over TCP, an AI program over MCP, the AI Assistant
+inside mesoSPIM) and for every call, also one that only reads a value. The lines are in the same
+log file as the rest of mesoSPIM (the `log` folder), so one timeline shows each request next to
+what the microscope did.
+
+After the time and the other details that the log file puts in front of every line, a line reads:
+
+```text
+Remote Control | anna | AI Assistant (claude-haiku-5-5) | set_laser {"laser": "488 nm"} | ok | 0.21 s | {"accepted": true, ...}
+Remote Control | anna | TCP 192.168.1.20 | move_absolute {"targets": {"x": 99999}} | refused: x: 99999 is outside the allowed range | 0.00 s
+Remote Control | anna | MCP 127.0.0.1 | run_acquisition_list {} | ok | 0.03 s | {"accepted": true, ...}
+```
+
+From left to right: the person logged in to the microscope computer, the client that made the
+call (for the AI Assistant, with the name of the model), the call with its values, how it ended,
+how long it took to answer, and what came back.
+
+- **ok** means the microscope accepted the call. A call that starts something long (a move, an
+  acquisition) is accepted at once and finishes later; the `get_progress` lines that follow show
+  when and how it finished.
+- **refused** means the microscope did not accept it, with the reason: a value outside the
+  limits, the microscope busy, a name it does not know. Nothing was done.
+- **failed** means it was accepted and then went wrong, with the reason.
+
+A camera image or another very long value is replaced by a note of its size, so one frame does
+not fill the file. A client that waits for a long run asks `get_progress` many times, and each of
+those is a line too: the log is meant to be complete, not short. No key or password is part of
+any call, so none can appear here, and the log never holds what was typed to the AI Assistant or
+what it answered.
+
 ## Limit enforcement
 
 The server validates structure, names, types, configured options, numeric ranges, stage travel, and
