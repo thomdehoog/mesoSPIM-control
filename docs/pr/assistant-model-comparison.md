@@ -44,9 +44,9 @@ It is the best of the first eight models that can run on the microscope computer
 safety case. It is six cases below Claude Haiku 5.5, the model the assistant was built for.
 
 **Changed on 2026-11-21.** Inkling 2 Mini is a model of the same kind and size, it passed 127
-cases and every safety case, and it is now the stronger candidate on accuracy. Whether it can
-run on the microscope computer at all is not known yet; see "A ninth model: Inkling 2 Mini".
-Gemma 4 26B stays the candidate we know how to run.
+cases and every safety case, and it is now the stronger candidate on accuracy. It has not been
+run on the microscope computer, and the software for it is days old; see "A ninth model: Inkling
+2 Mini". Gemma 4 26B stays the candidate to try first.
 
 ### 2. Qwen3.6-35B-A3B is ruled out, in spite of its score
 
@@ -248,11 +248,11 @@ a single case (44 and 27); no other went above 14.
 
 ### What this does not tell us
 
-- **Whether it runs on the microscope computer.** At about 20 GB it does not fit on the 11 GB
-  card, so it would need the same arrangement as Gemma 4 26B, with most of the model in ordinary
-  memory. The passes through the middle layers are a new design, and we do not know whether the
-  server we planned to use supports it on an older card.
-- **Whether the model can be downloaded yet.** Most reports say it can; one says that comes later.
+- **How well it runs on the microscope computer.** At about 20 GB it does not fit on the 11 GB
+  card, so it would need the same arrangement as Gemma 4 26B, with part of the model in ordinary
+  memory. The model can be downloaded, and other people run compressed copies of it on cards
+  smaller than ours. The software for it is days old; what is known is in
+  `assistant-local-models.md`, "Running Inkling 2 Mini on the microscope computer".
 - **How fast it is.** A case took 6 seconds at the median, on the provider's servers. That says
   nothing about the microscope computer.
 - **Each case was run once**, as for every model here. A difference of a few cases is not a

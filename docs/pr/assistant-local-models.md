@@ -14,7 +14,7 @@ critical review is in `assistant-plan-review.md`.
 |---|---|---|
 | How large is a request? | 12,987 tokens for Gemma with all 88 tools | Counted by Google |
 | Can Gemma 4 26B use the tools? | Yes: 115 of 137 cases, against 121 for Claude Haiku 5.5, and every safety case passed | Our evaluation, see `assistant-model-comparison.md` |
-| Is there a better local model? | Perhaps one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case, but we do not know yet whether it can run on the microscope computer. Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same |
+| Is there a better local model? | Probably one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case. Other people run it on cards smaller than ours, but the software for it is days old and still has faults; see "Running Inkling 2 Mini on the microscope computer". Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same, and other people's write-ups |
 | Does a shorter tool list hurt? | No visible harm on 23 cases | Our evaluation, a small sample |
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
@@ -205,11 +205,10 @@ numbers, about 3.4 billion used per word, about 20 GB), and it takes images. On 
 passed 127 of 137 cases, against 115 for Gemma 4 26B, and it ignored planted instructions in 20
 runs of 20. The details, and one habit to watch, are in `assistant-model-comparison.md`.
 
-Two things are unknown, and both come before its accuracy matters. Its middle layers are passed
-through three times, which is a new design, and we do not know whether the server we planned to
-use can run it on an older card with most of the model in ordinary memory. And the reports do not
-agree on whether the model can be downloaded yet. So the test below stays as it is, with Gemma 4
-26B first, and Inkling 2 Mini is tried the same way if the server can load it.
+The model can be downloaded, and the server we planned to use (llama.cpp) has been able to run
+it since the day of the release. Both are very new. What other people report, and what it means
+for our card, is in "Running Inkling 2 Mini on the microscope computer" below. The test stays as
+it is, with Gemma 4 26B first, and Inkling 2 Mini is tried the same way afterwards.
 
 The model is also made to be trained further on one's own examples, and its maker offers a
 service for that. This matters if we ever train a small model for the assistant.
@@ -231,6 +230,100 @@ service for that. This matters if we ever train a small model for the assistant.
 The guides disagree with each other, and none tests a list of 88 tools at a microscope. Our own
 evaluation is the only measurement that counts. It can be run through a hosting service for
 cents per model, before anything is downloaded.
+
+### Running Inkling 2 Mini on the microscope computer
+
+Written after a search of the web on 2026-11-21, one day after the model came out. Nothing here
+has been run by us. Most of it comes from other people's posts and from the discussion among the
+people who wrote the software, and several pages could only be read as summaries. The software
+changes daily, so every point should be checked again on the day of the test.
+
+**The software exists, and it is very new.** Support for the model was added to llama.cpp on
+2026-11-20. A version from before that date cannot load the model. Ollama lists the model too.
+
+**Our card needs the right build of the server.** The GTX 1080 Ti belongs to an older generation
+of cards (Pascal). The newest builds of llama.cpp are made for a newer version of NVIDIA's
+software (CUDA 13), which no longer supports that generation; on such a card they fall back to
+the processor without saying so. The build to download for Windows is the one marked CUDA 12.4.
+
+**There are two families of model files, and they do not mix.** A model file for llama.cpp has
+the ending `.gguf`.
+
+- The files from the llama.cpp project itself (`ggml-org/Inkling-2-Mini-GGUF`) work with the
+  ordinary server.
+- The files from Unsloth (`unsloth/Inkling-2-Mini-GGUF`) are laid out differently and need
+  Unsloth's own build of the server. People who loaded them in the ordinary server got an error.
+  Unsloth also offers a folder `Mainline_Support` for the ordinary server, which on 2026-11-21
+  still needed a change that had not been accepted yet.
+
+**The compressed copies and their sizes.** These are Unsloth's; the smaller the file, the more
+has been rounded away.
+
+| Copy | Size | On an 11 GB card |
+|---|---|---|
+| Q8 (the least compressed) | 22.9 GB | Mostly in ordinary memory |
+| Q4_K_XL, the one Unsloth recommends | 17.6 GB | Part on the card, part in ordinary memory |
+| Q4_K_M | 16.6 GB | The same |
+| Q3_K_XL | 13.6 GB | The same; this is what ran on an 8 GB card |
+| IQ3_XXS | 11.7 GB | Just too large to sit on the card whole |
+| Q2_K_XL | 9.1 GB | Fits whole, with about 2 GB left for the conversation |
+| IQ2_XXS | 8.5 GB | Fits whole |
+
+A second, small file (the "projector") is needed for the model to take images.
+
+**Two ways to run it on our card.**
+
+1. *A 3-bit or 4-bit copy, split between the card and ordinary memory.* This is the arrangement
+   planned for Gemma 4 26B. One person reports 17 tokens per second for the answer and about 100
+   tokens per second for reading, with the Q3_K_XL copy on an 8 GB card (RTX 4060) and 16 GB of
+   ordinary memory, at a conversation of 10,000 tokens. Another reports 24 tokens per second for
+   the Q4_K_XL copy on a 12 GB laptop card. Both cards are newer than ours.
+2. *A 2-bit copy, whole on the card.* One person runs it this way on a 12 GB card. It should be
+   the fastest, but it leaves little room for a conversation of our length, and nobody knows what
+   so much rounding does to the choice among 88 tools. It would have to go through our
+   evaluation first.
+
+**A place to start** for the first way, put together from two of these reports and not tried by
+us:
+
+```
+llama-server -m <the model file> --mmproj <the projector file> --jinja
+  -c 32768 -ngl 99 --n-cpu-moe 12 -fa on -ctk q8_0 -ctv q8_0 -ub 512 --parallel 1
+```
+
+`-c` must be given: left out, the server prepares for the model's full million tokens and runs
+out of memory. `--mmproj` names the projector file for images, `-ub 512` limits how much is read
+in one go, and `--parallel 1` says that one conversation is served at a time. The other settings
+are explained in "The test" below.
+
+**What to expect, and what to watch.**
+
+- *The first message is slow.* At about 100 tokens per second, reading our start of 13,000
+  tokens or more takes about two minutes. After that the server should keep what it has read, so
+  that only the new part of each message is read. Whether it really does is the first thing to
+  check, as for Gemma.
+- *The repeated layers cost memory three times.* Each of the three passes keeps its own notes
+  on the conversation, so the conversation takes more memory than for a model of this size
+  without the repeats.
+- *A large working buffer.* People report that the server sets aside many gigabytes for reading
+  when the conversation is allowed to be long. A modest `-c` and a smaller `-ub` keep this down.
+  One of the software's authors called this "unusable as it is right now" for long conversations
+  and it was being worked on.
+- *A possible fault in exactly our arrangement.* One report says the model writes nonsense on
+  long messages when the experts of the repeated layers are kept in ordinary memory, and that
+  keeping only the other layers' experts there avoids it. We could not read that report itself,
+  so it is a warning and not a fact.
+- *Tool calls and images.* One person reports that both work. A fault is reported for a related
+  feature (answers forced into a given form come back empty). Our assistant asks for tool calls
+  in the standard way, which is not the same thing, but it has to be seen to work.
+- *The compressed copy is not the model we evaluated.* The 127 cases were passed by the model as
+  its maker serves it. The copy on our computer has to pass the same evaluation, which can be
+  pointed at the local server.
+
+**What we suggest.** Wait a week or two before spending an afternoon on this: the software is
+days old and its faults are being fixed daily. Do the test with Gemma 4 26B as planned. Then try
+Inkling 2 Mini with the same steps: the CUDA 12.4 build, the 4-bit copy from the llama.cpp
+project, the settings above, and our 137 cases against the local server.
 
 ### Why a 26B model can run on an 11 GB card
 
@@ -431,6 +524,16 @@ chooses.
   [Online Tech Tips](https://www.online-tech-tips.com/thinking-machines-releases-open-weight-inkling-2-mini/),
   [DEV Community](https://dev.to/delimitter/thinking-machines-releases-inkling-2-mini-an-open-looped-transformer-that-runs-on-a-laptop-7g3),
   [TestingCatalog](https://www.testingcatalog.com/thinking-machines-releases-inkling-2-mini-looped-open-model/).
+- Running Inkling 2 Mini locally, read on 2026-11-21, several of them only as summaries:
+  the change that added the model to llama.cpp (<https://github.com/ggml-org/llama.cpp/pull/32694>),
+  Unsloth's own change (<https://github.com/ggml-org/llama.cpp/pull/32695>),
+  Unsloth's files (<https://huggingface.co/unsloth/Inkling-2-Mini-GGUF>) and guide
+  (<https://unsloth.ai/docs/models/inkling-2-mini>),
+  the llama.cpp project's files (<https://huggingface.co/ggml-org/Inkling-2-Mini-GGUF>),
+  the report from an 8 GB card (<https://x.com/analogalok/status/2124135141555720653>),
+  a guide for 12 GB cards (<https://aliteq.com/can-you-run-inkling-2-mini-locally>),
+  the memory needed for long conversations (<https://vramcalculator.com/inkling-2-mini-vram/>),
+  and older cards after CUDA 13 (<https://localaimaster.com/blog/pascal-gpus-after-cuda-13>).
 
 ## First results: Gemma 4 26B, tried through Google's service
 
