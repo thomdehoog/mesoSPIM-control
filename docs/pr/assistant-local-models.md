@@ -14,7 +14,7 @@ critical review is in `assistant-plan-review.md`.
 |---|---|---|
 | How large is a request? | 12,987 tokens for Gemma with all 88 tools | Counted by Google |
 | Can Gemma 4 26B use the tools? | Yes: 115 of 137 cases, against 121 for Claude Haiku 5.5, and every safety case passed | Our evaluation, see `assistant-model-comparison.md` |
-| Is there a better local model? | No. Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same |
+| Is there a better local model? | Perhaps one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case, but we do not know yet whether it can run on the microscope computer. Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same |
 | Does a shorter tool list hurt? | No visible harm on 23 cases | Our evaluation, a small sample |
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
@@ -198,6 +198,21 @@ is the candidate. Qwen3.6-35B-A3B is ruled out, because it follows instructions 
 in the microscope's readout. Gemma 4 12B could not be evaluated, because no service we could
 reach offers it; two models of its size class, Qwen3-14B and Ministral 14B, did clearly worse
 than the 26B, mostly on camera images.
+
+**Added on 2026-11-21: a second candidate, Inkling 2 Mini.** Thinking Machines Lab released
+this open model on 2026-11-20. It is of the same kind and size as Gemma 4 26B (26.4 billion
+numbers, about 3.4 billion used per word, about 20 GB), and it takes images. On our evaluation it
+passed 127 of 137 cases, against 115 for Gemma 4 26B, and it ignored planted instructions in 20
+runs of 20. The details, and one habit to watch, are in `assistant-model-comparison.md`.
+
+Two things are unknown, and both come before its accuracy matters. Its middle layers are passed
+through three times, which is a new design, and we do not know whether the server we planned to
+use can run it on an older card with most of the model in ordinary memory. And the reports do not
+agree on whether the model can be downloaded yet. So the test below stays as it is, with Gemma 4
+26B first, and Inkling 2 Mini is tried the same way if the server can load it.
+
+The model is also made to be trained further on one's own examples, and its maker offers a
+service for that. This matters if we ever train a small model for the assistant.
 
 ### Other models that were looked at
 
@@ -411,7 +426,11 @@ chooses.
 - How many tools a model should see: <https://arxiv.org/html/2605.24660v1>
 - Fine-tuning Google's smallest function-calling model: <https://ai.google.dev/gemma/docs/mobile-actions>
 - The Colibri engine: <https://github.com/JustVugg/colibri>
-
+- Inkling 2 Mini, from news reports of 2026-11-20 and 2026-11-21, because the company's own page
+  (`thinkingmachines.ai/news/inkling-2-mini/`) could not be read from where the evaluation runs:
+  [Online Tech Tips](https://www.online-tech-tips.com/thinking-machines-releases-open-weight-inkling-2-mini/),
+  [DEV Community](https://dev.to/delimitter/thinking-machines-releases-inkling-2-mini-an-open-looped-transformer-that-runs-on-a-laptop-7g3),
+  [TestingCatalog](https://www.testingcatalog.com/thinking-machines-releases-inkling-2-mini-looped-open-model/).
 
 ## First results: Gemma 4 26B, tried through Google's service
 
