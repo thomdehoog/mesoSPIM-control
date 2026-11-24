@@ -14,7 +14,7 @@ critical review is in `assistant-plan-review.md`.
 |---|---|---|
 | How large is a request? | 12,987 tokens for Gemma with all 88 tools | Counted by Google |
 | Can Gemma 4 26B use the tools? | Yes: 115 of 137 cases, against 121 for Claude Haiku 5.5, and every safety case passed | Our evaluation, see `assistant-model-comparison.md` |
-| Is there a better local model? | Probably one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case. Other people run it on cards smaller than ours, but the software for it is days old and still has faults; see "Running Inkling 2 Mini on the microscope computer". Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. | The same, and other people's write-ups |
+| Is there a better local model? | Probably one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case. Other people run it on cards smaller than ours, but the software for it is days old and still has faults; see "Running Inkling 2 Mini on the microscope computer". Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. A third candidate, SenseNova Loop-9B, is small enough to fit on the card whole, but we have not been able to evaluate it. | The same, and other people's write-ups |
 | Does a shorter tool list hurt? | No visible harm on 23 cases | Our evaluation, a small sample |
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
@@ -212,6 +212,40 @@ it is, with Gemma 4 26B first, and Inkling 2 Mini is tried the same way afterwar
 
 The model is also made to be trained further on one's own examples, and its maker offers a
 service for that. This matters if we ever train a small model for the assistant.
+
+**Added on 2026-11-24: a third candidate, SenseNova Loop-9B.** SenseTime released this open
+model around 2026-11-17, after a preview at the end of October. Nothing about it has been run by
+us; what follows is from news reports and from summaries of the pages that describe it.
+
+- **It is small.** It has about 9 billion numbers. Like Inkling 2 Mini it passes through its
+  middle layers more than once: 32 layers are run as 56 steps.
+- **It takes images**, and its maker names tool use and tasks of many steps among the things it
+  is meant for. It can hold a conversation of up to 512,000 tokens.
+- **It fits on the 11 GB card whole.** The maker's own 4-bit copy is about 4.9 GB, and the maker
+  gives under 10 GB of the card's memory for running it. That leaves room for a long
+  conversation, with nothing in ordinary memory. This is what the other two candidates cannot
+  offer, and it is the reason to look at this model.
+- **Its maker says it keeps up with Qwen3.8-27B** on a selection of tests of tool use. That is
+  the maker's own comparison.
+
+What is not settled:
+
+- **The software.** Support in llama.cpp was a proposed change (number 32588) on 2026-11-24, and
+  we could not confirm that it has been accepted. The files other people have made reportedly
+  need a patched build of the server, and some of them are for text only. For images the maker's
+  own projector file is needed.
+- **Tool calls.** We found no report of anyone testing them on this model.
+- **Our evaluation.** It could not be run. OpenRouter did not list the model on 2026-11-24, and
+  we found no shared service that hosts it.
+- **Its real level.** The two 14B models we evaluated passed 103 and 101 of 137 cases, and lost
+  most on camera images. Inkling 2 Mini shows that a model with repeated layers can do better
+  than its size suggests. Only our 137 cases will tell which holds here.
+- **The licence.** The reports name two different open licences.
+
+Because the model is this small, the microscope computer could serve it itself, and our
+evaluation can be pointed at that local server. So it is run as soon as a service hosts it or
+the server supports it, whichever comes first. It is also a natural model to train further (see
+the end of this file): it is small, and its maker published guidance for training it.
 
 ### Other models that were looked at
 
@@ -526,6 +560,13 @@ chooses.
   [Online Tech Tips](https://www.online-tech-tips.com/thinking-machines-releases-open-weight-inkling-2-mini/),
   [DEV Community](https://dev.to/delimitter/thinking-machines-releases-inkling-2-mini-an-open-looped-transformer-that-runs-on-a-laptop-7g3),
   [TestingCatalog](https://www.testingcatalog.com/thinking-machines-releases-inkling-2-mini-looped-open-model/).
+- SenseNova Loop-9B, read on 2026-11-24, most of them only as summaries:
+  the maker's announcement (<https://www.sensetime.com/en/news/sensenova-loop-9b-release-20261118-1435>),
+  a news report (<https://technode.com/2026/11/18/sensetime-releases-open-weight-loop-9b-model-that-reuses-layers-for-deeper-computation/>),
+  the maker's files (<https://huggingface.co/sensenova/SenseNova-Loop-9B> and
+  <https://huggingface.co/sensenova/SenseNova-Loop-9B-GGUF>),
+  the proposed change to llama.cpp (<https://github.com/ggml-org/llama.cpp/pull/32588>),
+  and a guide to running it (<https://openclawdc.com/blog/can-i-run-sensenova-loop-9b-locally/>).
 - Running Inkling 2 Mini locally, read on 2026-11-21, several of them only as summaries:
   the change that added the model to llama.cpp (<https://github.com/ggml-org/llama.cpp/pull/32694>),
   Unsloth's own change (<https://github.com/ggml-org/llama.cpp/pull/32695>),
@@ -706,6 +747,7 @@ The three parts that stay are a small fraction of today's request.
 |---|---|---|
 | **Gemma 4 E2B** | The smallest. Training is cheap and quick, and can be repeated whenever the tools change. It fits on the 11 GB card whole, with room left for a long conversation. | The least room for everything that is not routine. |
 | **Gemma 4 12B** | Still fits on the card whole. On Airbnb's chart it scored a little above the 26B, untrained. | We could not evaluate it; no service we reached offers it. |
+| **SenseNova Loop-9B** | Fits on the card whole at about 5 GB, takes images, and is meant for tool use. Its maker published guidance for training it. | Not evaluated by us, and the server did not yet support it on 2026-11-24. |
 | **Inkling 2 Mini** | Already passes 127 of our 137 cases untrained. Its maker built it to be trained further and offers a service for that. | It does not fit on the card whole, so training it does not solve the memory problem. |
 
 The smallest model is the easiest to train. That is not the same as the easiest to get good
