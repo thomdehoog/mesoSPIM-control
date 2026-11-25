@@ -14,7 +14,7 @@ critical review is in `assistant-plan-review.md`.
 |---|---|---|
 | How large is a request? | 12,987 tokens for Gemma with all 88 tools | Counted by Google |
 | Can Gemma 4 26B use the tools? | Yes: 115 of 137 cases, against 121 for Claude Haiku 5.5, and every safety case passed | Our evaluation, see `assistant-model-comparison.md` |
-| Is there a better local model? | Probably one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case. Other people run it on cards smaller than ours, but the software for it is days old and still has faults; see "Running Inkling 2 Mini on the microscope computer". Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. A third candidate, SenseNova Loop-9B, is small enough to fit on the card whole. Its compressed copy passed 31 of 34 cases on a slow machine of ours, level with Gemma on the same cases, but it tends to do more than was asked. | The same, and other people's write-ups |
+| Is there a better local model? | Probably one. Inkling 2 Mini, released on 2026-11-20, passes 127 and every safety case. Other people run it on cards smaller than ours, but the software for it is days old and still has faults; see "Running Inkling 2 Mini on the microscope computer". Qwen3.6-35B-A3B scores 118 but obeys instructions planted in the readout. The 14B models pass about 102. A third candidate, SenseNova Loop-9B, is small enough to fit on the card whole. Its compressed copy passed 46 of 50 cases on a slow machine of ours, about level with Gemma on the same cases, but it tends to do more than was asked. | The same, and other people's write-ups |
 | Does a shorter tool list hurt? | No visible harm on 23 cases | Our evaluation, a small sample |
 | Does the model fit on the microscope computer? | Probably, with part of it in ordinary memory | Other people's write-ups |
 | How fast is it there? | Unknown | Not measured |
@@ -232,15 +232,15 @@ about it had been run by us. A day later it was; see "Changed on 2026-11-25" bel
 **Changed on 2026-11-25: we ran it.** No shared service offers the model. OpenRouter does not
 list it, and Hugging Face names no provider for it. So it was run on the machine where the
 evaluation itself runs, which has four processor cores and no graphics card. The result is in
-`assistant-model-comparison.md`, "A tenth model, on 34 of the cases: SenseNova Loop-9B". In
+`assistant-model-comparison.md`, "A tenth model, on 50 of the cases: SenseNova Loop-9B". In
 short:
 
-- **The 4-bit copy passed 31 of 34 cases**, two of every kind of case. On the same 34 cases
-  Gemma 4 26B passed 31, Inkling 2 Mini 34, and the two 14B models 30 each.
-- **Tool calls and images both work** with the maker's files. It passed all six cases in which
-  it had to look at a camera image, and all three safety cases.
-- **Its three misses were all of one kind: it did more than was asked.** In one case it would
-  not accept that an acquisition had run, and it started the acquisition twice more.
+- **The 4-bit copy passed 46 of 50 cases**, three of every kind of case. On the same 50 cases
+  Gemma 4 26B passed 45, Inkling 2 Mini 50, and the two 14B models 44 and 43.
+- **Tool calls and images both work** with the maker's files. It passed all ten cases in which
+  it had to look at a camera image, and all four safety cases.
+- **In three of its four misses it did more than was asked.** In one case it would not accept
+  that an acquisition had run, and it started the acquisition twice more.
 - **On processor cores it is far too slow to use**: about 5 tokens per second read and 1.5
   written. This says nothing about the graphics card.
 
@@ -253,7 +253,7 @@ This also settles some of what was open on 2026-11-24:
   processors only.
 - **The maker names one weakness that touches us**: the model "may misunderstand or miss
   requirements when given many complex tool definitions or multiple constraints". With our 88
-  tools this did not show in 34 cases.
+  tools this did not show in 50 cases.
 
 What is still not settled:
 
@@ -262,7 +262,7 @@ What is still not settled:
   card as old as ours.
 - **How fast it is there.** It fits on the card whole, so it should be much faster than a model
   that is split between the card and ordinary memory. We have no measurement.
-- **The other 103 cases**, and whether it ignores a planted instruction on every repeat. Once
+- **The other 87 cases**, and whether it ignores a planted instruction on every repeat. Once
   the microscope computer serves the model, the whole evaluation can be pointed at it and
   should take minutes per run, not days.
 
@@ -785,7 +785,7 @@ The three parts that stay are a small fraction of today's request.
 |---|---|---|
 | **Gemma 4 E2B** | The smallest. Training is cheap and quick, and can be repeated whenever the tools change. It fits on the 11 GB card whole, with room left for a long conversation. | The least room for everything that is not routine. |
 | **Gemma 4 12B** | Still fits on the card whole. On Airbnb's chart it scored a little above the 26B, untrained. | We could not evaluate it; no service we reached offers it. |
-| **SenseNova Loop-9B** | Fits on the card whole at about 7 GB with the file for images, takes images, and is meant for tool use. Its maker published guidance for training it. | Evaluated on 34 of the 137 cases only (31 passed, as a 4-bit copy). Support in the server is still a proposed change, which worked for us on processors. |
+| **SenseNova Loop-9B** | Fits on the card whole at about 7 GB with the file for images, takes images, and is meant for tool use. Its maker published guidance for training it. | Evaluated on 50 of the 137 cases only (46 passed, as a 4-bit copy). Support in the server is still a proposed change, which worked for us on processors. |
 | **Inkling 2 Mini** | Already passes 127 of our 137 cases untrained. Its maker built it to be trained further and offers a service for that. | It does not fit on the card whole, so training it does not solve the memory problem. |
 
 The smallest model is the easiest to train. That is not the same as the easiest to get good
