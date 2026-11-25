@@ -30,6 +30,9 @@ from ..remote_control.servers import Acceptor
 from ..remote_control.commands import self_test
 from ..remote_control.frame import array_of, to_png
 from . import config
+from . import conversations
+from . import search as search_files
+from . import skills as skill_files
 from .frames import Calibration, FrameHistory, field_um, flag, nominal_scale, place_and_settings, sample_map, shift
 from ..remote_control import config as rc_config
 
@@ -772,7 +775,7 @@ def _rows_by_reference(schema):
 
 def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=None,
                 image_bin=None, store=None, vision_session=None, axes=None, focus_metric=None,
-                clock=time.time, on_started=None, skills=None):
+                clock=time.time, on_started=None, skills=None, desk=None):
     """One passthrough tool per offered command (see offered_commands). The tool list is derived
     from COMMANDS, never hand-maintained.
 
@@ -804,7 +807,7 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
         schema, renamed = _safe_keys(schema)
         if renamed:
             fn = _original_keys(fn, renamed)
-        description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name)
+        description = config.TOOL_DESCRIPTIONS.get(cmd.name, cmd.hint or cmd.name) + config.TOOL_NOTES.get(cmd.name, "")
         tools.append(Tool.from_schema(fn, name=cmd.name, description=description, json_schema=schema, sequential=True))
     if endpoint is not None:
         eyes = vision_endpoint or endpoint  # a dedicated reader, or the main model when it can see
@@ -873,19 +876,51 @@ def build_tools(acceptor, cancel, on_call=None, endpoint=None, vision_endpoint=N
                             "best, what they remember. When the operator says look, look again or check now, that "
                             "is a new frame: call look, whose answer compares with the earlier frames.",
             ))
+    if desk is not None:
+        skills = desk.skills
     if skills:
-        tools.append(_load_skill_tool(skills, on_call))
+        tools.append(_load_skill_tool(skills, on_call, desk.switched_off if desk is not None else ()))
+    if desk is not None:
+        tools.extend(_desk_tools(acceptor, desk, on_call, cancel))
     return tools
 
 
-def _load_skill_tool(skills, on_call):
-    """The one tool that hands the model a skill's steps; offered only when the microscope has skills."""
+@dataclass
+class Desk:
+    """What one chat was started with, beyond the microscope itself: the skills the operator
+    ticked, where a new skill is saved, where the documentation and the saved conversations
+    are, and how to ask the operator a yes-or-no question. The setup window fills it in when
+    Start Chat Window is pressed, and it stays as it is until the chat ends. That is the rule
+    that keeps a chat predictable: it has exactly what was ticked when it started.
+
+    With a desk, the assistant gets five more tools: get_status, search and read_passage,
+    save_skill and edit_skill. Without one (the offline evaluation) it has the microscope's
+    calls only, as before."""
+
+    skills: dict = field(default_factory=dict)        # the ticked skills, by the name the assistant knows them by
+    switched_off: tuple = ()                          # skills that exist but are not ticked for this chat
+    personal_skills: Path | None = None               # the folder a new personal skill is written to
+    documentation: Path | None = None                 # the folder search looks in; None when it is not there
+    conversations: Path | None = None                 # this person's saved conversations
+    saving: bool = False                              # are conversations being saved?
+    confirm: object = None                            # confirm(kind, details) -> True when the operator says yes
+    status: object = None                             # status() -> the assistant's own half of get_status
+    on_skill_saved: object = None                     # told of a skill that was saved or changed, for the window
+
+
+def _load_skill_tool(skills, on_call, switched_off=()):
+    """The one tool that hands the model a skill's steps; offered only when the chat has skills.
+    A skill that exists but was not ticked for this chat is refused in plain words: the tick is
+    the operator's decision, and this is where it is enforced."""
     from pydantic_ai import Tool
 
     def load_skill(name):
         if on_call is not None:
             on_call("load_skill", json.dumps({"name": name}))
         skill = skills.get(name)
+        if skill is None and name in switched_off:
+            return json.dumps({"error": {"code": "refused", "message": config.SKILL_SWITCHED_OFF.format(name=name),
+                                         "skills": sorted(skills)}})
         if skill is None:
             return json.dumps({"error": {"code": "validation", "message": f"no skill {name!r}",
                                          "skills": sorted(skills)}})
@@ -895,6 +930,190 @@ def _load_skill_tool(skills, on_call):
               "required": ["name"], "additionalProperties": False}
     return Tool.from_schema(load_skill, name="load_skill", json_schema=schema, sequential=True,
                             description=config.LOAD_SKILL_DESCRIPTION)
+
+
+_GET_STATUS_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
+_SEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "a few words, as the documentation would say them"},
+        "where": {"type": "string", "enum": ["documentation", "conversations", "both"],
+                  "description": "where to look; both when omitted"},
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+_READ_PASSAGE_SCHEMA = {
+    "type": "object",
+    "properties": {"place": {"type": "string", "description": "a place from a search result, like 'user_guide.rst#3'"}},
+    "required": ["place"],
+    "additionalProperties": False,
+}
+_SKILL_TOOLS = {"type": "array", "items": {"type": "string"},
+                "description": "the tools the steps use, by name, so the skill can be checked later"}
+_SAVE_SKILL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "a short name: 'overview scan'"},
+        "description": {"type": "string", "description": "one sentence that says when to use it; it is all "
+                                                         "you will see of the skill before loading it"},
+        "steps": {"type": "string", "description": "the procedure in Markdown: when it applies, the steps with "
+                                                   "the tool for each, when it is done, what to report"},
+        "tools": _SKILL_TOOLS,
+    },
+    "required": ["name", "description", "steps"],
+    "additionalProperties": False,
+}
+
+
+def status_of(snapshot):
+    """The essentials of the microscope's readout for get_status: is it busy and with what, where
+    the stage is, the main settings, the disk, and recent warnings. The full readout stays with
+    get_snapshot and get_state_all; this one is meant to be asked often."""
+    snapshot = snapshot or {}
+    operation = snapshot.get("operation") or {}
+    rows = snapshot.get("acquisition_list") or {}
+    return {
+        "state": snapshot.get("state"),
+        "busy": snapshot.get("state") not in (None, "idle"),
+        "operation": {key: operation[key] for key in ("command", "status", "progress") if key in operation} or None,
+        "position": snapshot.get("position"),
+        "optics": snapshot.get("optics"),
+        "exposure_time_s": (snapshot.get("camera") or {}).get("exposure_time_s"),
+        "acquisition_rows": rows.get("rows"),
+        "disk": snapshot.get("disk"),
+        "time_lapse_active": (snapshot.get("time_lapse") or {}).get("active"),
+        "warnings": snapshot.get("warnings") or [],
+    }
+
+
+def _desk_tools(acceptor, desk, on_call, cancel):
+    """The tools a chat started from the window has beyond the microscope's calls: one status
+    call, the search with its reader, and saving and changing personal skills. Each runs on a
+    thread the turn does not wait on, like look, so that Cancel still ends the turn at once and a
+    question to the operator can stay open as long as they need."""
+    from pydantic_ai import Tool
+
+    def told(name, args):
+        if on_call is not None:
+            try:
+                on_call(name, json.dumps(args))
+            except Exception:
+                pass
+
+    def _status_now():
+        told("get_status", {})
+        try:
+            microscope = status_of(acceptor.dispatch("get_snapshot", {}))
+        except Exception as error:
+            code, message = error_info(error)
+            microscope = {"error": {"code": code, "message": message}}
+        assistant = desk.status() if desk.status is not None else {}
+        return json.dumps({"microscope": microscope, "assistant": assistant})
+
+    async def get_status() -> str:
+        return await asyncio.to_thread(_status_now)
+
+    def _search_now(query, where):
+        told("search", {"query": query, "where": where})
+        return json.dumps(search_files.search(query, where, desk.documentation, desk.conversations, desk.saving))
+
+    async def search(query="", where="both") -> str:
+        return await asyncio.to_thread(_search_now, query, where)
+
+    def _read_now(place):
+        told("read_passage", {"place": place})
+        return json.dumps(search_files.read_passage(place, desk.documentation, desk.conversations))
+
+    async def read_passage(place="") -> str:
+        return await asyncio.to_thread(_read_now, place)
+
+    def _refused(message, code="refused"):
+        return json.dumps({"error": {"code": code, "message": message}})
+
+    def _confirmed(kind, details):
+        """Show the operator the full text and wait for yes or no. No answer (Cancel, or a chat
+        without a window) counts as no: nothing is ever saved without a yes."""
+        if cancel.is_set() or desk.confirm is None:
+            return False
+        return bool(desk.confirm(kind, details))
+
+    def _save_now(name, description, steps, tools):
+        told("save_skill", {"name": name, "description": description})
+        tools = tuple(tools or ())
+        try:
+            skill_files.parse(skill_files.text_of(name, description, steps, tools))     # refuse before asking
+            taken, _ = skill_files.load(desk.personal_skills, skill_files.PERSONAL)
+            if " ".join(str(name).split()) in taken:
+                return _refused(f"a personal skill named {name!r} exists already; use edit_skill to change "
+                                "it, or pick another name", "validation")
+        except ValueError as error:
+            return _refused(str(error), "validation")
+        if not _confirmed("save_skill", {"name": name, "description": description, "steps": steps, "tools": list(tools)}):
+            return _refused(config.SKILL_NOT_CONFIRMED)
+        try:
+            skill = skill_files.save_personal(desk.personal_skills, name, description, steps, tools)
+        except (ValueError, OSError) as error:
+            return _refused(f"the skill could not be saved: {error}", "execution")
+        if desk.on_skill_saved is not None:
+            desk.on_skill_saved(skill)
+        return json.dumps({"saved": skill.name, "note": config.SKILL_SAVED_NOTE})
+
+    async def save_skill(name="", description="", steps="", tools=None) -> str:
+        return await asyncio.to_thread(_save_now, name, description, steps, tools)
+
+    def _edit_now(name, description, steps, tools):
+        told("edit_skill", {"name": name})
+        skill = desk.skills.get(name)
+        if skill is None:
+            message = config.SKILL_SWITCHED_OFF.format(name=name) if name in desk.switched_off else f"no skill {name!r}"
+            return _refused(message, "validation")
+        if skill.kind != skill_files.PERSONAL:
+            return _refused(config.SYSTEM_SKILL_READ_ONLY.format(name=name))
+        new_tools = skill.tools if tools is None else tuple(tools)
+        new_description = skill.description if description is None else description
+        new_steps = skill.body if steps is None else steps
+        try:
+            skill_files.parse(skill_files.text_of(skill.name, new_description, new_steps, new_tools))
+        except ValueError as error:
+            return _refused(str(error), "validation")
+        if not _confirmed("edit_skill", {"name": skill.name, "description": new_description, "steps": new_steps,
+                                         "tools": list(new_tools), "was": skill.body}):
+            return _refused(config.SKILL_NOT_CONFIRMED)
+        try:
+            changed = skill_files.change_personal(skill, new_description, new_steps, new_tools)
+        except (ValueError, OSError) as error:
+            return _refused(f"the skill could not be saved: {error}", "execution")
+        desk.skills[name] = changed                      # this chat follows the new steps from here on
+        if desk.on_skill_saved is not None:
+            desk.on_skill_saved(changed)
+        return json.dumps({"saved": changed.name, "note": "The changed steps are in use from now on."})
+
+    async def edit_skill(name="", description=None, steps=None, tools=None) -> str:
+        return await asyncio.to_thread(_edit_now, name, description, steps, tools)
+
+    made = [
+        Tool.from_schema(get_status, name="get_status", json_schema=_GET_STATUS_SCHEMA, sequential=True,
+                         description=config.GET_STATUS_DESCRIPTION),
+        Tool.from_schema(search, name="search", json_schema=_SEARCH_SCHEMA, sequential=True,
+                         description=config.SEARCH_DESCRIPTION),
+        Tool.from_schema(read_passage, name="read_passage", json_schema=_READ_PASSAGE_SCHEMA, sequential=True,
+                         description=config.READ_PASSAGE_DESCRIPTION),
+    ]
+    if desk.personal_skills is not None:
+        made.append(Tool.from_schema(save_skill, name="save_skill", json_schema=_SAVE_SKILL_SCHEMA, sequential=True,
+                                     description=config.SAVE_SKILL_DESCRIPTION))
+    personal = sorted(key for key, skill in desk.skills.items() if skill.kind == skill_files.PERSONAL)
+    if personal:
+        schema = {"type": "object",
+                  "properties": {"name": {"type": "string", "enum": personal},
+                                 "description": {"type": "string", "description": "a new description; omit to keep it"},
+                                 "steps": {"type": "string", "description": "the whole new procedure; omit to keep it"},
+                                 "tools": _SKILL_TOOLS},
+                  "required": ["name"], "additionalProperties": False}
+        made.append(Tool.from_schema(edit_skill, name="edit_skill", json_schema=schema, sequential=True,
+                                     description=config.EDIT_SKILL_DESCRIPTION))
+    return made
 
 
 def _snapped_just_now(history, acceptor):
@@ -1015,19 +1234,24 @@ def axes_section(axes):
             "see in the image: convert them to signed moves with this, and say which axis and sign you used.")
 
 
-def build_system_prompt(acceptor=None, axes=None, skills=None):
+def build_system_prompt(acceptor=None, axes=None, skills=None, preamble_file=None, desk=None):
     """The hand-written preamble (units, frames, safety) plus the offered commands grouped by
     kind. What each does and its argument shape are in its tool description and schema, which the
     model receives anyway; the prompt does not repeat them. manual.md speaks to the operator as
     "you" and gives each rule its reason; a softened rule can make a model ask where it may
     correct, or clamp an out-of-range value, and the manual names both exceptions. Nothing in the
     prompt depends on the time or the session, so a provider's cache serves it on every request."""
-    preamble = (Path(__file__).parent / "manual.md").read_text(encoding="utf-8")
+    # The hand-written part is a text file, so that a facility can point the config file's
+    # system_prompt line at its own; without one it is the manual.md that comes with mesoSPIM.
+    preamble = Path(preamble_file or Path(__file__).parent / "manual.md").read_text(encoding="utf-8")
     offered = offered_commands()
     lines = [f"- {label}: {', '.join(cmd.name for cmd in offered if cmd.kind == kind)}"
              for kind, label in _KINDS if any(cmd.kind == kind for cmd in offered)]
     prompt = preamble + "\n\n# Commands\n\nBy kind; each tool's description says what it does.\n" + "\n".join(lines)
-    return prompt + axes_section(axes) + skills_section(skills)
+    # A chat started from the window can look things up; the prompt then says when to. The text
+    # is the same for every chat, so the provider's cache still serves it.
+    lookup = "\n\n" + config.LOOKUP_SECTION if desk is not None else ""
+    return prompt + axes_section(axes) + lookup + skills_section(skills)
 
 
 def skills_section(skills):
@@ -1035,7 +1259,13 @@ def skills_section(skills):
     so a microscope without a skills folder gets the general prompt unchanged."""
     if not skills:
         return ""
-    return "\n\n" + config.SKILLS_SECTION + "\n".join(f"- {s.name}: {s.description}" for s in skills.values())
+    system = [f"- {key}: {s.description}" for key, s in skills.items() if s.kind != skill_files.PERSONAL]
+    personal = [f"- {key}: {s.description}" for key, s in skills.items() if s.kind == skill_files.PERSONAL]
+    text = "\n\n" + config.SKILLS_SECTION + "\n".join(system)
+    if personal:
+        # The operator's own skills, listed apart so the model can say which kind it is using.
+        text += ("\n" if system else "") + config.PERSONAL_SKILLS_LINE + "\n" + "\n".join(personal)
+    return text
 
 
 @dataclass(frozen=True)
@@ -1141,7 +1371,7 @@ def build_model(endpoint):
 
 def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None,
                 vision_endpoint=None, image_bin=None, store=None, vision_session=None, axes=None,
-                focus_metric=None, clock=time.time, on_started=None, skills=None):
+                focus_metric=None, clock=time.time, on_started=None, skills=None, desk=None, preamble_file=None):
     """`endpoint` is what the tab chose (the default preset when None). `model` overrides it: the
     GUI never passes it; the offline evaluation drives this same agent with a scripted model."""
     from pydantic_ai import Agent
@@ -1151,12 +1381,15 @@ def build_agent(acceptor, cancel, on_call=None, model=None, endpoint=None,
     # message history we carry across turns. The history is never rewritten: a provider that
     # signs a reply's thinking refuses a request whose earlier messages changed, and an
     # append-only history is what its cache serves cheapest.
-    agent = Agent(model, instructions=build_system_prompt(axes=axes, skills=skills),
+    if desk is not None:
+        skills = desk.skills
+    agent = Agent(model, instructions=build_system_prompt(axes=axes, skills=skills, preamble_file=preamble_file,
+                                                          desk=desk),
                   tools=build_tools(acceptor, cancel, on_call, endpoint=endpoint,
                                     vision_endpoint=vision_endpoint, image_bin=image_bin, store=store,
                                     vision_session=vision_session, axes=axes,
                                     focus_metric=focus_metric, clock=clock, on_started=on_started,
-                                    skills=skills),
+                                    skills=skills, desk=desk),
                   model_settings=model_settings(endpoint),                     # the most likely call, not a creative one
                   retries=config.TOOL_CALL_RETRIES)                            # a malformed call goes back to the model
     agent.output_validator(_hand_back_an_empty_reply())
@@ -1228,6 +1461,9 @@ class AssistantWorker(QtCore.QObject):
     sig_error = QtCore.pyqtSignal(str)
     sig_done = QtCore.pyqtSignal()
     sig_run_ended = QtCore.pyqtSignal(str)   # a run the assistant started has ended (the done notice)
+    sig_confirm = QtCore.pyqtSignal(str, str)   # a yes-or-no question for the operator: what kind, the details as JSON
+    sig_skill_saved = QtCore.pyqtSignal(str)    # a personal skill was saved or changed: its name, for the setup window
+    sig_note = QtCore.pyqtSignal(str)           # a grey line for the chat that is not part of a turn
 
     def __init__(self, acceptor):
         super().__init__()
@@ -1248,6 +1484,15 @@ class AssistantWorker(QtCore.QObject):
         self.axes = dict(config.DEFAULT_AXES)            # what a positive move does to the sample in the image
         self._agent_axes = None                          # the axes the agent was built with
         self.skills = {}                                 # the microscope's skills (skills.py); the tab sets them
+        # What Start Chat Window hands over, and what stays fixed until the chat ends:
+        self.desk = None                                 # the ticked skills and the folders (Desk)
+        self.system_prompt_file = None                   # the config file's system_prompt; None is manual.md
+        self.recorder_factory = None                     # makes a conversations.Recorder when saving is on
+        self.recorder = None                             # this chat's file, when conversations are saved
+        self.tokens = 0                                  # the input tokens of the last request: the context's size
+        self.context_max_tokens = None                   # the model's ceiling, for get_status
+        self._answer = None                              # the operator's answer to a question (ask_operator)
+        self._answered = threading.Event()
 
     def configure(self, endpoint, vision_endpoint=None):
         """Use another endpoint (and reader for frames) from the next turn on; the transcript
@@ -1255,15 +1500,81 @@ class AssistantWorker(QtCore.QObject):
         self._endpoint = endpoint
         self._vision_endpoint = vision_endpoint
         self._agent = None
+        # Every call is written to the mesoSPIM log with who made it: here, the assistant and
+        # the model that is answering, so a line can be traced back to the model behind it.
+        if endpoint is not None:
+            try:
+                self._acceptor.client = f"AI Assistant ({endpoint.model})"
+            except AttributeError:               # a stand-in acceptor that takes no label
+                pass
         reader = vision_endpoint or endpoint
         self.eyes = VisionSession(reader, clock=self.now) if reader is not None and reader.vision else None
 
     def now(self):
         return self.clock()
 
+    def open_desk(self, desk, system_prompt_file=None, recorder_factory=None, context_max_tokens=None):
+        """Start Chat Window: take what the operator chose in the setup window. The desk's
+        questions and its status are answered by this worker. Called from the GUI thread before
+        the first turn."""
+        desk.confirm = self.ask_operator
+        desk.status = self.status
+        desk.on_skill_saved = lambda skill: self.sig_skill_saved.emit(skill.name)
+        self.desk = desk
+        self.skills = desk.skills
+        self.system_prompt_file = system_prompt_file
+        self.recorder_factory = recorder_factory
+        self.recorder = recorder_factory() if recorder_factory is not None else None
+        self.context_max_tokens = context_max_tokens
+        self.tokens = 0
+        self._agent = None
+
+    def status(self):
+        """The assistant's own half of get_status: who is answering, how full the context is,
+        which skills this chat has, and whether the conversation is being saved."""
+        desk = self.desk
+        return {
+            "provider": self._endpoint.provider if self._endpoint else None,
+            "model": self._endpoint.model if self._endpoint else None,
+            "can_see_images": bool(self.eyes is not None),
+            "context_tokens": self.tokens,
+            "context_max_tokens": self.context_max_tokens,
+            "skills": sorted(desk.skills) if desk is not None else sorted(self.skills),
+            "conversations_saved": bool(self.recorder is not None),
+        }
+
+    def ask_operator(self, kind, details):
+        """Ask the operator a yes-or-no question from inside a tool (save this skill?) and wait
+        for the answer. The window shows the details and calls `answer`. Cancel counts as no."""
+        self._answer = None
+        self._answered.clear()
+        self.sig_confirm.emit(kind, json.dumps(details))
+        while not self._answered.wait(0.1):
+            if self.cancel.is_set():
+                return False
+        return bool(self._answer)
+
+    def answer(self, yes):
+        """The operator's answer to ask_operator. Called from the GUI thread."""
+        self._answer = bool(yes)
+        self._answered.set()
+
+    def _save_conversation(self):
+        """Write the chat so far to its file, when conversations are saved. A failure is said
+        once in the chat as a grey line and never stops the work."""
+        recorder = self.recorder
+        if recorder is None:
+            return
+        had_problem = recorder.problem
+        if not recorder.save(self.store.turns) and recorder.problem != had_problem:
+            self.sig_note.emit(recorder.problem)
+
     def reset(self):
         """Forget the conversation (Clear context). Called between turns, like configure."""
         self._history = []
+        self.tokens = 0
+        if self.recorder_factory is not None:
+            self.recorder = self.recorder_factory()      # the cleared chat stays saved; the next is a new file
         self.store = SessionStore(self.now, Calibration())
         if self.eyes is not None:
             self.eyes.reset()            # the eyes forget the frames with the transcript
@@ -1282,7 +1593,8 @@ class AssistantWorker(QtCore.QObject):
                                           focus_metric=lambda: self.focus_metric,
                                           store=self.store, vision_session=self.eyes,
                                           axes=self._agent_axes, clock=self.now, on_started=self._note_started,
-                                          skills=self.skills)
+                                          skills=self.skills, desk=self.desk,
+                                          preamble_file=self.system_prompt_file)
             # No whole-turn retry: it would re-run every tool call the first attempt already made.
             # A rate limit or outage reaches the operator as an error they can see and retry. (The
             # SDK's own retry of a 429 or 529 is of one request on the same history: fine.)
@@ -1290,6 +1602,7 @@ class AssistantWorker(QtCore.QObject):
             result = self._run_cancellable(self._agent.run(prompt, message_history=self._history))
             self.store.finish(result.new_messages(), result.output)
             self._history = result.all_messages()
+            self.tokens = last_request_tokens(result.new_messages()) or self.tokens
             self.sig_usage.emit(last_request_tokens(result.new_messages()))
             chosen = self._endpoint.model if self._endpoint else None
             others = [name for name in served_models(result.new_messages()) if name != chosen]
@@ -1302,6 +1615,7 @@ class AssistantWorker(QtCore.QObject):
             logger.exception("AI Assistant turn failed")
             self.sig_error.emit(describe_error(error))
         finally:
+            self._save_conversation()
             self.sig_done.emit()
 
     def _run_cancellable(self, coro):

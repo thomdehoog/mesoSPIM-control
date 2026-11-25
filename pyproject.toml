@@ -46,7 +46,9 @@ photometrics = ["pyvcam==2.2.4"]
 # The AI Assistant tab only. Imported lazily, so the application starts and every other feature
 # works without it; the tab reports the missing module when the operator sends a first message.
 # anthropic 1.x moved to another HTTP client library that pydantic-ai 2.14 does not pass it.
-ai-assistant = ["pydantic-ai==2.14.1", "anthropic>=0.108,<1"]
+# keyring hands an API key to the operating system's password store when the operator ticks
+# "Remember this key on this computer"; without it the assistant works and asks for the key each time.
+ai-assistant = ["pydantic-ai==2.14.1", "anthropic>=0.108,<1", "keyring>=24"]
 
 [project.urls]
 "Homepage" = "http://mesospim.org"

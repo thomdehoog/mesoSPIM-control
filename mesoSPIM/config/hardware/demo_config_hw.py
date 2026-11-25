@@ -561,3 +561,30 @@ startup = {
 'camera_sensor_mode':'ASLM', # Hamamatsu-specific parameter
 'average_frame_rate': 4.5,
 }
+
+'''
+AI Assistant (optional)
+
+The AI Assistant tab asks the operator only for a provider, a model and their own API key.
+Everything else about the assistant is set here, once, for the whole microscope. Every line is
+optional: remove the '#' in front of a line to change it from the value shown, which is what
+mesoSPIM uses when the line is left out. A path that does not start at the root of the disk is
+read from the folder this config file is in, and '~' stands for the home folder of whoever is
+logged in, so that each person gets a folder of their own.
+
+The lines are explained one by one in docs/source/ai_assistant/configuration.md.
+'''
+ai_assistant = {
+    # 'system_prompt': '',                    # a text file with the assistant's instructions; empty: the one that comes with mesoSPIM
+    # 'system_skills': 'skills',              # the skills that belong to this microscope, for everyone
+    # 'personal_skills': '~/mesoSPIM/skills', # each person's own skills
+    # 'documentation': '',                    # the folder the assistant searches; empty: this copy's docs/source
+    # 'save_conversations': False,            # True keeps each conversation as a file in the person's own folder
+    # 'vision': False,                        # False forbids sending camera images to the provider
+    # 'address': '',                          # a model your facility hosts itself, e.g. 'http://models.example.org/v1'
+    # 'vision_model': {'provider': 'Gemini', 'model': 'gemini-3.5-flash-lite'},   # a second model that looks at the camera images
+    # 'look_bin': 2,                          # how much a camera image is shrunk before it is sent: 1, 2, 4 or 8
+    # 'focus_metric': 'laplacian',            # how sharpness is measured: 'laplacian' or 'dct_shannon'
+    # 'axes': {'x': 'right', 'y': 'up', 'z': 'toward the camera'},   # what a positive move does to the sample in the image
+    # 'request_interval_s': 0,                # a pause between requests, for a provider with a tight limit
+}
